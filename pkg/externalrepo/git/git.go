@@ -512,7 +512,7 @@ func (r *gitRepository) DeletePackageRevision(ctx context.Context, old repositor
 	return nil
 }
 
-func (r *gitRepository) removeDeletionProposedBranchIfExists(ctx context.Context, path, revision string) error {
+func (r *gitRepository) removeDeletionProposedBranchIfExists(ctx context.Context, path string, revision int) error {
 	refSpecsForDeletionProposed := newPushRefSpecBuilder()
 	deletionProposedBranch := createDeletionProposedName(path, revision)
 	refSpecsForDeletionProposed.AddRefToDelete(plumbing.NewHashReference(deletionProposedBranch.RefInLocal(), plumbing.ZeroHash))
@@ -614,7 +614,7 @@ func (r *gitRepository) loadPackageRevision(ctx context.Context, version, path s
 
 	var ref *plumbing.Reference = nil // Cannot determine ref; this package will be considered final (immutable).
 
-	var revision string
+	var revisionStr string
 	var workspace v1alpha1.WorkspaceName
 	last := strings.LastIndex(version, "/")
 
@@ -624,9 +624,9 @@ func (r *gitRepository) loadPackageRevision(ctx context.Context, version, path s
 	} else {
 		// the passed in version is a ref to a published package revision
 		if version == string(r.branch) || last < 0 {
-			revision = version
+			revisionStr = version
 		} else {
-			revision = version[last+1:]
+			revisionStr = version[last+1:]
 		}
 		workspace, err = getPkgWorkspace(commit, krmPackage, ref)
 		if err != nil {
@@ -634,7 +634,7 @@ func (r *gitRepository) loadPackageRevision(ctx context.Context, version, path s
 		}
 	}
 
-	packageRevision, err := krmPackage.buildGitPackageRevision(ctx, revision, workspace, ref)
+	packageRevision, err := krmPackage.buildGitPackageRevision(ctx, revisionStr, workspace, ref)
 	if err != nil {
 		return nil, lock, err
 	}
@@ -650,11 +650,11 @@ func (r *gitRepository) discoverFinalizedPackages(ctx context.Context, ref *plum
 		return nil, err
 	}
 
-	var revision string
+	var revisionStr string
 	if rev, ok := getBranchNameInLocalRepo(ref.Name()); ok {
-		revision = rev
+		revisionStr = rev
 	} else if rev, ok = getTagNameInLocalRepo(ref.Name()); ok {
-		revision = rev
+		revisionStr = rev
 	} else {
 		// TODO: ignore the ref instead?
 		return nil, fmt.Errorf("cannot determine revision from ref: %q", rev)
@@ -671,7 +671,7 @@ func (r *gitRepository) discoverFinalizedPackages(ctx context.Context, ref *plum
 		if err != nil {
 			return nil, err
 		}
-		packageRevision, err := krmPackage.buildGitPackageRevision(ctx, revision, workspace, ref)
+		packageRevision, err := krmPackage.buildGitPackageRevision(ctx, revisionStr, workspace, ref)
 		if err != nil {
 			return nil, err
 		}
@@ -710,7 +710,7 @@ func (r *gitRepository) loadDraft(ctx context.Context, ref *plumbing.Reference) 
 		return nil, nil
 	}
 
-	packageRevision, err := krmPackage.buildGitPackageRevision(ctx, "", workspaceName, ref)
+	packageRevision, err := krmPackage.buildGitPackageRevision(ctx, "0", workspaceName, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -792,7 +792,7 @@ func (r *gitRepository) loadTaggedPackages(ctx context.Context, tag *plumbing.Re
 	}
 
 	// tag=<package path>/version
-	path, revision := name[:slash], name[slash+1:]
+	path, revisionStr := name[:slash], name[slash+1:]
 
 	if !packageInDirectory(path, r.directory) {
 		return nil, nil
@@ -819,7 +819,7 @@ func (r *gitRepository) loadTaggedPackages(ctx context.Context, tag *plumbing.Re
 		return nil, err
 	}
 
-	packageRevision, err := krmPackage.buildGitPackageRevision(ctx, revision, workspaceName, tag)
+	packageRevision, err := krmPackage.buildGitPackageRevision(ctx, revisionStr, workspaceName, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -1445,7 +1445,7 @@ func (r *gitRepository) UpdateDraftResources(ctx context.Context, draft *gitPack
 	annotation := &gitAnnotation{
 		PackagePath:   draft.path,
 		WorkspaceName: draft.workspaceName,
-		Revision:      draft.revision,
+		Revision:      repository.Revision2Str(draft.revision),
 		Task:          change,
 	}
 	message := "Intermediate commit"
@@ -1470,7 +1470,7 @@ func (r *gitRepository) UpdateDraftResources(ctx context.Context, draft *gitPack
 	return nil
 }
 
-func (r *gitRepository) ClosePackageRevisionDraft(ctx context.Context, prd repository.PackageRevisionDraft, version string) (repository.PackageRevision, error) {
+func (r *gitRepository) ClosePackageRevisionDraft(ctx context.Context, prd repository.PackageRevisionDraft, version int) (repository.PackageRevision, error) {
 	ctx, span := tracer.Start(ctx, "gitRepository::ClosePackageRevisionDraft", trace.WithAttributes())
 	defer span.End()
 
@@ -1488,7 +1488,7 @@ func (r *gitRepository) ClosePackageRevisionDraft(ctx context.Context, prd repos
 	switch d.lifecycle {
 	case v1alpha1.PackageRevisionLifecyclePublished, v1alpha1.PackageRevisionLifecycleDeletionProposed:
 
-		if version == "" {
+		if version == 0 {
 			return nil, errors.New("Version cannot be empty for the next package revision")
 		}
 		d.revision = version
@@ -1557,7 +1557,7 @@ func (r *gitRepository) ClosePackageRevisionDraft(ctx context.Context, prd repos
 	// for backwards compatibility with packages that existed before porch supported
 	// descriptions, we populate the workspaceName as the revision number if it is empty
 	if d.workspaceName == "" {
-		d.workspaceName = v1alpha1.WorkspaceName(d.revision)
+		d.workspaceName = "v" + v1alpha1.WorkspaceName(repository.Revision2Str(d.revision))
 	}
 
 	return &gitPackageRevision{
@@ -1640,10 +1640,10 @@ func (r *gitRepository) commitPackageToMain(ctx context.Context, d *gitPackageRe
 
 	// Add a commit without changes to mark that the package revision is approved. The gitAnnotation is
 	// included so that we can later associate the commit with the correct packagerevision.
-	message, err := AnnotateCommitMessage(fmt.Sprintf("Approve %s/%s", packagePath, d.revision), &gitAnnotation{
+	message, err := AnnotateCommitMessage(fmt.Sprintf("Approve %s/%d", packagePath, d.revision), &gitAnnotation{
 		PackagePath:   packagePath,
 		WorkspaceName: d.workspaceName,
-		Revision:      d.revision,
+		Revision:      repository.Revision2Str(d.revision),
 	})
 	if err != nil {
 		return zero, zero, nil, fmt.Errorf("failed annotation commit message for package %s: %v", packagePath, err)
