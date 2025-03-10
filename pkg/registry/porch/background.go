@@ -22,6 +22,7 @@ import (
 
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
+	"github.com/nephio-project/porch/pkg/util"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -149,12 +150,12 @@ func (b *background) updateCache(ctx context.Context, event watch.EventType, rep
 	return nil
 }
 
-func (b *background) handleRepositoryEvent(ctx context.Context, repository *configapi.Repository, eventType watch.EventType) error {
-	msgPreamble := fmt.Sprintf("repository %s event handling: repo %s:%s", eventType, repository.ObjectMeta.Namespace, repository.ObjectMeta.Name)
+func (b *background) handleRepositoryEvent(ctx context.Context, repo *configapi.Repository, eventType watch.EventType) error {
+	msgPreamble := fmt.Sprintf("repository %s event handling: repo %s:%s", eventType, repo.ObjectMeta.Namespace, repo.ObjectMeta.Name)
 
 	klog.Infof("%s, handling starting", msgPreamble)
 
-	if err := validateRepository(repository); err != nil {
+	if err := util.ValidateRepository(repo.ObjectMeta.Name, repo.Spec.Git.Directory); err != nil {
 		return fmt.Errorf("%s, handling failed, repo specification invalid :%q", msgPreamble, err)
 	}
 
@@ -166,9 +167,9 @@ func (b *background) handleRepositoryEvent(ctx context.Context, repository *conf
 
 	var err error
 	if eventType == watch.Deleted {
-		err = b.cache.CloseRepository(ctx, repository, repoList.Items)
+		err = b.cache.CloseRepository(ctx, repo, repoList.Items)
 	} else {
-		err = b.cacheRepository(ctx, repository)
+		err = b.cacheRepository(ctx, repo)
 	}
 
 	if err == nil {
