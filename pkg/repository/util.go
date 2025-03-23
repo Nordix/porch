@@ -90,6 +90,14 @@ func Revision2Str(revision int) string {
 	return strconv.Itoa(revision)
 }
 
+func ComposePkgObjName(key PackageKey) string {
+	return util.ComposePkgObjName(key.RepoKey.Name, key.Path, key.Package)
+}
+
 func ComposePkgRevObjName(key PackageRevisionKey) string {
-	return util.ComposePkgRevObjName(key.PkgKey.RepoKey.Name, key.PkgKey.Path, key.PkgKey.Package, key.WorkspaceName)
+	if key.Revision != -1 { // Then it's a regular PackageRevision
+		return util.ComposePkgRevObjName(key.PkgKey.RepoKey.Name, key.PkgKey.Path, key.PkgKey.Package, key.WorkspaceName)
+	} else { // Then it's the placeholder PackageRevision
+		return util.ComposePkgRevObjName(key.PkgKey.RepoKey.Name, key.PkgKey.Path, key.PkgKey.Package, key.PkgKey.RepoKey.PlaceholderWSname)
+	}
 }

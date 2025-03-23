@@ -29,6 +29,7 @@ type CacheType string
 
 const (
 	CRCacheType      CacheType = "CR"
+	DBCacheType      CacheType = "DB"
 	DefaultCacheType CacheType = "CR"
 )
 
