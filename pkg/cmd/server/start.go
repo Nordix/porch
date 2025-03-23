@@ -20,6 +20,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nephio-project/porch/internal/kpt/fnruntime"
@@ -31,6 +32,9 @@ import (
 	sampleopenapi "github.com/nephio-project/porch/api/generated/openapi"
 	porchv1alpha1 "github.com/nephio-project/porch/api/porch/v1alpha1"
 	"github.com/nephio-project/porch/pkg/apiserver"
+	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
+	"github.com/nephio-project/porch/pkg/engine"
+	externalrepotypes "github.com/nephio-project/porch/pkg/externalrepo/types"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/admission"
@@ -51,19 +55,21 @@ const (
 // PorchServerOptions contains state for master/api server
 type PorchServerOptions struct {
 	RecommendedOptions               *genericoptions.RecommendedOptions
-	LocalStandaloneDebugging         bool // Enables local standalone running/debugging of the apiserver.
 	CacheDirectory                   string
+	CacheType                        string
 	CoreAPIKubeconfigPath            string
-	FunctionRunnerAddress            string
+	DbCacheDriver                    string
+	DbCacheDataSource                string
 	DefaultImagePrefix               string
-	RepoSyncFrequency                time.Duration
-	UseUserDefinedCaBundle           bool
 	DisableValidatingAdmissionPolicy bool
+	FunctionRunnerAddress            string
+	LocalStandaloneDebugging         bool // Enables local standalone running/debugging of the apiserver.
 	MaxRequestBodySize               int
-
-	SharedInformerFactory informers.SharedInformerFactory
-	StdOut                io.Writer
-	StdErr                io.Writer
+	RepoSyncFrequency                time.Duration
+	SharedInformerFactory            informers.SharedInformerFactory
+	StdOut                           io.Writer
+	StdErr                           io.Writer
+	UseUserDefinedCaBundle           bool
 }
 
 // NewPorchServerOptions returns a new PorchServerOptions
@@ -150,6 +156,17 @@ func (o *PorchServerOptions) Complete() error {
 		o.CacheDirectory = cache + "/porch"
 	}
 
+	o.CacheType = strings.ToUpper(o.CacheType)
+	if o.CacheType == string(cachetypes.DBCacheType) {
+		if strings.TrimSpace(o.DbCacheDriver) == "" {
+			klog.Fatalf("--db-cache-driver must be specified when using the database cache")
+		}
+
+		if strings.TrimSpace(o.DbCacheDataSource) == "" {
+			klog.Fatalf("--db-cache-data-source must be specified when using the database cache")
+		}
+	}
+
 	// if !o.LocalStandaloneDebugging {
 	// 	TODO: register admission plugins here ...
 	// 	add admission plugins to the RecommendedPluginOrder here ...
@@ -195,13 +212,24 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 	config := &apiserver.Config{
 		GenericConfig: serverConfig,
 		ExtraConfig: apiserver.ExtraConfig{
-			CoreAPIKubeconfigPath:  o.CoreAPIKubeconfigPath,
-			CacheDirectory:         o.CacheDirectory,
-			RepoSyncFrequency:      o.RepoSyncFrequency,
-			FunctionRunnerAddress:  o.FunctionRunnerAddress,
-			DefaultImagePrefix:     o.DefaultImagePrefix,
-			UseUserDefinedCaBundle: o.UseUserDefinedCaBundle,
-			MaxGrpcMessageSize:     o.MaxRequestBodySize,
+			CoreAPIKubeconfigPath: o.CoreAPIKubeconfigPath,
+			GRPCRuntimeOptions: engine.GRPCRuntimeOptions{
+				FunctionRunnerAddress: o.FunctionRunnerAddress,
+				MaxGrpcMessageSize:    o.MaxRequestBodySize,
+				DefaultImagePrefix:    o.DefaultImagePrefix,
+			},
+			CacheOptions: cachetypes.CacheOptions{
+				ExternalRepoOptions: externalrepotypes.ExternalRepoOptions{
+					CacheDirectory:         o.CacheDirectory,
+					UseUserDefinedCaBundle: o.UseUserDefinedCaBundle,
+				},
+				RepoSyncFrequency: o.RepoSyncFrequency,
+				CacheType:         cachetypes.CacheType(o.CacheType),
+				DBCacheOptions: cachetypes.DBCacheOptions{
+					Driver:     o.DbCacheDriver,
+					DataSource: o.DbCacheDataSource,
+				},
+			},
 		},
 	}
 	return config, nil
@@ -244,11 +272,14 @@ func (o *PorchServerOptions) AddFlags(fs *pflag.FlagSet) {
 				"authorizing the requests, this flag is only intended for debugging in your workstation.")
 	}
 
-	fs.StringVar(&o.FunctionRunnerAddress, "function-runner", "", "Address of the function runner gRPC service.")
-	fs.StringVar(&o.DefaultImagePrefix, "default-image-prefix", fnruntime.GCRImagePrefix, "Default prefix for unqualified function names")
 	fs.StringVar(&o.CacheDirectory, "cache-directory", "", "Directory where Porch server stores repository and package caches.")
-	fs.IntVar(&o.MaxRequestBodySize, "max-request-body-size", 6*1024*1024, "Maximum size of the request body in bytes. Keep this in sync with function-runner's corresponding argument.")
-	fs.BoolVar(&o.UseUserDefinedCaBundle, "use-user-cabundle", false, "Determine whether to use a user-defined CaBundle for TLS towards the repository system.")
+	fs.StringVar(&o.CacheType, "cache-type", string(cachetypes.DefaultCacheType), "Type of cache to use for cacheing repos, supported types are \"CR\" (Custom Resource) and \"DB\" (DataBase)")
+	fs.StringVar(&o.DbCacheDriver, "db-cache-driver", cachetypes.DefaultDBCacheDriver, "Database driver to use when for the database cache")
+	fs.StringVar(&o.DbCacheDataSource, "db-cache-data-source", "", "Address of the database, for example \"postgresql://user:pass@hostname:port/database\"")
+	fs.StringVar(&o.DefaultImagePrefix, "default-image-prefix", fnruntime.GCRImagePrefix, "Default prefix for unqualified function names")
 	fs.BoolVar(&o.DisableValidatingAdmissionPolicy, "disable-validating-admissions-policy", true, "Determine whether to (dis|en)able the Validating Admission Policy, which requires k8s version >= v1.30")
+	fs.StringVar(&o.FunctionRunnerAddress, "function-runner", "", "Address of the function runner gRPC service.")
+	fs.IntVar(&o.MaxRequestBodySize, "max-request-body-size", 6*1024*1024, "Maximum size of the request body in bytes. Keep this in sync with function-runner's corresponding argument.")
 	fs.DurationVar(&o.RepoSyncFrequency, "repo-sync-frequency", 10*time.Minute, "Frequency in seconds at which registered repositories will be synced and the background job repository refresh runs.")
+	fs.BoolVar(&o.UseUserDefinedCaBundle, "use-user-cabundle", false, "Determine whether to use a user-defined CaBundle for TLS towards the repository system.")
 }

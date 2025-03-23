@@ -12,24 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package crcache
+package dbcache
 
 import (
 	"context"
 
-	"github.com/nephio-project/porch/pkg/cache/crcache/meta"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 )
 
-var _ cachetypes.CacheFactory = &CrCacheFactory{}
+var _ cachetypes.CacheFactory = &DbCacheFactory{}
 
-type CrCacheFactory struct {
+type DbCacheFactory struct {
 }
 
-func (f *CrCacheFactory) NewCache(_ context.Context, options cachetypes.CacheOptions) (cachetypes.Cache, error) {
-	return &Cache{
-		repositories:  make(map[string]*cachedRepository),
-		metadataStore: meta.NewCrdMetadataStore(options.CoreClient),
-		options:       options,
+func (f *DbCacheFactory) NewCache(_ context.Context, options cachetypes.CacheOptions) (cachetypes.Cache, error) {
+
+	if err := OpenDB(options); err != nil {
+		return nil, err
+	}
+
+	return &dbCache{
+		repositories: make(map[string]*dbRepository),
+		options:      options,
 	}, nil
 }
