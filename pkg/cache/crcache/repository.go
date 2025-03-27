@@ -143,6 +143,7 @@ func (r *cachedRepository) getCachedPackages(ctx context.Context, forceRefresh b
 		packageRevisions = nil
 
 		r.mutex.Lock()
+		//The Refresh interface is not needed on the cache to be consumed externally
 		err := r.repo.Refresh(ctx)
 		r.mutex.Unlock()
 
@@ -165,7 +166,7 @@ func (r *cachedRepository) CreatePackageRevision(ctx context.Context, obj *v1alp
 func (r *cachedRepository) ClosePackageRevisionDraft(ctx context.Context, prd repository.PackageRevisionDraft, version int) (repository.PackageRevision, error) {
 	ctx, span := tracer.Start(ctx, "cachedRepository::ClosePackageRevisionDraft", trace.WithAttributes())
 	defer span.End()
-
+	//This should be moved to externalRepository.Version
 	v, err := r.Version(ctx)
 	if err != nil {
 		return nil, err
@@ -242,6 +243,7 @@ func (r *cachedRepository) update(ctx context.Context, updated repository.Packag
 			return nil, err
 		}
 	} else {
+		//CHECK: This triggers a redundant fetch on git.
 		version, err := r.repo.Version(ctx)
 		if err != nil {
 			return nil, err
@@ -280,6 +282,7 @@ func (r *cachedRepository) createMainPackageRevision(ctx context.Context, update
 				updatedMain.KubeObjectNamespace(), updatedMain.KubeObjectName(), err)
 		}
 	}
+	//CHECK: This triggers a redundant fetch on git.
 	version, err := r.repo.Version(ctx)
 	if err != nil {
 		return err
@@ -422,6 +425,7 @@ func (r *cachedRepository) refreshAllCachedPackages(ctx context.Context) (map[re
 	start := time.Now()
 	defer func() { klog.Infof("repo %s: refresh finished in %f secs", r.id, time.Since(start).Seconds()) }()
 
+	//Only this one is calling cachedRepository.Version -> Should be moved to externalRepository.Version
 	curVer, err := r.Version(ctx)
 	if err != nil {
 		return nil, nil, err

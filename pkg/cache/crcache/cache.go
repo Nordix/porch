@@ -61,6 +61,7 @@ func (c *Cache) OpenRepository(ctx context.Context, repositorySpec *configapi.Re
 
 	if cachedRepo := c.repositories[key]; cachedRepo != nil {
 		// If there is an error from the background refresh goroutine, return it.
+		//This is never going to return a refresh error...
 		if err := cachedRepo.getRefreshError(); err == nil {
 			return cachedRepo, nil
 		} else {

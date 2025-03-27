@@ -167,7 +167,7 @@ func OpenRepository(ctx context.Context, name, namespace string, spec *configapi
 			repository.caBundle = []byte(caBundle.ToString())
 		}
 	}
-
+	//CHECK: This is probably needed
 	if err := repository.fetchRemoteRepository(ctx); err != nil {
 		return nil, err
 	}
@@ -242,12 +242,15 @@ func (r *gitRepository) Close() error {
 	return nil
 }
 
+// This method figures out the latest version of the local repository (optionally). Optionally it should pull the latest remote repository, as the cache invalidation
+// happens when there when the version returned here is not the same as previously.
 func (r *gitRepository) Version(ctx context.Context) (string, error) {
 	ctx, span := tracer.Start(ctx, "gitRepository::Version", trace.WithAttributes())
 	defer span.End()
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-
+	//CHECK: This should be optional, as post-draft-close wants to save the new repository version. Contacting the remote at that point is not necessary
+	// and can even be harmful because the remote can move on in the meantime.
 	if err := r.fetchRemoteRepository(ctx); err != nil {
 		return "", err
 	}
@@ -319,7 +322,7 @@ func (r *gitRepository) ListPackageRevisions(ctx context.Context, filter reposit
 func (r *gitRepository) listPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]*gitPackageRevision, error) {
 	ctx, span := tracer.Start(ctx, "gitRepository::listPackageRevisions", trace.WithAttributes())
 	defer span.End()
-
+	//CHECK: Is this needed?
 	if err := r.fetchRemoteRepository(ctx); err != nil {
 		return nil, err
 	}
@@ -769,7 +772,7 @@ func (r *gitRepository) UpdateDeletionProposedCache() error {
 
 func (r *gitRepository) updateDeletionProposedCache() error {
 	r.deletionProposedCache = make(map[BranchName]bool)
-
+	//CHECK: Is this needed?
 	err := r.fetchRemoteRepository(context.Background())
 	if err != nil {
 		return err
@@ -1146,6 +1149,7 @@ func (r *gitRepository) pushAndCleanup(ctx context.Context, ph *pushRefSpecBuild
 	klog.Infof("pushing refs: %v", specs)
 
 	if err := r.doGitWithAuth(ctx, func(auth transport.AuthMethod) error {
+		//CHECK: Would a push and fail-rebase work here?
 		return r.repo.Push(&git.PushOptions{
 			RemoteName:        OriginName,
 			RefSpecs:          specs,
@@ -1633,6 +1637,7 @@ func (r *gitRepository) commitPackageToMain(ctx context.Context, d *gitPackageRe
 
 	// Fetch main
 	switch err := r.doGitWithAuth(ctx, func(auth transport.AuthMethod) error {
+		//CHECK: Why is this needed before writing to main? Can't we commit with a fast-forward merge strategy?
 		return r.repo.Fetch(&git.FetchOptions{
 			RemoteName: OriginName,
 			RefSpecs:   []config.RefSpec{branch.ForceFetchSpec()},
@@ -1659,6 +1664,7 @@ func (r *gitRepository) commitPackageToMain(ctx context.Context, d *gitPackageRe
 
 	// TODO: Check for out-of-band update of the package in main branch
 	// (compare package tree in target branch and common base)
+	//CHECK: The above todo can be solved if we just run a merge
 	ch, err := newCommitHelper(r, r.userInfoProvider, headCommit.Hash, d.Key().PkgKey.ToFullPathname(), d.tree)
 	if err != nil {
 		return zero, zero, nil, fmt.Errorf("failed to initialize commit of package %s to %s", d.Key().PkgKey.ToFullPathname(), localRef)
