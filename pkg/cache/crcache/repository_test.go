@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	porchtypes "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/externalrepo/fake"
@@ -50,6 +51,7 @@ func TestCachedRepoRefresh(t *testing.T) {
 	mockRepo.EXPECT().Refresh(mock.Anything).Return(nil).Maybe()
 	repoVersionCall := mockRepo.EXPECT().Version(mock.Anything).Return("v1.0", nil).Maybe()
 	repoListPRCall := mockRepo.EXPECT().ListPackageRevisions(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	repoClosePRDCall := mockRepo.EXPECT().ClosePackageRevisionDraft(mock.Anything, mock.Anything, 1).Return(nil, errors.New("create draft error")).Maybe()
 
 	metaListCall := mockMeta.EXPECT().List(mock.Anything, mock.Anything).Return(metaMap, nil).Maybe()
 	mockNotifier.EXPECT().NotifyPackageRevisionChange(mock.Anything, mock.Anything).Return(0).Maybe()
@@ -104,6 +106,40 @@ func TestCachedRepoRefresh(t *testing.T) {
 	err = cr.Refresh(context.TODO())
 	assert.True(t, err == nil)
 	metaDeleteCall.Return(metav1.ObjectMeta{}, nil).Maybe()
+
+	cr.flush()
+	assert.True(t, cr.cachedPackageRevisions == nil)
+
+	prMeta := porchtypes.PackageRevision{}
+
+	repoCreatePRDCall := mockRepo.EXPECT().CreatePackageRevisionDraft(mock.Anything, mock.Anything).Return(nil, errors.New("create draft error")).Maybe()
+	_, err = cr.CreatePackageRevisionDraft(context.TODO(), &prMeta)
+	assert.True(t, err != nil)
+
+	repoCreatePRDCall.Return(&fpr, nil).Maybe()
+	prd, err := cr.CreatePackageRevisionDraft(context.TODO(), &prMeta)
+	assert.True(t, err == nil)
+	assert.Equal(t, 0, prd.Key().Revision)
+
+	repoVersionCall.Return("", errors.New("version 2 error")).Maybe()
+	_, err = cr.ClosePackageRevisionDraft(context.TODO(), prd, 1)
+	assert.True(t, err != nil)
+
+	repoVersionCall.Return("v3.2.4", nil).Maybe()
+	_, err = cr.ClosePackageRevisionDraft(context.TODO(), prd, 1)
+	assert.True(t, err != nil)
+
+	_, err = cr.ClosePackageRevisionDraft(context.TODO(), prd, 1)
+	assert.True(t, err != nil)
+	repoClosePRDCall.Return(&fpr, nil).Maybe()
+
+	repoClosePRDCall.Return(prd, nil).Maybe()
+	metaCreateCall := mockMeta.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(metav1.ObjectMeta{}, errors.New("meta create error")).Maybe()
+
+	_, err = cr.ClosePackageRevisionDraft(context.TODO(), prd, 1)
+	assert.True(t, err != nil)
+	repoClosePRDCall.Return(&fpr, nil).Maybe()
+	metaCreateCall.Return(nil, nil)
 
 	/*
 	   store := NewCrdMetadataStore(mockClient)
