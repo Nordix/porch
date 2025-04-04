@@ -102,7 +102,7 @@ func TestCachedRepoRefresh(t *testing.T) {
 	repoListPRCall.Return(nil, nil).Maybe()
 
 	repoVersionCall.Return("v3.0", nil).Maybe()
-	metaDeleteCall := mockMeta.EXPECT().Delete(mock.Anything, mock.Anything, true).Return(metav1.ObjectMeta{}, errors.New("delete error")).Maybe()
+	metaDeleteCall := mockMeta.EXPECT().Delete(mock.Anything, mock.Anything, mock.Anything).Return(metav1.ObjectMeta{}, errors.New("delete error")).Maybe()
 	err = cr.Refresh(context.TODO())
 	assert.True(t, err == nil)
 	metaDeleteCall.Return(metav1.ObjectMeta{}, nil).Maybe()
@@ -139,71 +139,26 @@ func TestCachedRepoRefresh(t *testing.T) {
 	_, err = cr.ClosePackageRevisionDraft(context.TODO(), prd, 1)
 	assert.True(t, err != nil)
 	repoClosePRDCall.Return(&fpr, nil).Maybe()
-	metaCreateCall.Return(nil, nil)
+	metaCreateCall.Return(metav1.ObjectMeta{}, nil)
 
-	/*
-	   store := NewCrdMetadataStore(mockClient)
-	   assert.Equal(t, mockClient, store.coreClient)
+	mockMeta.EXPECT().Get(mock.Anything, mock.Anything).Return(metav1.ObjectMeta{}, nil).Maybe()
+	mockUpdate := mockMeta.EXPECT().Update(mock.Anything, mock.Anything).Return(metav1.ObjectMeta{}, nil).Maybe()
+	pr, err := cr.ClosePackageRevisionDraft(context.TODO(), prd, 1)
+	assert.True(t, err == nil)
+	assert.True(t, pr != nil)
 
-	   repo := configapi.Repository{}
+	mockUpdate.Return(metav1.ObjectMeta{}, errors.New("meta update error")).Maybe()
+	err = cr.cachedPackageRevisions[prKey].SetMeta(context.TODO(), metav1.ObjectMeta{})
+	assert.True(t, err != nil)
+	mockUpdate.Return(metav1.ObjectMeta{}, nil).Maybe()
 
-	   	pkgRevMeta := metav1.ObjectMeta{
-	   		Name:      "my-name",
-	   		Namespace: "my-namespace",
-	   	}
+	returnedMeta := metav1.ObjectMeta{
+		Finalizers: []string{
+			"finalizer",
+		},
+	}
+	metaDeleteCall.Return(returnedMeta, errors.New("Delete on meta error")).Maybe()
+	err = cr.DeletePackageRevision(context.TODO(), cr.cachedPackageRevisions[prKey])
+	assert.True(t, err == nil)
 
-	   mockClient.EXPECT().Create(mock.Anything, mock.Anything).Return(nil)
-	   newPkgRevMeta, err := store.Create(ctxt, pkgRevMeta, repo.Name, uuid.NewUUID())
-	   assert.True(t, err == nil)
-	   assert.Equal(t, pkgRevMeta.Name, newPkgRevMeta.Name)
-
-	   	prKey := types.NamespacedName{
-	   		Name:      pkgRevMeta.Name,
-	   		Namespace: pkgRevMeta.Namespace,
-	   	}
-
-	   internalPkgRev := v1alpha1.PackageRev{}
-
-	   mockClient.EXPECT().
-
-	   	Get(mock.Anything, prKey, &internalPkgRev).
-	   	Return(nil).
-	   	Run(func(_ context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
-	   		obj.(*v1alpha1.PackageRev).Name = prKey.Name
-	   		obj.(*v1alpha1.PackageRev).Namespace = prKey.Namespace
-	   	})
-
-	   gotPR, err := store.Get(ctxt, prKey)
-	   assert.True(t, err == nil)
-	   assert.Equal(t, gotPR.Name, prKey.Name)
-
-	   internalPkgRevList := internalapi.PackageRevList{}
-	   mockClient.EXPECT().
-
-	   	List(mock.Anything, &internalPkgRevList, mock.Anything, mock.Anything).
-	   	Return(nil).
-	   	Run(func(_ context.Context, list client.ObjectList, opts ...client.ListOption) {
-	   		list.(*v1alpha1.PackageRevList).Items = make([]v1alpha1.PackageRev, 1)
-	   		list.(*v1alpha1.PackageRevList).Items[0] = v1alpha1.PackageRev{
-	   			ObjectMeta: metav1.ObjectMeta{
-	   				Namespace: pkgRevMeta.Namespace,
-	   				Name:      pkgRevMeta.Name,
-	   			},
-	   		}
-	   	})
-
-	   prList, err := store.List(ctxt, &repo)
-	   assert.True(t, err == nil)
-	   assert.Equal(t, prList[0].Name, prKey.Name)
-
-	   mockClient.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	   updPkgRevMeta, err := store.Update(ctxt, newPkgRevMeta)
-	   assert.True(t, err == nil)
-	   assert.Equal(t, pkgRevMeta.Name, updPkgRevMeta.Name)
-
-	   mockClient.EXPECT().Delete(mock.Anything, mock.Anything).Return(nil)
-	   delPkgRevMeta, err := store.Delete(ctxt, prKey, true)
-	   assert.True(t, err == nil)
-	   assert.Equal(t, delPkgRevMeta.Name, prKey.Name)
-	*/
 }
