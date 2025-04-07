@@ -100,3 +100,7 @@ func (f *FakePackageRevision) GetMeta() metav1.ObjectMeta {
 func (f *FakePackageRevision) SetMeta(context.Context, metav1.ObjectMeta) error {
 	return nil
 }
+
+func (f *FakePackageRevision) UpdateResources(ctx context.Context, new *v1alpha1.PackageRevisionResources, change *v1alpha1.Task) error {
+	return nil
+}
