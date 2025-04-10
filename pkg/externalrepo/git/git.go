@@ -1743,9 +1743,9 @@ func getPkgWorkspace(commit *object.Commit, p *packageListEntry, ref *plumbing.R
 		c, err := p.parent.parent.findLatestPackageCommit(p.parent.commit, p.pkgKey)
 		if c == nil {
 			if err != nil {
-				klog.Warningf("Error searching for latest commit for package %s: %s", p.pkgKey, err)
+				klog.Warningf("Error searching for latest commit for package %s: %s, will use branch name %s", p.pkgKey, err, p.pkgKey.RepoKey.PlaceholderWSname)
 			}
-			return ""
+			return p.pkgKey.RepoKey.PlaceholderWSname
 		}
 		commit = c
 	}
