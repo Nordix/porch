@@ -47,6 +47,11 @@ type ociRepository struct {
 	storage *oci.Storage
 }
 
+// DeletePackageRevisionDraft implements repository.Repository.
+func (r *ociRepository) DeletePackageRevisionDraftFromDB(ctx context.Context, obj *v1alpha1.PackageRevision) error {
+	return nil
+}
+
 var _ repository.Repository = &ociRepository{}
 
 func (r *ociRepository) Close(context.Context) error {

@@ -77,6 +77,7 @@ type ExtraConfig struct {
 	CoreAPIKubeconfigPath string
 	GRPCRuntimeOptions    engine.GRPCRuntimeOptions
 	CacheOptions          cachetypes.CacheOptions
+	CtxTimeout            time.Duration
 }
 
 // Config defines the config for the apiserver
@@ -109,6 +110,7 @@ func (cfg *Config) Complete() CompletedConfig {
 		cfg.GenericConfig.Complete(),
 		&cfg.ExtraConfig,
 	}
+	c.GenericConfig.RequestTimeout = c.ExtraConfig.CtxTimeout
 
 	c.GenericConfig.Version = &version.Info{
 		Major: "1",
@@ -251,6 +253,8 @@ func (c completedConfig) New(ctx context.Context) (*PorchServer, error) {
 		engine.WithReferenceResolver(referenceResolver),
 		engine.WithUserInfoProvider(userInfoProvider),
 		engine.WithWatcherManager(watcherMgr),
+		engine.CtxTimeout(c.ExtraConfig.CtxTimeout),
+		engine.CacheOptions(c.ExtraConfig.CacheOptions),
 	)
 	if err != nil {
 		return nil, err

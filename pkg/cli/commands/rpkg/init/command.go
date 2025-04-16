@@ -22,7 +22,6 @@ import (
 	"github.com/nephio-project/porch/internal/kpt/errors"
 	"github.com/nephio-project/porch/internal/kpt/util/porch"
 	"github.com/nephio-project/porch/pkg/cli/commands/rpkg/docs"
-	"github.com/nephio-project/porch/pkg/cli/commands/rpkg/util"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -99,14 +98,7 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 	}
 
 	r.name = args[0]
-	pkgExists, err := util.PackageAlreadyExists(r.ctx, r.client, r.repository, r.name, *r.cfg.Namespace)
-	if err != nil {
-		return err
-	}
-	if pkgExists {
-		return fmt.Errorf("`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`",
-			r.name, r.repository)
-	}
+
 	return nil
 }
 
@@ -142,6 +134,6 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 		return errors.E(op, err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "%s created\n", pr.Name)
+	fmt.Fprintf(cmd.OutOrStdout(), "User request to init %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Namespace, pr.Name)
 	return nil
 }

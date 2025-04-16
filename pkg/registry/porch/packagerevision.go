@@ -17,8 +17,10 @@ package porch
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
+	"github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/pkg/repository"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -104,7 +106,12 @@ func (r *packageRevisions) Get(ctx context.Context, name string, options *metav1
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisions::Get", trace.WithAttributes())
 	defer span.End()
 
-	repoPkgRev, err := r.getRepoPkgRev(ctx, name)
+	ns, namespaced := genericapirequest.NamespaceFrom(ctx)
+	if !namespaced {
+		return nil, apierrors.NewBadRequest("namespace must be specified")
+	}
+
+	repoPkgRev, err := r.getRepoPkgRev(ctx, name, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -120,14 +127,13 @@ func (r *packageRevisions) Get(ctx context.Context, name string, options *metav1
 // Create implements the Creater interface.
 func (r *packageRevisions) Create(ctx context.Context, runtimeObject runtime.Object, createValidation rest.ValidateObjectFunc,
 	options *metav1.CreateOptions) (runtime.Object, error) {
+	klog.Info("------------------ Registry - PkgRev - Create ------------------")
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisions::Create", trace.WithAttributes())
 	defer span.End()
-
 	ns, namespaced := genericapirequest.NamespaceFrom(ctx)
 	if !namespaced {
 		return nil, apierrors.NewBadRequest("namespace must be specified")
 	}
-
 	newApiPkgRev, ok := runtimeObject.(*api.PackageRevision)
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected PackageRevision object, got %T", runtimeObject))
@@ -145,21 +151,60 @@ func (r *packageRevisions) Create(ctx context.Context, runtimeObject runtime.Obj
 		return nil, apierrors.NewBadRequest("spec.repositoryName is required")
 	}
 
-	repositoryObj, err := r.packageCommon.getRepositoryObj(ctx, types.NamespacedName{Name: repositoryName, Namespace: ns})
-	if err != nil {
-		return nil, err
-	}
+	workspace := string(newApiPkgRev.Spec.WorkspaceName)
+	pkgRevName := newApiPkgRev.Spec.RepositoryName + "." + newApiPkgRev.Spec.PackageName + "." + workspace
+	newApiPkgRev.Name = pkgRevName
 
-	fieldErrors := r.createStrategy.Validate(ctx, runtimeObject)
+	// Call a go routine to create a package
+	go r.callCreatePackageRevision(repositoryName, ns, newApiPkgRev)
+
+	return newApiPkgRev, nil
+
+}
+
+func (r *packageRevisions) callCreatePackageRevision(repoName, ns string, newApiPkgRev *api.PackageRevision) error {
+	klog.Info("------------------ GO ROUTINE REACHED ------------------")
+	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
+	defer cancel()
+	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisions::callCreatePackageRevision", trace.WithAttributes())
+	defer span.End()
+
+	fieldErrors := r.createStrategy.Validate(goCtx, newApiPkgRev)
 	if len(fieldErrors) > 0 {
-		return nil, apierrors.NewInvalid(api.SchemeGroupVersion.WithKind("PackageRevision").GroupKind(), newApiPkgRev.Name, fieldErrors)
+		return apierrors.NewInvalid(api.SchemeGroupVersion.WithKind("PackageRevision").GroupKind(), newApiPkgRev.Name, fieldErrors)
+	}
+	repositoryObj, err := r.packageCommon.getRepositoryObj(goCtx, types.NamespacedName{Name: repoName, Namespace: ns})
+	if err != nil {
+		return err
 	}
 
+	if err := r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, newApiPkgRev, nil, "Package revision create in progress"); err != nil {
+		klog.Error(err)
+		return err
+	}
+	// Check if pkgRev already exists
+	repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, newApiPkgRev.Name, ns)
+
+	if err != nil {
+		if !strings.Contains(err.Error(), "not found") {
+			klog.Error(err)
+			return fmt.Errorf(err.Error())
+		}
+	}
+	if repoPkgRev != nil {
+		klog.Errorf("`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`",
+			newApiPkgRev.Name, repoName)
+		return fmt.Errorf("`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`",
+			newApiPkgRev.Name, repoName)
+	}
+
+	// Run ListPackageRevisions inside the go routine
 	var parentPackage repository.PackageRevision
 	if newApiPkgRev.Spec.Parent != nil && newApiPkgRev.Spec.Parent.Name != "" {
-		p, err := r.packageCommon.getRepoPkgRev(ctx, newApiPkgRev.Spec.Parent.Name)
+		p, err := r.packageCommon.getRepoPkgRev(goCtx, newApiPkgRev.Spec.Parent.Name, ns)
 		if err != nil {
-			return nil, fmt.Errorf("cannot get parent package %q: %w", newApiPkgRev.Spec.Parent.Name, err)
+			klog.Errorf("cannot get parent package %q: %v", newApiPkgRev.Spec.Parent.Name, err)
+			return err
 		}
 		parentPackage = p
 	}
@@ -170,25 +215,23 @@ func (r *packageRevisions) Create(ctx context.Context, runtimeObject runtime.Obj
 	locked := pkgMutex.TryLock()
 	if !locked {
 		conflictError := creationConflictError(newApiPkgRev)
-		return nil,
-			apierrors.NewConflict(
-				api.Resource("packagerevisions"),
-				"(new creation)",
-				conflictError)
+		klog.Error(apierrors.NewConflict(
+			api.Resource("packagerevisions"),
+			"(new creation)",
+			conflictError))
+		return apierrors.NewConflict(
+			api.Resource("packagerevisions"),
+			"(new creation)",
+			conflictError)
 	}
 	defer pkgMutex.Unlock()
 
-	createdRepoPkgRev, err := r.cad.CreatePackageRevision(ctx, repositoryObj, newApiPkgRev, parentPackage)
-	if err != nil {
-		return nil, apierrors.NewInternalError(err)
+	if _, err := r.cad.CreatePackageRevision(goCtx, repositoryObj, newApiPkgRev, parentPackage); err != nil {
+		r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, newApiPkgRev, nil, err.Error())
+		klog.Errorf("Create error for %s - %s", newApiPkgRev.Name, err)
+		return err
 	}
-
-	createdApiPkgRev, err := createdRepoPkgRev.GetPackageRevision(ctx)
-	if err != nil {
-		return nil, apierrors.NewInternalError(err)
-	}
-
-	return createdApiPkgRev, nil
+	return nil
 }
 
 // Update implements the Updater interface.
@@ -224,7 +267,7 @@ func (r *packageRevisions) Delete(ctx context.Context, name string, deleteValida
 		return nil, false, apierrors.NewBadRequest("namespace must be specified")
 	}
 
-	repoPkgRev, err := r.packageCommon.getRepoPkgRev(ctx, name)
+	repoPkgRev, err := r.packageCommon.getRepoPkgRev(ctx, name, ns)
 	if err != nil {
 		return nil, false, err
 	}
@@ -252,12 +295,24 @@ func (r *packageRevisions) Delete(ctx context.Context, name string, deleteValida
 	}
 	defer pkgMutex.Unlock()
 
-	if err := r.cad.DeletePackageRevision(ctx, repositoryObj, repoPkgRev); err != nil {
-		return nil, false, apierrors.NewInternalError(err)
-	}
+	go r.callDeletePackageRevision(repositoryObj, repoPkgRev)
 
-	// TODO: Should we do an async delete?
 	return apiPkgRev, true, nil
+}
+
+func (r *packageRevisions) callDeletePackageRevision(repositoryObj *v1alpha1.Repository, repoPkgRev repository.PackageRevision) {
+
+	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
+	defer cancel()
+	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisions::callDeletePackageRevision", trace.WithAttributes())
+	defer span.End()
+
+	r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, "Package revision delete in progress")
+
+	if err := r.cad.DeletePackageRevision(goCtx, repositoryObj, repoPkgRev); err != nil {
+		r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, err.Error())
+		klog.Errorf("Delete error for %s - %s", repoPkgRev.Key().GetPackageKey().Package, err)
+	}
 }
 
 func uncreatedPackageMutexKey(newApiPkgRev *api.PackageRevision) string {

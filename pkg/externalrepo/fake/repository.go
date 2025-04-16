@@ -60,6 +60,10 @@ func (r *Repository) DeletePackageRevision(context.Context, repository.PackageRe
 	return nil
 }
 
+func (r *Repository) DeletePackageRevisionDraftFromDB(ctx context.Context, obj *v1alpha1.PackageRevision) error {
+	return nil
+}
+
 func (r *Repository) UpdatePackageRevision(context.Context, repository.PackageRevision) (repository.PackageRevisionDraft, error) {
 	return nil, nil
 }
