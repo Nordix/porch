@@ -211,7 +211,7 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 		return errors.E(op, err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "%s created\n", pr.Name)
+	fmt.Fprintf(cmd.OutOrStdout(), "User request to clone %s to repo %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Spec.RepositoryName, pr.Namespace, pr.Name)
 	return nil
 }
 

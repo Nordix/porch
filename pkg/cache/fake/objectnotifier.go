@@ -15,12 +15,14 @@
 package fake
 
 import (
+	"context"
+
 	"github.com/nephio-project/porch/pkg/repository"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
 type ObjectNotifier struct{}
 
-func (o *ObjectNotifier) NotifyPackageRevisionChange(watch.EventType, repository.PackageRevision) int {
+func (o *ObjectNotifier) NotifyPackageRevisionChange(context.Context, watch.EventType, repository.PackageRevision) int {
 	return 0
 }

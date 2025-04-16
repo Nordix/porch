@@ -111,7 +111,7 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 	if err := r.client.Create(r.ctx, pr); err != nil {
 		return errors.E(op, err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "%s created\n", pr.Name)
+	fmt.Fprintf(cmd.OutOrStdout(), "User request to copy %s to workspace %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Spec.WorkspaceName, pr.Namespace, pr.Name)
 	return nil
 }
 
