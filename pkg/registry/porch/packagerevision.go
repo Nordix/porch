@@ -281,19 +281,16 @@ func (r *packageRevisions) callDeletePackageRevision(name, ns string, deleteVali
 
 	repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, name, ns)
 	if err != nil {
-		klog.Errorf("Failed to get package revision - %s", err.Error())
 		return err
 	}
 
 	apiPkgRev, err := repoPkgRev.GetPackageRevision(goCtx)
 	if err != nil {
-		klog.Error(apierrors.NewInternalError(err))
 		return apierrors.NewInternalError(err)
 	}
 
 	repositoryObj, err := r.packageCommon.validateDelete(goCtx, deleteValidation, apiPkgRev, name, ns)
 	if err != nil {
-		klog.Errorf("Failed to validate delete - %s", err.Error())
 		return err
 	}
 	r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, "Package revision delete in progress")
