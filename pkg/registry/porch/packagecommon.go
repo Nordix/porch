@@ -301,7 +301,6 @@ func (r *packageCommon) callUpdatePackageRevision(version int, name, ns string, 
 
 	if err := r.validateUpdate(goCtx, newRuntimeObj, oldApiPkgRev, isCreate, createValidation,
 		updateValidation, "PackageRevision", name); err != nil {
-		klog.Error(err)
 		return err
 	}
 
