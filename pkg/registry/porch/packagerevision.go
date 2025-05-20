@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
-	"github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/pkg/repository"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -266,53 +265,59 @@ func (r *packageRevisions) Delete(ctx context.Context, name string, deleteValida
 	if !namespaced {
 		return nil, false, apierrors.NewBadRequest("namespace must be specified")
 	}
+	apiPkgRev := api.PackageRevision{}
+	apiPkgRev.Name = name
+	go r.callDeletePackageRevision(name, ns, deleteValidation)
 
-	repoPkgRev, err := r.packageCommon.getRepoPkgRev(ctx, name, ns)
-	if err != nil {
-		return nil, false, err
-	}
-
-	apiPkgRev, err := repoPkgRev.GetPackageRevision(ctx)
-	if err != nil {
-		return nil, false, apierrors.NewInternalError(err)
-	}
-
-	repositoryObj, err := r.packageCommon.validateDelete(ctx, deleteValidation, apiPkgRev, name, ns)
-	if err != nil {
-		return nil, false, err
-	}
-
-	pkgMutexKey := getPackageMutexKey(ns, name)
-	pkgMutex := getMutexForPackage(pkgMutexKey)
-
-	locked := pkgMutex.TryLock()
-	if !locked {
-		return nil, false,
-			apierrors.NewConflict(
-				api.Resource("packagerevisions"),
-				name,
-				fmt.Errorf(GenericConflictErrorMsg, "package revision", pkgMutexKey))
-	}
-	defer pkgMutex.Unlock()
-
-	go r.callDeletePackageRevision(repositoryObj, repoPkgRev)
-
-	return apiPkgRev, true, nil
+	return &apiPkgRev, true, nil
 }
 
-func (r *packageRevisions) callDeletePackageRevision(repositoryObj *v1alpha1.Repository, repoPkgRev repository.PackageRevision) {
+func (r *packageRevisions) callDeletePackageRevision(name, ns string, deleteValidation rest.ValidateObjectFunc) error {
 
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
 	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisions::callDeletePackageRevision", trace.WithAttributes())
 	defer span.End()
 
+	repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, name, ns)
+	if err != nil {
+		klog.Errorf("Failed to get package revision - %s", err.Error())
+		return err
+	}
+
+	apiPkgRev, err := repoPkgRev.GetPackageRevision(goCtx)
+	if err != nil {
+		klog.Error(apierrors.NewInternalError(err))
+		return apierrors.NewInternalError(err)
+	}
+
+	repositoryObj, err := r.packageCommon.validateDelete(goCtx, deleteValidation, apiPkgRev, name, ns)
+	if err != nil {
+		klog.Errorf("Failed to validate delete - %s", err.Error())
+		return err
+	}
 	r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, "Package revision delete in progress")
+
+	pkgMutexKey := getPackageMutexKey(ns, name)
+	pkgMutex := getMutexForPackage(pkgMutexKey)
+
+	locked := pkgMutex.TryLock()
+	if !locked {
+		err := apierrors.NewConflict(api.Resource("packagerevisions"),
+			name,
+			fmt.Errorf(GenericConflictErrorMsg, "package revision", pkgMutexKey))
+		klog.Error(err)
+		r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, err.Error())
+		return err
+	}
+	defer pkgMutex.Unlock()
 
 	if err := r.cad.DeletePackageRevision(goCtx, repositoryObj, repoPkgRev); err != nil {
 		r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, err.Error())
 		klog.Errorf("Delete error for %s - %s", repoPkgRev.Key().GetPackageKey().Package, err)
+		return err
 	}
+	return nil
 }
 
 func uncreatedPackageMutexKey(newApiPkgRev *api.PackageRevision) string {
