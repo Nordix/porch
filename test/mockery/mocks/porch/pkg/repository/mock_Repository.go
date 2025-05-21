@@ -342,53 +342,6 @@ func (_c *MockRepository_DeletePackageRevision_Call) RunAndReturn(run func(conte
 	return _c
 }
 
-// DeletePackageRevisionDraftFromDB provides a mock function with given fields: ctx, obj
-func (_m *MockRepository) DeletePackageRevisionDraftFromDB(ctx context.Context, obj *v1alpha1.PackageRevision) error {
-	ret := _m.Called(ctx, obj)
-
-	if len(ret) == 0 {
-		panic("no return value specified for DeletePackageRevisionDraftFromDB")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.PackageRevision) error); ok {
-		r0 = rf(ctx, obj)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockRepository_DeletePackageRevisionDraftFromDB_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeletePackageRevisionDraftFromDB'
-type MockRepository_DeletePackageRevisionDraftFromDB_Call struct {
-	*mock.Call
-}
-
-// DeletePackageRevisionDraftFromDB is a helper method to define mock.On call
-//   - ctx context.Context
-//   - obj *v1alpha1.PackageRevision
-func (_e *MockRepository_Expecter) DeletePackageRevisionDraftFromDB(ctx interface{}, obj interface{}) *MockRepository_DeletePackageRevisionDraftFromDB_Call {
-	return &MockRepository_DeletePackageRevisionDraftFromDB_Call{Call: _e.mock.On("DeletePackageRevisionDraftFromDB", ctx, obj)}
-}
-
-func (_c *MockRepository_DeletePackageRevisionDraftFromDB_Call) Run(run func(ctx context.Context, obj *v1alpha1.PackageRevision)) *MockRepository_DeletePackageRevisionDraftFromDB_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*v1alpha1.PackageRevision))
-	})
-	return _c
-}
-
-func (_c *MockRepository_DeletePackageRevisionDraftFromDB_Call) Return(_a0 error) *MockRepository_DeletePackageRevisionDraftFromDB_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockRepository_DeletePackageRevisionDraftFromDB_Call) RunAndReturn(run func(context.Context, *v1alpha1.PackageRevision) error) *MockRepository_DeletePackageRevisionDraftFromDB_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // ListPackageRevisions provides a mock function with given fields: ctx, filter
 func (_m *MockRepository) ListPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error) {
 	ret := _m.Called(ctx, filter)

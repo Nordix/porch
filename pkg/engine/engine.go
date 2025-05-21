@@ -185,9 +185,6 @@ func (cad *cadEngine) CreatePackageRevision(ctx context.Context, repositoryObj *
 	// Apply tasks
 	if err := cad.taskHandler.ApplyTasks(ctx, draft, repositoryObj, obj, packageConfig); err != nil {
 		rollback()
-		if errDel := repo.DeletePackageRevisionDraftFromDB(ctx, obj); errDel != nil {
-			return nil, fmt.Errorf("Package revision delete draft failed - %v. Reason for deletion: %v", errDel, err)
-		}
 		return nil, err
 	}
 
@@ -202,9 +199,6 @@ func (cad *cadEngine) CreatePackageRevision(ctx context.Context, repositoryObj *
 	if err != nil {
 		// Don't call rollback() here since it would likely fail again
 		// Just return the error from the close operation
-		if errDel := repo.DeletePackageRevisionDraftFromDB(ctx, obj); errDel != nil {
-			return nil, fmt.Errorf("Package revision delete draft failed - %v. Reason for deletion: %v", errDel, err)
-		}
 		return nil, fmt.Errorf("failed to close package revision draft: %w", err)
 	}
 	if err := cad.DeletePackageRevisionJob(ctx, repo, nil, obj, nil); err != nil {
@@ -595,9 +589,6 @@ func (cad *cadEngine) RecloneAndReplay(ctx context.Context, parentPR repository.
 	}
 
 	if err := cad.taskHandler.ApplyTasks(ctx, draft, repositoryObj, newObj, packageConfig); err != nil {
-		if errDel := repo.DeletePackageRevisionDraftFromDB(ctx, newObj); errDel != nil {
-			return nil, fmt.Errorf("Package revision delete draft failed - %v. Reason for deletion: %v", errDel, err)
-		}
 		return nil, err
 	}
 
@@ -608,9 +599,6 @@ func (cad *cadEngine) RecloneAndReplay(ctx context.Context, parentPR repository.
 	repoPkgRev, err := repo.ClosePackageRevisionDraft(ctx, draft, version)
 
 	if err != nil {
-		if errDel := repo.DeletePackageRevisionDraftFromDB(ctx, newObj); errDel != nil {
-			return nil, fmt.Errorf("Package revision delete draft failed - %v. Reason for deletion: %v", errDel, err)
-		}
 		return nil, err
 	}
 

@@ -191,11 +191,6 @@ func (r *cachedRepository) CreatePackageRevisionDraft(ctx context.Context, obj *
 	return r.repo.CreatePackageRevisionDraft(ctx, obj)
 }
 
-// DeletePackageRevisionDraft implements repository.Repository.
-func (r *cachedRepository) DeletePackageRevisionDraftFromDB(ctx context.Context, obj *v1alpha1.PackageRevision) error {
-	return nil
-}
-
 func (r *cachedRepository) ClosePackageRevisionDraft(ctx context.Context, prd repository.PackageRevisionDraft, version int) (repository.PackageRevision, error) {
 	ctx, span := tracer.Start(ctx, "cachedRepository::ClosePackageRevisionDraft", trace.WithAttributes())
 	defer span.End()

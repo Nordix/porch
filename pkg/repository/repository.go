@@ -300,9 +300,6 @@ type Repository interface {
 	// CreatePackageRevision creates a new package revision
 	CreatePackageRevisionDraft(ctx context.Context, obj *v1alpha1.PackageRevision) (PackageRevisionDraft, error)
 
-	// DeletePackageRevisionDraft deletes a package revision Draft
-	DeletePackageRevisionDraftFromDB(ctx context.Context, obj *v1alpha1.PackageRevision) error
-
 	// ClosePackageRevisionDraft closes out a Package Revision Draft
 	ClosePackageRevisionDraft(ctx context.Context, prd PackageRevisionDraft, version int) (PackageRevision, error)
 

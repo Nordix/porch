@@ -229,7 +229,7 @@ func (r *packageCommon) updatePackageRevision(ctx context.Context, name string, 
 		return nil, false, apierrors.NewBadRequest("namespace must be specified")
 	}
 
-	go r.callUpdatePackageRevision(0, name, ns, createValidation, updateValidation, objInfo, forceAllowCreate)
+	go r.asyncUpdatePackageRevision(0, name, ns, createValidation, updateValidation, objInfo, forceAllowCreate)
 
 	newRuntimeObj := api.PackageRevision{}
 	newRuntimeObj.Name = name
@@ -237,7 +237,7 @@ func (r *packageCommon) updatePackageRevision(ctx context.Context, name string, 
 	return &newRuntimeObj, true, nil
 }
 
-func (r *packageCommon) callUpdatePackageRevision(version int, name, ns string, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, objInfo rest.UpdatedObjectInfo, forceAllowCreate bool) error {
+func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, objInfo rest.UpdatedObjectInfo, forceAllowCreate bool) error {
 
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()

@@ -155,13 +155,13 @@ func (r *packageRevisions) Create(ctx context.Context, runtimeObject runtime.Obj
 	newApiPkgRev.Name = pkgRevName
 
 	// Call a go routine to create a package
-	go r.callCreatePackageRevision(repositoryName, ns, newApiPkgRev)
+	go r.asyncCreatePackageRevision(repositoryName, ns, newApiPkgRev)
 
 	return newApiPkgRev, nil
 
 }
 
-func (r *packageRevisions) callCreatePackageRevision(repoName, ns string, newApiPkgRev *api.PackageRevision) error {
+func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newApiPkgRev *api.PackageRevision) error {
 	klog.Info("------------------ GO ROUTINE REACHED ------------------")
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
@@ -267,12 +267,12 @@ func (r *packageRevisions) Delete(ctx context.Context, name string, deleteValida
 	}
 	apiPkgRev := api.PackageRevision{}
 	apiPkgRev.Name = name
-	go r.callDeletePackageRevision(name, ns, deleteValidation)
+	go r.asyncDeletePackageRevision(name, ns, deleteValidation)
 
 	return &apiPkgRev, true, nil
 }
 
-func (r *packageRevisions) callDeletePackageRevision(name, ns string, deleteValidation rest.ValidateObjectFunc) error {
+func (r *packageRevisions) asyncDeletePackageRevision(name, ns string, deleteValidation rest.ValidateObjectFunc) error {
 
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()

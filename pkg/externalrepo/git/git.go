@@ -441,10 +441,6 @@ func (r *gitRepository) CreatePackageRevisionDraft(ctx context.Context, obj *v1a
 	}, nil
 }
 
-func (r *gitRepository) DeletePackageRevisionDraftFromDB(ctx context.Context, obj *v1alpha1.PackageRevision) error {
-	return nil
-}
-
 func (r *gitRepository) UpdatePackageRevision(ctx context.Context, old repository.PackageRevision) (repository.PackageRevisionDraft, error) {
 	ctx, span := tracer.Start(ctx, "gitRepository::UpdatePackageRevision", trace.WithAttributes())
 	defer span.End()
