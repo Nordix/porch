@@ -403,6 +403,7 @@ apiVersion: kpt.dev/v1
 kind: Kptfile
 metadata:
   name: sub-package
+renderBFS: true
 `))
 	assert.NoError(t, err)
 
@@ -423,7 +424,7 @@ metadata:
 			state: Hydrating,
 		}
 
-		_, err := hydrateBFS(context.Background(), root, hctx)
+		_, err := hydrate(context.Background(), root, hctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "cycle detected in pkg dependencies")
 	})
@@ -435,7 +436,7 @@ metadata:
 			state: -1, // Invalid state
 		}
 
-		_, err := hydrateBFS(context.Background(), root, hctx)
+		_, err := hydrate(context.Background(), root, hctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "package found in invalid state")
 	})
@@ -447,7 +448,7 @@ metadata:
 			state: Wet,
 		}
 
-		_, err := hydrateBFS(ctx, root, hctx)
+		_, err := hydrate(ctx, root, hctx)
 		assert.NoError(t, err)
 	})
 }

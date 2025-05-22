@@ -85,26 +85,12 @@ func (e *Renderer) Execute(ctx context.Context) (*fnresult.ResultList, error) {
 		fileSystem:    e.FileSystem,
 		runtime:       e.Runtime,
 	}
-
-	kptfile, err := pkg.ReadKptfile(e.FileSystem, e.PkgPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read Kptfile: %w", err)
-	}
-
-	// Use BFS or the old recursive method based on the flag
-	if kptfile.RenderBFS != nil && *kptfile.RenderBFS {
-		if _, err := hydrateBFS(ctx, root, hctx); err != nil {
-			_ = e.saveFnResults(ctx, hctx.fnResults)
-			return hctx.fnResults, errors.E(op, root.pkg.UniquePath, err)
-		}
-	} else {
-		if _, err = hydrate(ctx, root, hctx); err != nil {
-			// Note(droot): ignore the error in function result saving
-			// to avoid masking the hydration error.
-			// don't disable the CLI output in case of error
-			_ = e.saveFnResults(ctx, hctx.fnResults)
-			return hctx.fnResults, errors.E(op, root.pkg.UniquePath, err)
-		}
+	if _, err = hydrate(ctx, root, hctx); err != nil {
+		// Note(droot): ignore the error in function result saving
+		// to avoid masking the hydration error.
+		// don't disable the CLI output in case of error
+		_ = e.saveFnResults(ctx, hctx.fnResults)
+		return hctx.fnResults, errors.E(op, root.pkg.UniquePath, err)
 	}
 
 	// adjust the relative paths of the resources.
@@ -264,159 +250,186 @@ func (s hydrationState) String() string {
 	return []string{"Dry", "Hydrating", "Wet"}[s]
 }
 
-// hydrate hydrates given pkg and returns wet resources.
+// hydrate hydrates a given pkg and returns wet resources.
+// The traversal order is determined by the renderBFS flag in the root Kptfile:
+// - renderBFS: true -> BFS order (parents before children)
+// - renderBFS: false/nil -> DFS order (children before parents) *default*
 func hydrate(ctx context.Context, pn *pkgNode, hctx *hydrationContext) (output []*yaml.RNode, err error) {
 	const op errors.Op = "pkg.render"
 
-	curr, found := hctx.pkgs[pn.pkg.UniquePath]
-	if found {
-		switch curr.state {
-		case Hydrating:
-			// we detected a cycle
-			err = fmt.Errorf("cycle detected in pkg dependencies")
-			return output, errors.E(op, curr.pkg.UniquePath, err)
-		case Wet:
-			output = curr.resources
-			return output, nil
-		default:
-			return output, errors.E(op, curr.pkg.UniquePath,
-				fmt.Errorf("package found in invalid state %v", curr.state))
-		}
-	}
-	// add it to the discovered package list
-	hctx.pkgs[pn.pkg.UniquePath] = pn
-	curr = pn
-	// mark the pkg in hydrating
-	curr.state = Hydrating
+	var orderedPackages []*pkgNode
+	var allResources []*yaml.RNode
 
-	relPath, err := curr.pkg.RelativePathTo(hctx.root.pkg)
+	kptfile, err := pkg.ReadKptfile(hctx.fileSystem, string(hctx.root.pkg.UniquePath))
 	if err != nil {
-		return nil, errors.E(op, curr.pkg.UniquePath, err)
+		return nil, fmt.Errorf("failed to read Kptfile: %w", err)
 	}
 
-	var input []*yaml.RNode
+	// Phase 1: Gather resources in the specified order
+	if kptfile.RenderBFS != nil && *kptfile.RenderBFS { // renderBFS is true
+		orderedPackages, allResources, err = gatherResourcesBFS(pn, hctx)
+	} else {
+		orderedPackages, allResources, err = gatherResourcesDFS(pn, hctx)
+	}
 
-	// determine sub packages to be hydrated
-	subpkgs, err := curr.pkg.DirectSubpackages()
 	if err != nil {
-		return output, errors.E(op, curr.pkg.UniquePath, err)
-	}
-	// hydrate recursively and gather hydated transitive resources.
-	for _, subpkg := range subpkgs {
-		var transitiveResources []*yaml.RNode
-		var subPkgNode *pkgNode
-
-		if subPkgNode, err = newPkgNode(hctx.fileSystem, "", subpkg); err != nil {
-			return output, errors.E(op, subpkg.UniquePath, err)
-		}
-
-		transitiveResources, err = hydrate(ctx, subPkgNode, hctx)
-		if err != nil {
-			return output, errors.E(op, subpkg.UniquePath, err)
-		}
-
-		input = append(input, transitiveResources...)
+		return nil, errors.E(op, pn.pkg.UniquePath, err)
 	}
 
-	// gather resources present at the current package
-	currPkgResources, err := curr.pkg.LocalResources()
-	if err != nil {
-		return output, errors.E(op, curr.pkg.UniquePath, err)
-	}
-
-	err = trackInputFiles(hctx, relPath, currPkgResources)
-	if err != nil {
-		return nil, err
-	}
-
-	// include current package's resources in the input resource list
-	input = append(input, currPkgResources...)
-
-	output, err = curr.runPipeline(ctx, hctx, input)
-	if err != nil {
-		return output, errors.E(op, curr.pkg.UniquePath, err)
-	}
-
-	// pkg is hydrated, mark the pkg as wet and update the resources
-	curr.state = Wet
-	curr.resources = output
-
-	return output, err
-}
-
-// hydrateBFS performs breadth-first search (BFS) rendering of packages.
-func hydrateBFS(ctx context.Context, root *pkgNode, hctx *hydrationContext) (output []*yaml.RNode, err error) {
-	const op errors.Op = "pkg.render"
-
-	queue := []*pkgNode{root}
-	orderedQueue := []*pkgNode{}
-
-	// Phase 1: Gather input files for all packages in BFS order
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		orderedQueue = append(orderedQueue, current)
-
-		if curr, found := hctx.pkgs[current.pkg.UniquePath]; found {
-			switch curr.state {
-			case Hydrating:
-				return nil, errors.E(op, curr.pkg.UniquePath, fmt.Errorf("cycle detected in pkg dependencies"))
-			case Wet:
-				continue
-			default:
-				return nil, errors.E(op, curr.pkg.UniquePath, fmt.Errorf("package found in invalid state %v", curr.state))
-			}
-		}
-
-		current.state = Hydrating
-		hctx.pkgs[current.pkg.UniquePath] = current
-
-		localResources, err := current.pkg.LocalResources()
-		if err != nil {
-			return nil, errors.E(op, current.pkg.UniquePath, err)
-		}
-		current.resources = localResources
-
-		relPath, err := current.pkg.RelativePathTo(hctx.root.pkg)
-		if err != nil {
-			return nil, errors.E(op, current.pkg.UniquePath, err)
-		}
-		if err = trackInputFiles(hctx, relPath, localResources); err != nil {
-			return nil, err
-		}
-
-		subpkgs, err := current.pkg.DirectSubpackages()
-		if err != nil {
-			return nil, errors.E(op, current.pkg.UniquePath, err)
-		}
-		for _, subpkg := range subpkgs {
-			subPkgNode, err := newPkgNode(hctx.fileSystem, "", subpkg)
-			if err != nil {
-				return nil, errors.E(op, subpkg.UniquePath, err)
-			}
-			queue = append(queue, subPkgNode)
-		}
-	}
-
-	// Aggregate all resources into a single collection (starting with root)
-	allResources := make([]*yaml.RNode, 0, len(root.resources)*len(orderedQueue))
-	allResources = append(allResources, root.resources...)
-	for _, pkg := range orderedQueue[1:] { // Skip root (index 0)
-		allResources = append(allResources, pkg.resources...)
-	}
-
-	// Phase 2: Run pipelines in BFS order
-	for _, current := range orderedQueue {
+	// Phase 2: Run pipelines in the same order as discovery
+	for _, current := range orderedPackages {
 		allResources, err = current.runPipeline(ctx, hctx, allResources)
 		if err != nil {
 			return nil, errors.E(op, current.pkg.UniquePath, err)
 		}
 		current.state = Wet
+		current.resources = allResources
 	}
 
-	// Update root with final resources and return
-	root.resources = allResources
-	return allResources, err
+	if kptfile.RenderBFS != nil && *kptfile.RenderBFS {
+		hctx.root.resources = allResources
+	}
+
+	return allResources, nil
+}
+
+// gatherResourcesBFS performs BFS traversal to gather all resources
+func gatherResourcesBFS(root *pkgNode, hctx *hydrationContext) ([]*pkgNode, []*yaml.RNode, error) {
+	const op errors.Op = "pkg.render"
+
+	queue := []*pkgNode{root}
+	orderedPackages := []*pkgNode{}
+
+	// Phase 1: BFS traversal to discover all packages
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		orderedPackages = append(orderedPackages, current)
+
+		// Check if already processed
+		if curr, found := hctx.pkgs[current.pkg.UniquePath]; found {
+			switch curr.state {
+			case Hydrating:
+				return nil, nil, errors.E(op, curr.pkg.UniquePath, fmt.Errorf("cycle detected in pkg dependencies"))
+			case Wet:
+				continue
+			default:
+				return nil, nil, errors.E(op, curr.pkg.UniquePath, fmt.Errorf("package found in invalid state %v", curr.state))
+			}
+		}
+
+		// Mark as hydrating and register
+		current.state = Hydrating
+		hctx.pkgs[current.pkg.UniquePath] = current
+
+		// Get local resources
+		localResources, err := current.pkg.LocalResources()
+		if err != nil {
+			return nil, nil, errors.E(op, current.pkg.UniquePath, err)
+		}
+		current.resources = localResources
+
+		// Track input files
+		relPath, err := current.pkg.RelativePathTo(hctx.root.pkg)
+		if err != nil {
+			return nil, nil, errors.E(op, current.pkg.UniquePath, err)
+		}
+		if err = trackInputFiles(hctx, relPath, localResources); err != nil {
+			return nil, nil, err
+		}
+
+		// Enqueue subpackages
+		subpkgs, err := current.pkg.DirectSubpackages()
+		if err != nil {
+			return nil, nil, errors.E(op, current.pkg.UniquePath, err)
+		}
+		for _, subpkg := range subpkgs {
+			subPkgNode, err := newPkgNode(hctx.fileSystem, "", subpkg)
+			if err != nil {
+				return nil, nil, errors.E(op, subpkg.UniquePath, err)
+			}
+			queue = append(queue, subPkgNode)
+		}
+	}
+
+	// Phase 2: Aggregate all resources AFTER BFS traversal (like the original)
+	allResources := make([]*yaml.RNode, 0, len(root.resources)*len(orderedPackages))
+	allResources = append(allResources, root.resources...)
+	for _, pkg := range orderedPackages[1:] { // Skip root (index 0)
+		allResources = append(allResources, pkg.resources...)
+	}
+
+	return orderedPackages, allResources, nil
+}
+
+// gatherResourcesDFS performs DFS traversal to gather all resources
+func gatherResourcesDFS(pn *pkgNode, hctx *hydrationContext) ([]*pkgNode, []*yaml.RNode, error) {
+	var orderedPackages []*pkgNode
+	var allResources []*yaml.RNode
+
+	err := gatherResourcesDFSRecursive(pn, hctx, &orderedPackages, &allResources)
+	return orderedPackages, allResources, err
+}
+
+// gatherResourcesDFSRecursive performs recursive DFS traversal
+func gatherResourcesDFSRecursive(pn *pkgNode, hctx *hydrationContext, orderedPackages *[]*pkgNode, allResources *[]*yaml.RNode) error {
+	const op errors.Op = "pkg.render"
+
+	// Check if already processed
+	if curr, found := hctx.pkgs[pn.pkg.UniquePath]; found {
+		switch curr.state {
+		case Hydrating:
+			return errors.E(op, curr.pkg.UniquePath, fmt.Errorf("cycle detected in pkg dependencies"))
+		case Wet:
+			return nil
+		default:
+			return errors.E(op, curr.pkg.UniquePath, fmt.Errorf("package found in invalid state %v", curr.state))
+		}
+	}
+
+	// Mark as hydrating and register
+	pn.state = Hydrating
+	hctx.pkgs[pn.pkg.UniquePath] = pn
+
+	// Get local resources
+	localResources, err := pn.pkg.LocalResources()
+	if err != nil {
+		return errors.E(op, pn.pkg.UniquePath, err)
+	}
+	pn.resources = localResources
+	*allResources = append(*allResources, localResources...)
+
+	// Track input files
+	relPath, err := pn.pkg.RelativePathTo(hctx.root.pkg)
+	if err != nil {
+		return errors.E(op, pn.pkg.UniquePath, err)
+	}
+	if err = trackInputFiles(hctx, relPath, localResources); err != nil {
+		return err
+	}
+
+	// Recursively process subpackages (DFS)
+	subpkgs, err := pn.pkg.DirectSubpackages()
+	if err != nil {
+		return errors.E(op, pn.pkg.UniquePath, err)
+	}
+
+	for _, subpkg := range subpkgs {
+		subPkgNode, err := newPkgNode(hctx.fileSystem, "", subpkg)
+		if err != nil {
+			return errors.E(op, subpkg.UniquePath, err)
+		}
+
+		err = gatherResourcesDFSRecursive(subPkgNode, hctx, orderedPackages, allResources)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Add to ordered list AFTER processing children (DFS post-order)
+	*orderedPackages = append(*orderedPackages, pn)
+
+	return nil
 }
 
 // runPipeline runs the pipeline defined at current pkgNode on given input resources.
