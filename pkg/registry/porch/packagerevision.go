@@ -170,10 +170,13 @@ func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newAp
 
 	fieldErrors := r.createStrategy.Validate(goCtx, newApiPkgRev)
 	if len(fieldErrors) > 0 {
-		return apierrors.NewInvalid(api.SchemeGroupVersion.WithKind("PackageRevision").GroupKind(), newApiPkgRev.Name, fieldErrors)
+		err := apierrors.NewInvalid(api.SchemeGroupVersion.WithKind("PackageRevision").GroupKind(), newApiPkgRev.Name, fieldErrors)
+		klog.Error(err)
+		return err
 	}
 	repositoryObj, err := r.packageCommon.getRepositoryObj(goCtx, types.NamespacedName{Name: repoName, Namespace: ns})
 	if err != nil {
+		klog.Error(err)
 		return err
 	}
 
@@ -187,7 +190,7 @@ func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newAp
 	if err != nil {
 		if !strings.Contains(err.Error(), "not found") {
 			klog.Error(err)
-			return fmt.Errorf(err.Error())
+			return err
 		}
 	}
 	if repoPkgRev != nil {
