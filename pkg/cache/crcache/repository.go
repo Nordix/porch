@@ -162,7 +162,6 @@ func (r *cachedRepository) getPackages(ctx context.Context, filter repository.Li
 func (r *cachedRepository) getCachedPackages(ctx context.Context, forceRefresh bool) (map[repository.PackageKey]*cachedPackage, map[repository.PackageRevisionKey]*cachedPackageRevision, error) {
 	ctx, span := tracer.Start(ctx, "cachedRepository::getCachedPackages", trace.WithAttributes())
 	defer span.End()
-	klog.Info("------------------ Get Cached Packages ------------------")
 	packages := r.cachedPackages
 	packageRevisions := r.cachedPackageRevisions
 	var err error
