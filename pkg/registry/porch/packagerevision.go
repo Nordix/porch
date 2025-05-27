@@ -161,43 +161,44 @@ func (r *packageRevisions) Create(ctx context.Context, runtimeObject runtime.Obj
 
 }
 
-func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newApiPkgRev *api.PackageRevision) error {
+func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newApiPkgRev *api.PackageRevision) {
 	klog.Info("------------------ GO ROUTINE REACHED ------------------")
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
 	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisions::callCreatePackageRevision", trace.WithAttributes())
 	defer span.End()
 
+	r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, "Package revision create in progress")
+
 	fieldErrors := r.createStrategy.Validate(goCtx, newApiPkgRev)
 	if len(fieldErrors) > 0 {
 		err := apierrors.NewInvalid(api.SchemeGroupVersion.WithKind("PackageRevision").GroupKind(), newApiPkgRev.Name, fieldErrors)
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, err.Error())
 		klog.Error(err)
-		return err
+		return
 	}
 	repositoryObj, err := r.packageCommon.getRepositoryObj(goCtx, types.NamespacedName{Name: repoName, Namespace: ns})
 	if err != nil {
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, err.Error())
 		klog.Error(err)
-		return err
+		return
 	}
 
-	if err := r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, newApiPkgRev, nil, "Package revision create in progress"); err != nil {
-		klog.Error(err)
-		return err
-	}
 	// Check if pkgRev already exists
 	repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, newApiPkgRev.Name, ns)
 
 	if err != nil {
 		if !strings.Contains(err.Error(), "not found") {
+			r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, err.Error())
 			klog.Error(err)
-			return err
+			return
 		}
 	}
 	if repoPkgRev != nil {
-		klog.Errorf("`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`",
-			newApiPkgRev.Name, repoName)
-		return fmt.Errorf("`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`",
-			newApiPkgRev.Name, repoName)
+		err := "`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`"
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, fmt.Errorf(err, newApiPkgRev.Name, repoName).Error())
+		klog.Errorf(err, newApiPkgRev.Name, repoName)
+		return
 	}
 
 	// Run ListPackageRevisions inside the go routine
@@ -206,7 +207,7 @@ func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newAp
 		p, err := r.packageCommon.getRepoPkgRev(goCtx, newApiPkgRev.Spec.Parent.Name, ns)
 		if err != nil {
 			klog.Errorf("cannot get parent package %q: %v", newApiPkgRev.Spec.Parent.Name, err)
-			return err
+			return
 		}
 		parentPackage = p
 	}
@@ -217,23 +218,33 @@ func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newAp
 	locked := pkgMutex.TryLock()
 	if !locked {
 		conflictError := creationConflictError(newApiPkgRev)
-		klog.Error(apierrors.NewConflict(
-			api.Resource("packagerevisions"),
-			"(new creation)",
-			conflictError))
-		return apierrors.NewConflict(
-			api.Resource("packagerevisions"),
-			"(new creation)",
-			conflictError)
+		err := apierrors.NewConflict(api.Resource("packagerevisions"), "(new creation)", conflictError)
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, err.Error())
+		klog.Error(err)
+		return
 	}
 	defer pkgMutex.Unlock()
 
 	if _, err := r.cad.CreatePackageRevision(goCtx, repositoryObj, newApiPkgRev, parentPackage); err != nil {
-		r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, newApiPkgRev, nil, err.Error())
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, err.Error())
 		klog.Errorf("Create error for %s - %s", newApiPkgRev.Name, err)
-		return err
+		return
 	}
-	return nil
+	goCtx.Done()
+}
+
+// Save the PackageRevision Job in the Database. Log error and continue if the error is not nil.
+func (r *packageRevisions) savePkgRevJobInDB(ctx context.Context, newApiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision, status string) {
+
+	if repoPkgRev != nil {
+		if err := r.cad.SavePackageRevisionJob(ctx, nil, repoPkgRev, status); err != nil {
+			klog.Error(err)
+		}
+	} else {
+		if err := r.cad.SavePackageRevisionJob(ctx, newApiPkgRev, nil, status); err != nil {
+			klog.Error(err)
+		}
+	}
 }
 
 // Update implements the Updater interface.
@@ -275,7 +286,7 @@ func (r *packageRevisions) Delete(ctx context.Context, name string, deleteValida
 	return &apiPkgRev, true, nil
 }
 
-func (r *packageRevisions) asyncDeletePackageRevision(name, ns string, deleteValidation rest.ValidateObjectFunc) error {
+func (r *packageRevisions) asyncDeletePackageRevision(name, ns string, deleteValidation rest.ValidateObjectFunc) {
 
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
@@ -284,40 +295,44 @@ func (r *packageRevisions) asyncDeletePackageRevision(name, ns string, deleteVal
 
 	repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, name, ns)
 	if err != nil {
-		return err
+		klog.Error(err)
+		return
 	}
+	r.savePkgRevJobInDB(goCtx, nil, repoPkgRev, "Package revision delete in progress")
 
 	apiPkgRev, err := repoPkgRev.GetPackageRevision(goCtx)
 	if err != nil {
-		return apierrors.NewInternalError(err)
+		err := apierrors.NewInternalError(err)
+		r.savePkgRevJobInDB(goCtx, nil, repoPkgRev, err.Error())
+		klog.Error(err)
+		return
 	}
 
 	repositoryObj, err := r.packageCommon.validateDelete(goCtx, deleteValidation, apiPkgRev, name, ns)
 	if err != nil {
-		return err
+		r.savePkgRevJobInDB(goCtx, nil, repoPkgRev, err.Error())
+		klog.Error(err)
+		return
 	}
-	r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, "Package revision delete in progress")
 
 	pkgMutexKey := getPackageMutexKey(ns, name)
 	pkgMutex := getMutexForPackage(pkgMutexKey)
 
 	locked := pkgMutex.TryLock()
 	if !locked {
-		err := apierrors.NewConflict(api.Resource("packagerevisions"),
-			name,
-			fmt.Errorf(GenericConflictErrorMsg, "package revision", pkgMutexKey))
+		err := apierrors.NewConflict(api.Resource("packagerevisions"), name, fmt.Errorf(GenericConflictErrorMsg, "package revision", pkgMutexKey))
+		r.savePkgRevJobInDB(goCtx, nil, repoPkgRev, err.Error())
 		klog.Error(err)
-		r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, err.Error())
-		return err
+		return
 	}
 	defer pkgMutex.Unlock()
 
 	if err := r.cad.DeletePackageRevision(goCtx, repositoryObj, repoPkgRev); err != nil {
-		r.cad.SavePackageRevisionJob(goCtx, nil, repositoryObj, nil, repoPkgRev, err.Error())
+		r.savePkgRevJobInDB(goCtx, nil, repoPkgRev, err.Error())
 		klog.Errorf("Delete error for %s - %s", repoPkgRev.Key().GetPackageKey().Package, err)
-		return err
+		return
 	}
-	return nil
+	goCtx.Done()
 }
 
 func uncreatedPackageMutexKey(newApiPkgRev *api.PackageRevision) string {

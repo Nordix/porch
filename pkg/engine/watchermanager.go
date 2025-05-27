@@ -98,7 +98,7 @@ func (r *watcherManager) WatchPackageRevisions(ctx context.Context, filter repos
 
 // notifyPackageRevisionChange is called to send a change notification to all interested listeners.
 func (r *watcherManager) NotifyPackageRevisionChange(ctx context.Context, eventType watch.EventType, obj repository.PackageRevision) int {
-	ctx, span := tracer.Start(ctx, "watcherManager::NotifyPackageRevisionChange", trace.WithAttributes())
+	_, span := tracer.Start(ctx, "watcherManager::NotifyPackageRevisionChange", trace.WithAttributes())
 	defer span.End()
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

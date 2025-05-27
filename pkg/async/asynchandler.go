@@ -19,7 +19,7 @@ type AsyncHandler struct {
 var tracer = otel.Tracer("asyncHandler")
 
 func (ah *AsyncHandler) SavePackageRevisionJob(ctx context.Context, cacheOpts cachetypes.CacheOptions, prk repository.PackageRevisionKey, status string) error {
-	ctx, span := tracer.Start(ctx, "asyncHandler::SavePackageRevisionJob", trace.WithAttributes())
+	_, span := tracer.Start(ctx, "asyncHandler::SavePackageRevisionJob", trace.WithAttributes())
 	defer span.End()
 	if cacheOpts.CacheType == "DB" {
 		klog.Infof("SavePackageRevisionJob: writing package revision task in DB for %q", prk.PkgKey)
@@ -39,7 +39,7 @@ func (ah *AsyncHandler) SavePackageRevisionJob(ctx context.Context, cacheOpts ca
 }
 
 func (ah *AsyncHandler) DeletePackageRevisionJob(ctx context.Context, cacheOpts cachetypes.CacheOptions, prk repository.PackageRevisionKey) error {
-	ctx, span := tracer.Start(ctx, "asyncHandler::DeletePackageRevisionJob", trace.WithAttributes())
+	_, span := tracer.Start(ctx, "asyncHandler::DeletePackageRevisionJob", trace.WithAttributes())
 	defer span.End()
 	if cacheOpts.CacheType == "DB" {
 		klog.Infof("deletePkgRevJob: deleting package revision task in DB for %q", prk.PkgKey)
@@ -61,7 +61,7 @@ func (ah *AsyncHandler) DeletePackageRevisionJob(ctx context.Context, cacheOpts 
 }
 
 func (ah *AsyncHandler) ListPackageRevisionJobs(ctx context.Context, cacheOpts cachetypes.CacheOptions, prk repository.PackageRevisionKey) ([]*Job, error) {
-	ctx, span := tracer.Start(ctx, "asyncHandler::ListPackageRevisionJobs", trace.WithAttributes())
+	_, span := tracer.Start(ctx, "asyncHandler::ListPackageRevisionJobs", trace.WithAttributes())
 	defer span.End()
 	if cacheOpts.CacheType == "DB" {
 		klog.Infof("ListPackageRevisionJobs: listing package revision jobs in the DB for repo %q", prk.GetPackageKey().RepoKey.Name)
@@ -84,6 +84,7 @@ func (ah *AsyncHandler) ListPackageRevisionJobs(ctx context.Context, cacheOpts c
 			klog.Infof("listPkgRevJob: query failed %q", err)
 			return nil, err
 		}
+		return tasks, nil
 	}
 	return nil, nil
 }

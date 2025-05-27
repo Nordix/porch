@@ -237,7 +237,7 @@ func (r *packageCommon) updatePackageRevision(ctx context.Context, name string, 
 	return &newRuntimeObj, true, nil
 }
 
-func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, objInfo rest.UpdatedObjectInfo, forceAllowCreate bool) error {
+func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, objInfo rest.UpdatedObjectInfo, forceAllowCreate bool) {
 
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
@@ -253,7 +253,7 @@ func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string,
 			isCreate = true
 		} else {
 			klog.Error(err)
-			return err
+			return
 		}
 	}
 
@@ -263,14 +263,14 @@ func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string,
 		oldApiPkgRev, err = oldRepoPkgRev.GetPackageRevision(goCtx)
 		if err != nil {
 			klog.Errorf("failed to get packageRevision: %v", err)
-			return err
+			return
 		}
 	}
 
 	newRuntimeObj, err := objInfo.UpdatedObject(goCtx, oldApiPkgRev)
 	if err != nil {
 		klog.Errorf("update failed to construct UpdatedObject: %v", err)
-		return err
+		return
 	}
 
 	pkgMutexKey := getPackageMutexKey(ns, name)
@@ -283,7 +283,7 @@ func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string,
 			name,
 			fmt.Errorf(GenericConflictErrorMsg, "package revision", pkgMutexKey))
 		klog.Error(err.Error())
-		return err
+		return
 	}
 	defer pkgMutex.Unlock()
 
@@ -294,32 +294,38 @@ func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string,
 		typed := &api.PackageRevision{}
 		if err := r.scheme.Convert(unversioned, typed, nil); err != nil {
 			klog.Errorf("failed to convert %T to %T: %v", unversioned, typed, err)
-			return fmt.Errorf("failed to convert %T to %T: %w", unversioned, typed, err)
+			return
 		}
 		newRuntimeObj = typed
 	}
 
 	if err := r.validateUpdate(goCtx, newRuntimeObj, oldApiPkgRev, isCreate, createValidation,
 		updateValidation, "PackageRevision", name); err != nil {
-		return err
+		return
 	}
 
 	newApiPkgRev, ok := newRuntimeObj.(*api.PackageRevision)
 	if !ok {
 		klog.Error(apierrors.NewBadRequest(fmt.Sprintf("expected PackageRevision object, got %T", newRuntimeObj)))
-		return apierrors.NewBadRequest(fmt.Sprintf("expected PackageRevision object, got %T", newRuntimeObj))
+		return
 	}
+
+	r.savePkgRevJobInDB(goCtx, newApiPkgRev, "Package revision update in progress")
 
 	repoName, err := util.ParsePkgRevObjNameField(name, 0)
 	if err != nil {
-		klog.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid name %q", name)))
-		return apierrors.NewBadRequest(fmt.Sprintf("invalid name %q", name))
+		err := apierrors.NewBadRequest(fmt.Sprintf("invalid name %q", name))
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
+		klog.Error(err)
+		return
 	}
 	if isCreate {
 		repoName = newApiPkgRev.Spec.RepositoryName
 		if repoName == "" {
-			klog.Error(apierrors.NewBadRequest(fmt.Sprintf("invalid repositoryName %q", name)))
-			return apierrors.NewBadRequest(fmt.Sprintf("invalid repositoryName %q", name))
+			err := apierrors.NewBadRequest(fmt.Sprintf("invalid repositoryName %q", name))
+			r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
+			klog.Error(err)
+			return
 		}
 	}
 
@@ -327,47 +333,60 @@ func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string,
 	repositoryID := types.NamespacedName{Namespace: ns, Name: repoName}
 	if err := r.coreClient.Get(goCtx, repositoryID, &repositoryObj); err != nil {
 		if apierrors.IsNotFound(err) {
-			klog.Error(apierrors.NewNotFound(configapi.TypeRepository.GroupResource(), repositoryID.Name))
-			return apierrors.NewNotFound(configapi.TypeRepository.GroupResource(), repositoryID.Name)
+			err := apierrors.NewNotFound(configapi.TypeRepository.GroupResource(), repositoryID.Name)
+			r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
+			klog.Error(err)
+			return
 		}
-		klog.Error(apierrors.NewInternalError(fmt.Errorf("error getting repository %v: %w", repositoryID, err)))
-		return apierrors.NewInternalError(fmt.Errorf("error getting repository %v: %w", repositoryID, err))
+		err := apierrors.NewInternalError(fmt.Errorf("error getting repository %v: %w", repositoryID, err))
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
+		klog.Error(err)
+		return
 	}
 
 	var parentPackage repository.PackageRevision
 	if newApiPkgRev.Spec.Parent != nil && newApiPkgRev.Spec.Parent.Name != "" {
 		p, err := r.getRepoPkgRev(goCtx, newApiPkgRev.Spec.Parent.Name, ns)
 		if err != nil {
-			klog.Errorf("cannot get parent package %q: %v", newApiPkgRev.Spec.Parent.Name, err)
-			return fmt.Errorf("cannot get parent package %q: %w", newApiPkgRev.Spec.Parent.Name, err)
+			err := apierrors.NewNotFound(api.Resource("packagerevisions"), newApiPkgRev.Spec.Parent.Name)
+			r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
+			klog.Error(err)
+			return
 		}
 		parentPackage = p
 	}
 
-	r.cad.SavePackageRevisionJob(goCtx, nil, &repositoryObj, newApiPkgRev, nil, "Package revision update in progress")
-
 	if isCreate {
-		r.cad.SavePackageRevisionJob(goCtx, nil, &repositoryObj, newApiPkgRev, nil, "Package revision create in progress")
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, "Package revision create in progress")
 		rev, err := r.cad.CreatePackageRevision(goCtx, &repositoryObj, newApiPkgRev, parentPackage)
 		if err != nil {
-			klog.Infof("error creating package: %v", err)
-			r.cad.SavePackageRevisionJob(goCtx, nil, &repositoryObj, newApiPkgRev, nil, err.Error())
-			return apierrors.NewInternalError(err)
+			r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
+			klog.Errorf("error creating package: %v", err)
+			return
 		}
 		_, err = rev.GetPackageRevision(goCtx)
 		if err != nil {
-			r.cad.SavePackageRevisionJob(goCtx, nil, &repositoryObj, newApiPkgRev, nil, err.Error())
-			return apierrors.NewInternalError(err)
+			r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
+			return
 		}
 
-		return nil
+		return
 	}
 
 	if _, err := r.cad.UpdatePackageRevision(goCtx, version, &repositoryObj, oldRepoPkgRev, oldApiPkgRev.(*api.PackageRevision), newApiPkgRev, parentPackage); err != nil {
-		r.cad.SavePackageRevisionJob(goCtx, nil, &repositoryObj, newApiPkgRev, nil, err.Error())
+		r.savePkgRevJobInDB(goCtx, newApiPkgRev, err.Error())
 		klog.Errorf("Update error for %s - %s", repositoryObj.Name, err)
+		return
 	}
-	return nil
+	goCtx.Done()
+}
+
+// Save the PackageRevision Job in the Database. Log error and continue if the error is not nil.
+func (r *packageCommon) savePkgRevJobInDB(ctx context.Context, newApiPkgRev *api.PackageRevision, status string) {
+
+	if err := r.cad.SavePackageRevisionJob(ctx, newApiPkgRev, nil, status); err != nil {
+		klog.Error(err)
+	}
 }
 
 // Common implementation of Package update logic.

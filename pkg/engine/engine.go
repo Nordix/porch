@@ -52,7 +52,7 @@ type CaDEngine interface {
 	CreatePackageRevision(ctx context.Context, repositoryObj *configapi.Repository, obj *api.PackageRevision, parent repository.PackageRevision) (repository.PackageRevision, error)
 	UpdatePackageRevision(ctx context.Context, version int, repositoryObj *configapi.Repository, oldPackage repository.PackageRevision, old, new *api.PackageRevision, parent repository.PackageRevision) (repository.PackageRevision, error)
 	DeletePackageRevision(ctx context.Context, repositoryObj *configapi.Repository, obj repository.PackageRevision) error
-	SavePackageRevisionJob(ctx context.Context, repo repository.Repository, repositoryObj *configapi.Repository, newApiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision, errMessage string) error
+	SavePackageRevisionJob(ctx context.Context, newApiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision, errMessage string) error
 	GetCtxTimeout() time.Duration
 	ListPackages(ctx context.Context, repositorySpec *configapi.Repository, filter repository.ListPackageFilter) ([]repository.Package, error)
 	CreatePackage(ctx context.Context, repositoryObj *configapi.Repository, obj *api.PorchPackage) (repository.Package, error)
@@ -201,7 +201,7 @@ func (cad *cadEngine) CreatePackageRevision(ctx context.Context, repositoryObj *
 		// Just return the error from the close operation
 		return nil, fmt.Errorf("failed to close package revision draft: %w", err)
 	}
-	if err := cad.DeletePackageRevisionJob(ctx, repo, nil, obj, nil); err != nil {
+	if err := cad.DeletePackageRevisionJob(ctx, obj, nil); err != nil {
 		return nil, err
 	}
 
@@ -220,19 +220,10 @@ func ensureUniqueWorkspaceName(obj *api.PackageRevision, existingRevs []reposito
 	return nil
 }
 
-func (cad *cadEngine) SavePackageRevisionJob(ctx context.Context, repo repository.Repository, repositoryObj *configapi.Repository, apiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision, status string) error {
+func (cad *cadEngine) SavePackageRevisionJob(ctx context.Context, apiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision, status string) error {
 
 	// Only run this if cachetype is DB
 	if cad.cacheOpts.CacheType == "DB" {
-
-		if repo == nil {
-			newRepo, err := cad.cache.OpenRepository(ctx, repositoryObj)
-			if err != nil {
-				return err
-			}
-			repo = newRepo
-		}
-
 		if repoPkgRev == nil {
 
 			prk := repository.ParseObjToPkgRevKey(apiPkgRev)
@@ -252,18 +243,10 @@ func (cad *cadEngine) SavePackageRevisionJob(ctx context.Context, repo repositor
 	return nil
 }
 
-func (cad *cadEngine) DeletePackageRevisionJob(ctx context.Context, repo repository.Repository, repositoryObj *configapi.Repository, apiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision) error {
+func (cad *cadEngine) DeletePackageRevisionJob(ctx context.Context, apiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision) error {
 
 	// Only run this if cachetype is DB
 	if cad.cacheOpts.CacheType == "DB" {
-		if repo == nil {
-			newRepo, err := cad.cache.OpenRepository(ctx, repositoryObj)
-			if err != nil {
-				return err
-			}
-			repo = newRepo
-		}
-
 		if repoPkgRev == nil {
 			prk := repository.ParseObjToPkgRevKey(apiPkgRev)
 			if err := cad.async.DeletePackageRevisionJob(ctx, cad.cacheOpts, prk); err != nil {
@@ -313,7 +296,7 @@ func (cad *cadEngine) UpdatePackageRevision(ctx context.Context, version int, re
 		if err := cad.deletePackageRevision(ctx, repo, repoPkgRev); err != nil {
 			return nil, err
 		}
-		if err := cad.DeletePackageRevisionJob(ctx, repo, nil, oldObj, nil); err != nil {
+		if err := cad.DeletePackageRevisionJob(ctx, oldObj, nil); err != nil {
 			return nil, err
 		}
 		return repoPkgRev, nil
@@ -339,7 +322,7 @@ func (cad *cadEngine) UpdatePackageRevision(ctx context.Context, version int, re
 		}
 		sent := cad.watcherManager.NotifyPackageRevisionChange(ctx, watch.Modified, repoPkgRev)
 		klog.Infof("engine: sent %d for updated PackageRevision metadata %s/%s", sent, repoPkgRev.KubeObjectNamespace(), repoPkgRev.KubeObjectName())
-		if err := cad.DeletePackageRevisionJob(ctx, repo, nil, oldObj, nil); err != nil {
+		if err := cad.DeletePackageRevisionJob(ctx, oldObj, nil); err != nil {
 			return nil, err
 		}
 		return repoPkgRev, nil
@@ -393,7 +376,7 @@ func (cad *cadEngine) UpdatePackageRevision(ctx context.Context, version int, re
 	klog.Infof("engine: sent %d for updated PackageRevision %s/%s", sent, repoPkgRev.KubeObjectNamespace(), repoPkgRev.KubeObjectName())
 
 	// Remove task from db
-	if err = cad.DeletePackageRevisionJob(ctx, repo, nil, oldObj, nil); err != nil {
+	if err = cad.DeletePackageRevisionJob(ctx, oldObj, nil); err != nil {
 		return nil, err
 	}
 
@@ -432,7 +415,7 @@ func (cad *cadEngine) deletePackageRevision(ctx context.Context, repo repository
 		return err
 	}
 
-	if err := cad.DeletePackageRevisionJob(ctx, repo, nil, nil, repoPkgRev); err != nil {
+	if err := cad.DeletePackageRevisionJob(ctx, nil, repoPkgRev); err != nil {
 		return err
 	}
 
@@ -609,7 +592,7 @@ func (cad *cadEngine) RecloneAndReplay(ctx context.Context, parentPR repository.
 
 	sent := cad.watcherManager.NotifyPackageRevisionChange(ctx, watch.Modified, repoPkgRev)
 	klog.Infof("engine: sent %d for reclone and replay PackageRevision %s/%s", sent, repoPkgRev.KubeObjectNamespace(), repoPkgRev.KubeObjectName())
-	if err := cad.DeletePackageRevisionJob(ctx, repo, nil, newObj, nil); err != nil {
+	if err := cad.DeletePackageRevisionJob(ctx, newObj, nil); err != nil {
 		return nil, err
 	}
 	return repoPkgRev, nil
