@@ -96,13 +96,20 @@ func (r *runner) runE(_ *cobra.Command, args []string) error {
 			if !v1alpha1.PackageRevisionIsReady(pr.Spec.ReadinessGates, pr.Status.Conditions) {
 				return fmt.Errorf("readiness conditions not met")
 			}
-			return porch.UpdatePackageRevisionApproval(r.ctx, r.client, &pr, v1alpha1.PackageRevisionLifecyclePublished)
+			if pr.Spec.Lifecycle == v1alpha1.PackageRevisionLifecyclePublished {
+				fmt.Fprintf(r.Command.OutOrStderr(), "%s is already published\n", name)
+				return nil
+			}
+			if err := porch.UpdatePackageRevisionApproval(r.ctx, r.client, &pr, v1alpha1.PackageRevisionLifecyclePublished); err != nil {
+				return err
+			} else {
+				fmt.Fprintf(r.Command.OutOrStdout(), "User request to approve %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", name, namespace, name)
+				return nil
+			}
 		})
 		if err != nil {
 			messages = append(messages, err.Error())
 			fmt.Fprintf(r.Command.ErrOrStderr(), "%s failed (%s)\n", name, err)
-		} else {
-			fmt.Fprintf(r.Command.OutOrStdout(), "User request to approve %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", name, namespace, name)
 		}
 	}
 	if len(messages) > 0 {

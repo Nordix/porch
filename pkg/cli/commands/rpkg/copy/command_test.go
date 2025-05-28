@@ -47,7 +47,8 @@ func createScheme() (*runtime.Scheme, error) {
 func TestCmd(t *testing.T) {
 	repoName := "test-repo"
 	ns := "ns"
-	pkgRevName := "test-package"
+	ws := "copy-ws"
+	pkgRevName := "test-rpkg-copy"
 	var scheme, err = createScheme()
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
@@ -93,8 +94,8 @@ func TestCmd(t *testing.T) {
 		"copy package": {
 			wantErr:   false,
 			ns:        ns,
-			output:    pkgRevName + " created\n",
-			workspace: "v2",
+			output:    "User request to copy " + pkgRevName + " to workspace " + ws + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
+			workspace: ws,
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 					if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
@@ -111,6 +112,7 @@ func TestCmd(t *testing.T) {
 					Spec: porchapi.PackageRevisionSpec{
 						Lifecycle:      porchapi.PackageRevisionLifecycleProposed,
 						RepositoryName: repoName,
+						WorkspaceName:  ws,
 					},
 					ObjectMeta: metav1.ObjectMeta{
 						Namespace: ns,

@@ -114,7 +114,7 @@ func (r *runner) runE(_ *cobra.Command, args []string) error {
 			messages = append(messages, err.Error())
 			fmt.Fprintf(r.Command.ErrOrStderr(), "%s failed (%s)\n", name, err)
 		} else {
-			fmt.Fprintf(r.Command.OutOrStdout(), "User request to reject package %s with state %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", name, proposedFor, namespace, name)
+			fmt.Fprintf(r.Command.OutOrStdout(), "User request to reject %s with state %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", name, proposedFor, namespace, name)
 		}
 	}
 	if len(messages) > 0 {

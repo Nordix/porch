@@ -43,7 +43,8 @@ func createScheme() (*runtime.Scheme, error) {
 }
 
 func TestCmd(t *testing.T) {
-	pkgRevName := "test-fjdos9u2nfe2f32"
+	pkgRevName := "test-rpkg-propose-del"
+	ns := "ns"
 	var scheme, err = createScheme()
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
@@ -61,18 +62,18 @@ func TestCmd(t *testing.T) {
 		},
 		"Package not published": {
 			output:  pkgRevName + " failed (can only propose published packages for deletion; package " + pkgRevName + " is not published)\n",
-			ns:      "ns",
+			ns:      ns,
 			wantErr: true,
 		},
 		"Already propose for deletion": {
 			lc:     porchapi.PackageRevisionLifecycleDeletionProposed,
 			output: pkgRevName + " is already proposed for deletion\n",
-			ns:     "ns",
+			ns:     ns,
 		},
 		"Propose delete package": {
 			lc:     porchapi.PackageRevisionLifecyclePublished,
-			output: pkgRevName + " proposed for deletion\n",
-			ns:     "ns",
+			output: "User request to propose-delete " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
+			ns:     ns,
 		},
 	}
 
@@ -90,7 +91,7 @@ func TestCmd(t *testing.T) {
 						Lifecycle: tc.lc,
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "ns",
+						Namespace: ns,
 						Name:      pkgRevName,
 					}}).Build()
 

@@ -43,7 +43,8 @@ func createScheme() (*runtime.Scheme, error) {
 }
 
 func TestCmd(t *testing.T) {
-	pkgRevName := "test-fjdos9u2nfe2f32"
+	pkgRevName := "test-rpkg-del"
+	ns := "ns"
 	var scheme, err = createScheme()
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
@@ -59,8 +60,8 @@ func TestCmd(t *testing.T) {
 			wantErr: true,
 		},
 		"delete package": {
-			output: pkgRevName + " deleted\n",
-			ns:     "ns",
+			output: "User request to del " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
+			ns:     ns,
 		},
 	}
 
@@ -75,7 +76,7 @@ func TestCmd(t *testing.T) {
 						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "ns",
+						Namespace: ns,
 						Name:      pkgRevName,
 					}}).Build()
 
