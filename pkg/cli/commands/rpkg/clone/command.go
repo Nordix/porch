@@ -120,6 +120,15 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 	source := args[0]
 	target := args[1]
 
+	pkgExists, err := util.PackageAlreadyExists(r.ctx, r.client, r.repository, target, *r.cfg.Namespace)
+	if err != nil {
+		return err
+	}
+	if pkgExists {
+		return fmt.Errorf("`clone` cannot create a new revision for package %q that already exists in repo %q; try with a unique package name or make subsequent revisions using `copy`",
+			target, r.repository)
+	}
+
 	switch {
 	case strings.HasPrefix(source, "oci://"):
 		r.clone.Upstream.Type = porchapi.RepositoryTypeOCI
@@ -197,14 +206,6 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 				},
 			},
 		},
-	}
-	pkgRevName := util.CreatePackageRevisionName(r.repository, r.target, r.workspace)
-	key := client.ObjectKey{
-		Namespace: *r.cfg.Namespace,
-		Name:      pkgRevName,
-	}
-	if err := r.client.Get(r.ctx, key, pr); err == nil {
-		return fmt.Errorf("`clone` cannot create package revision %q that already exists in repo %q; try with a unique package name or make subsequent revisions using `copy`", pkgRevName, r.repository)
 	}
 	if err := r.client.Create(r.ctx, pr); err != nil {
 		return errors.E(op, err)
