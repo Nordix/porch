@@ -122,7 +122,7 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 	if err := r.client.Create(r.ctx, pr); err != nil {
 		return errors.E(op, err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "User request to copy %s to workspace %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Spec.WorkspaceName, pr.Namespace, pr.Name)
+	fmt.Fprintf(cmd.OutOrStdout(), "User request to copy %s to workspace %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", r.copy.Source.Name, pr.Spec.WorkspaceName, pr.Namespace, pr.Name)
 	return nil
 }
 
@@ -140,9 +140,11 @@ func (r *runner) getPackageRevisionSpec() (*porchapi.PackageRevisionSpec, error)
 		return nil, fmt.Errorf("--workspace is required to specify workspace name")
 	}
 
-	// check if source package is 'Published'
-	if packageRevision.Spec.Lifecycle != porchapi.PackageRevisionLifecyclePublished {
-		return nil, fmt.Errorf("source package revision %q is not Published", r.copy.Source.Name)
+	// check if source package is 'Published' if replay strategy is false
+	if !r.replayStrategy {
+		if packageRevision.Spec.Lifecycle != porchapi.PackageRevisionLifecyclePublished {
+			return nil, fmt.Errorf("source package revision %q is not Published", r.copy.Source.Name)
+		}
 	}
 
 	spec := &porchapi.PackageRevisionSpec{

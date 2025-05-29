@@ -94,12 +94,26 @@ func (r *runner) runE(_ *cobra.Command, args []string) error {
 				Name:      pkg,
 			},
 		}
-
-		if err := r.client.Delete(r.ctx, pr); err != nil {
+		key := client.ObjectKey{
+			Namespace: *r.cfg.Namespace,
+			Name:      pkg,
+		}
+		if err := r.client.Get(r.ctx, key, pr); err != nil {
 			messages = append(messages, err.Error())
 			fmt.Fprintf(r.Command.ErrOrStderr(), "%s failed (%s)\n", pkg, err)
 		} else {
-			fmt.Fprintf(r.Command.OutOrStdout(), "User request to del %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Namespace, pr.Name)
+			if pr.Spec.Lifecycle == porchapi.PackageRevisionLifecycleDeletionProposed || pr.Spec.Lifecycle == porchapi.PackageRevisionLifecycleDraft {
+
+				if err := r.client.Delete(r.ctx, pr); err != nil {
+					messages = append(messages, err.Error())
+					fmt.Fprintf(r.Command.ErrOrStderr(), "%s failed (%s)\n", pkg, err)
+				} else {
+					fmt.Fprintf(r.Command.OutOrStdout(), "User request to del %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Namespace, pr.Name)
+				}
+			} else {
+				messages = append(messages, fmt.Sprintf("cannot delete %s with lifecycle '%s'", pkg, pr.Spec.Lifecycle))
+				fmt.Fprintf(r.Command.ErrOrStderr(), "%s failed: cannot delete %s with lifecycle '%s'\n", pkg, pkg, pr.Spec.Lifecycle)
+			}
 		}
 	}
 

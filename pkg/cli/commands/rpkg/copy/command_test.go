@@ -49,16 +49,18 @@ func TestCmd(t *testing.T) {
 	ns := "ns"
 	ws := "copy-ws"
 	pkgRevName := "test-rpkg-copy"
+	copyPkgRevName := pkgRevName + "." + ws
 	var scheme, err = createScheme()
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 	testCases := map[string]struct {
-		output     string
-		wantErr    bool
-		ns         string
-		workspace  string
-		fakeclient client.WithWatch
+		output         string
+		wantErr        bool
+		ns             string
+		workspace      string
+		fakeclient     client.WithWatch
+		replayStrategy bool
 	}{
 		"metadata.name required": {
 			wantErr:    true,
@@ -71,7 +73,7 @@ func TestCmd(t *testing.T) {
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 					if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
-						obj.SetName(pkgRevName)
+						obj.SetName(copyPkgRevName)
 					}
 					return nil
 				},
@@ -91,14 +93,42 @@ func TestCmd(t *testing.T) {
 					}}).Build(),
 		},
 
-		"package not published": {
+		"replay strategy false, unplublished package": {
 			wantErr:   true,
 			ns:        ns,
 			workspace: ws,
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 					if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
-						obj.SetName(pkgRevName)
+						obj.SetName(copyPkgRevName)
+					}
+					return nil
+				},
+			}).WithScheme(scheme).
+				WithObjects(&porchapi.PackageRevision{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "PackageRevision",
+						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
+					},
+					Spec: porchapi.PackageRevisionSpec{
+						Lifecycle:      porchapi.PackageRevisionLifecycleProposed,
+						RepositoryName: repoName,
+						WorkspaceName:  ws,
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: ns,
+						Name:      pkgRevName,
+					}}).Build(),
+		},
+		"replay strategy true, unplublished package": {
+			ns:             ns,
+			workspace:      ws,
+			replayStrategy: true,
+			output:         "User request to copy " + pkgRevName + " to workspace " + ws + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + copyPkgRevName + "\"\n",
+			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+					if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
+						obj.SetName(copyPkgRevName)
 					}
 					return nil
 				},
@@ -121,12 +151,12 @@ func TestCmd(t *testing.T) {
 		"successful copy": {
 			wantErr:   false,
 			ns:        ns,
-			output:    "User request to copy " + pkgRevName + " to workspace " + ws + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
+			output:    "User request to copy " + pkgRevName + " to workspace " + ws + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + copyPkgRevName + "\"\n",
 			workspace: ws,
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 					if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
-						obj.SetName(pkgRevName)
+						obj.SetName(copyPkgRevName)
 					}
 					return nil
 				},
@@ -178,9 +208,10 @@ func TestCmd(t *testing.T) {
 						Name: pkgRevName,
 					},
 				},
-				client:    tc.fakeclient,
-				workspace: tc.workspace,
-				Command:   cmd,
+				client:         tc.fakeclient,
+				workspace:      tc.workspace,
+				Command:        cmd,
+				replayStrategy: tc.replayStrategy,
 			}
 			go func() {
 				defer write.Close()
