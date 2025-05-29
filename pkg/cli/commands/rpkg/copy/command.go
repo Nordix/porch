@@ -22,6 +22,7 @@ import (
 	"github.com/nephio-project/porch/internal/kpt/errors"
 	"github.com/nephio-project/porch/internal/kpt/util/porch"
 	"github.com/nephio-project/porch/pkg/cli/commands/rpkg/docs"
+	"github.com/nephio-project/porch/pkg/cli/commands/rpkg/util"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -108,6 +109,16 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 		},
 		Spec: *revisionSpec,
 	}
+	pkgRevName := util.CreatePackageRevisionName(revisionSpec.RepositoryName, revisionSpec.PackageName, r.workspace)
+	// check if package revision already exists
+	key := client.ObjectKey{
+		Namespace: *r.cfg.Namespace,
+		Name:      pkgRevName,
+	}
+	if err := r.client.Get(r.ctx, key, pr); err == nil {
+		return fmt.Errorf("`copy` cannot create package revision %q that already exists in repo %q; make subsequent revisions using a different workspace", pkgRevName, revisionSpec.RepositoryName)
+	}
+
 	if err := r.client.Create(r.ctx, pr); err != nil {
 		return errors.E(op, err)
 	}
@@ -127,6 +138,11 @@ func (r *runner) getPackageRevisionSpec() (*porchapi.PackageRevisionSpec, error)
 
 	if r.workspace == "" {
 		return nil, fmt.Errorf("--workspace is required to specify workspace name")
+	}
+
+	// check if source package is 'Published'
+	if packageRevision.Spec.Lifecycle != porchapi.PackageRevisionLifecyclePublished {
+		return nil, fmt.Errorf("source package revision %q is not Published", r.copy.Source.Name)
 	}
 
 	spec := &porchapi.PackageRevisionSpec{

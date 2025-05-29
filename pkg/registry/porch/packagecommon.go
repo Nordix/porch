@@ -229,16 +229,18 @@ func (r *packageCommon) updatePackageRevision(ctx context.Context, name string, 
 		return nil, false, apierrors.NewBadRequest("namespace must be specified")
 	}
 
+	// Call a go routine to update the package revision
 	go r.asyncUpdatePackageRevision(0, name, ns, createValidation, updateValidation, objInfo, forceAllowCreate)
 
 	newRuntimeObj := api.PackageRevision{}
 	newRuntimeObj.Name = name
 
+	// Return the context created by the apiserver
 	return &newRuntimeObj, true, nil
 }
 
 func (r *packageCommon) asyncUpdatePackageRevision(version int, name, ns string, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, objInfo rest.UpdatedObjectInfo, forceAllowCreate bool) {
-
+	// Create a new context for the go routine
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
 	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageCommon::callUpdatePackageRevision", trace.WithAttributes())

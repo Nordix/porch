@@ -15,35 +15,16 @@
 package util
 
 import (
-	"context"
 	"fmt"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	kptfilev1 "github.com/nephio-project/porch/pkg/kpt/api/kptfile/v1"
 	fnsdk "github.com/nephio-project/porch/third_party/GoogleContainerTools/kpt-functions-sdk/go/fn"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	ResourceVersionAnnotation = "internal.kpt.dev/resource-version"
 )
-
-func PackageAlreadyExists(ctx context.Context, c client.Client, repository, packageName, namespace string) (bool, error) {
-	// only the first package revision can be created from init or clone, so
-	// we need to check that the package doesn't already exist.
-	packageRevisionList := api.PackageRevisionList{}
-	if err := c.List(ctx, &packageRevisionList, &client.ListOptions{
-		Namespace: namespace,
-	}); err != nil {
-		return false, err
-	}
-	for _, pr := range packageRevisionList.Items {
-		if pr.Spec.RepositoryName == repository && pr.Spec.PackageName == packageName {
-			return true, nil
-		}
-	}
-	return false, nil
-}
 
 func GetResourceFileKubeObject(prr *api.PackageRevisionResources, file, kind, name string) (*fnsdk.KubeObject, error) {
 	if prr.Spec.Resources == nil {
@@ -96,4 +77,8 @@ func AddRevisionMetadata(prr *api.PackageRevisionResources) error {
 func RemoveRevisionMetadata(prr *api.PackageRevisionResources) error {
 	delete(prr.Spec.Resources, kptfilev1.RevisionMetaDataFileName)
 	return nil
+}
+
+func CreatePackageRevisionName(repository, packageName, workspace string) string {
+	return fmt.Sprintf("%s.%s.%s", repository, packageName, workspace)
 }

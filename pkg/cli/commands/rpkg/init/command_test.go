@@ -73,6 +73,15 @@ func TestCmd(t *testing.T) {
 				},
 			}).WithScheme(scheme).Build(),
 		},
+		"package already exists": {
+			wantErr: true,
+			ns:      ns,
+			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					return nil
+				},
+			}).Build(),
+		},
 	}
 
 	for tn := range testCases {

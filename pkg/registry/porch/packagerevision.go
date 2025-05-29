@@ -126,7 +126,6 @@ func (r *packageRevisions) Get(ctx context.Context, name string, options *metav1
 // Create implements the Creater interface.
 func (r *packageRevisions) Create(ctx context.Context, runtimeObject runtime.Object, createValidation rest.ValidateObjectFunc,
 	options *metav1.CreateOptions) (runtime.Object, error) {
-	klog.Info("------------------ Registry - PkgRev - Create ------------------")
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisions::Create", trace.WithAttributes())
 	defer span.End()
 	ns, namespaced := genericapirequest.NamespaceFrom(ctx)
@@ -154,15 +153,16 @@ func (r *packageRevisions) Create(ctx context.Context, runtimeObject runtime.Obj
 	pkgRevName := newApiPkgRev.Spec.RepositoryName + "." + newApiPkgRev.Spec.PackageName + "." + workspace
 	newApiPkgRev.Name = pkgRevName
 
-	// Call a go routine to create a package
+	// Call a go routine to create the package revision
 	go r.asyncCreatePackageRevision(repositoryName, ns, newApiPkgRev)
 
+	// Return the context created by the apiserver
 	return newApiPkgRev, nil
 
 }
 
 func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newApiPkgRev *api.PackageRevision) {
-	klog.Info("------------------ GO ROUTINE REACHED ------------------")
+	// Create a new context for the go routine
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
 	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisions::callCreatePackageRevision", trace.WithAttributes())
@@ -185,23 +185,21 @@ func (r *packageRevisions) asyncCreatePackageRevision(repoName, ns string, newAp
 	}
 
 	// Check if pkgRev already exists
-	repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, newApiPkgRev.Name, ns)
-
-	if err != nil {
+	if repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, newApiPkgRev.Name, ns); err != nil {
 		if !strings.Contains(err.Error(), "not found") {
 			r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, err.Error())
 			klog.Error(err)
 			return
 		}
-	}
-	if repoPkgRev != nil {
-		err := "`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`"
-		r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, fmt.Errorf(err, newApiPkgRev.Name, repoName).Error())
-		klog.Errorf(err, newApiPkgRev.Name, repoName)
-		return
+	} else {
+		if repoPkgRev != nil {
+			err := "cannot create package revision  %q that already exists in repo %q"
+			r.savePkgRevJobInDB(goCtx, newApiPkgRev, nil, fmt.Errorf(err, newApiPkgRev.Name, repoName).Error())
+			klog.Errorf(err, newApiPkgRev.Name, repoName)
+			return
+		}
 	}
 
-	// Run ListPackageRevisions inside the go routine
 	var parentPackage repository.PackageRevision
 	if newApiPkgRev.Spec.Parent != nil && newApiPkgRev.Spec.Parent.Name != "" {
 		p, err := r.packageCommon.getRepoPkgRev(goCtx, newApiPkgRev.Spec.Parent.Name, ns)
@@ -281,13 +279,16 @@ func (r *packageRevisions) Delete(ctx context.Context, name string, deleteValida
 	}
 	apiPkgRev := api.PackageRevision{}
 	apiPkgRev.Name = name
+
+	// Call a go routine to delete the package revision
 	go r.asyncDeletePackageRevision(name, ns, deleteValidation)
 
+	// Return the context created by the apiserver
 	return &apiPkgRev, true, nil
 }
 
 func (r *packageRevisions) asyncDeletePackageRevision(name, ns string, deleteValidation rest.ValidateObjectFunc) {
-
+	// Create a new context for the go routine
 	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
 	defer cancel()
 	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisions::callDeletePackageRevision", trace.WithAttributes())

@@ -47,7 +47,7 @@ func createScheme() (*runtime.Scheme, error) {
 func TestCmd(t *testing.T) {
 	repoName := "test-repo"
 	ns := "ns"
-	pkRevName := "test-rpkg-clone"
+	pkgRevName := "test-rpkg-clone"
 	var scheme, err = createScheme()
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
@@ -65,15 +65,24 @@ func TestCmd(t *testing.T) {
 		"clone package": {
 			wantErr: false,
 			ns:      ns,
-			output:  "User request to clone " + pkRevName + " to repo test-repo is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkRevName + "\"\n",
+			output:  "User request to clone " + pkgRevName + " to repo test-repo is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 					if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
-						obj.SetName(pkRevName)
+						obj.SetName(pkgRevName)
 					}
 					return nil
 				},
 			}).WithScheme(scheme).Build(),
+		},
+		"package already exists": {
+			wantErr: true,
+			ns:      ns,
+			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					return nil
+				},
+			}).Build(),
 		},
 	}
 

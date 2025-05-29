@@ -91,10 +91,9 @@ func TestCmd(t *testing.T) {
 					}}).Build(),
 		},
 
-		"copy package": {
-			wantErr:   false,
+		"package not published": {
+			wantErr:   true,
 			ns:        ns,
-			output:    "User request to copy " + pkgRevName + " to workspace " + ws + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
 			workspace: ws,
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
@@ -118,6 +117,43 @@ func TestCmd(t *testing.T) {
 						Namespace: ns,
 						Name:      pkgRevName,
 					}}).Build(),
+		},
+		"successful copy": {
+			wantErr:   false,
+			ns:        ns,
+			output:    "User request to copy " + pkgRevName + " to workspace " + ws + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
+			workspace: ws,
+			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+				Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+					if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
+						obj.SetName(pkgRevName)
+					}
+					return nil
+				},
+			}).WithScheme(scheme).
+				WithObjects(&porchapi.PackageRevision{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "PackageRevision",
+						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
+					},
+					Spec: porchapi.PackageRevisionSpec{
+						Lifecycle:      porchapi.PackageRevisionLifecyclePublished,
+						RepositoryName: repoName,
+						WorkspaceName:  ws,
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: ns,
+						Name:      pkgRevName,
+					}}).Build(),
+		},
+		"package already exists": {
+			wantErr: true,
+			ns:      ns,
+			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					return nil
+				},
+			}).Build(),
 		},
 	}
 

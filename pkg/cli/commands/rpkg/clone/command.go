@@ -24,6 +24,7 @@ import (
 	"github.com/nephio-project/porch/internal/kpt/util/parse"
 	"github.com/nephio-project/porch/internal/kpt/util/porch"
 	"github.com/nephio-project/porch/pkg/cli/commands/rpkg/docs"
+	"github.com/nephio-project/porch/pkg/cli/commands/rpkg/util"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -196,6 +197,14 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 				},
 			},
 		},
+	}
+	pkgRevName := util.CreatePackageRevisionName(r.repository, r.target, r.workspace)
+	key := client.ObjectKey{
+		Namespace: *r.cfg.Namespace,
+		Name:      pkgRevName,
+	}
+	if err := r.client.Get(r.ctx, key, pr); err == nil {
+		return fmt.Errorf("`clone` cannot create package revision %q that already exists in repo %q; try with a unique package name or make subsequent revisions using `copy`", pkgRevName, r.repository)
 	}
 	if err := r.client.Create(r.ctx, pr); err != nil {
 		return errors.E(op, err)
