@@ -97,7 +97,12 @@ func (r *packages) Get(ctx context.Context, name string, options *metav1.GetOpti
 	ctx, span := tracer.Start(ctx, "packages::Get", trace.WithAttributes())
 	defer span.End()
 
-	pkg, err := r.getPackage(ctx, name)
+	ns, namespaced := genericapirequest.NamespaceFrom(ctx)
+	if !namespaced {
+		return nil, apierrors.NewBadRequest("namespace must be specified")
+	}
+
+	pkg, err := r.getPackage(ctx, name, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +192,7 @@ func (r *packages) Delete(ctx context.Context, name string, deleteValidation res
 		return nil, false, apierrors.NewBadRequest("namespace must be specified")
 	}
 
-	oldPackage, err := r.packageCommon.getPackage(ctx, name)
+	oldPackage, err := r.packageCommon.getPackage(ctx, name, ns)
 	if err != nil {
 		return nil, false, err
 	}

@@ -99,14 +99,16 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 	}
 
 	r.name = args[0]
+
 	pkgExists, err := util.PackageAlreadyExists(r.ctx, r.client, r.repository, r.name, *r.cfg.Namespace)
 	if err != nil {
 		return err
 	}
 	if pkgExists {
-		return fmt.Errorf("`init` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`",
+		return fmt.Errorf("`init` cannot create a new revision for package %q that already exists in repo %q; try with a unique package name or make subsequent revisions using `copy`",
 			r.name, r.repository)
 	}
+
 	return nil
 }
 
@@ -138,10 +140,11 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 		},
 		Status: porchapi.PackageRevisionStatus{},
 	}
+
 	if err := r.client.Create(r.ctx, pr); err != nil {
 		return errors.E(op, err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "%s created\n", pr.Name)
+	fmt.Fprintf(cmd.OutOrStdout(), "User request to init %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Namespace, pr.Name)
 	return nil
 }

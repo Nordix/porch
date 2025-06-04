@@ -20,7 +20,8 @@ commands:
       - --workspace=copy-1
       - basens-edit
     stdout: |
-      git.basens-edit.copy-1 created
+      User request to clone git.basens-edit.copy-1 to repo git is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-copy git.basens-edit.copy-1"
   - args:
       - porchctl
       - rpkg
@@ -28,7 +29,8 @@ commands:
       - --namespace=rpkg-copy
       - git.basens-edit.copy-1
     stdout: |
-      git.basens-edit.copy-1 proposed
+      User request to propose git.basens-edit.copy-1 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-copy git.basens-edit.copy-1"
   - args:
       - porchctl
       - rpkg
@@ -36,7 +38,8 @@ commands:
       - --namespace=rpkg-copy
       - git.basens-edit.copy-1
     stdout: |
-      git.basens-edit.copy-1 approved
+      User request to approve git.basens-edit.copy-1 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-copy git.basens-edit.copy-1"
   - args:
       - porchctl
       - rpkg
@@ -45,7 +48,8 @@ commands:
       - --workspace=copy-2
       - git.basens-edit.copy-1
     stdout: |
-      git.basens-edit.copy-2 created
+      User request to copy git.basens-edit.copy-1 to workspace copy-2 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-copy git.basens-edit.copy-2"
   - args:
       - porchctl
       - rpkg

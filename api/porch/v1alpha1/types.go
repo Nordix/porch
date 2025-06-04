@@ -127,6 +127,8 @@ type PackageRevisionStatus struct {
 	Deployment bool `json:"deployment,omitempty"`
 
 	Conditions []Condition `json:"conditions,omitempty"`
+
+	Reason string `json:"reason,omitempty"`
 }
 
 type TaskType string
