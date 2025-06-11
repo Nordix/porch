@@ -97,6 +97,8 @@ func (r *cachedRepository) Version(ctx context.Context) (string, error) {
 }
 
 func (r *cachedRepository) ListPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error) {
+	ctx, span := tracer.Start(ctx, "cachedRepository::VersListPackageRevisionsion", trace.WithAttributes())
+	defer span.End()
 	packages, err := r.getPackageRevisions(ctx, filter, false)
 	if err != nil {
 		return nil, err
@@ -134,7 +136,8 @@ func (r *cachedRepository) getRefreshError() error {
 }
 
 func (r *cachedRepository) getPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, forceRefresh bool) ([]repository.PackageRevision, error) {
-
+	ctx, span := tracer.Start(ctx, "cachedRepository::getPackageRevisions", trace.WithAttributes())
+	defer span.End()
 	_, packageRevisions, err := r.getCachedPackages(ctx, forceRefresh)
 	if err != nil {
 		return nil, err
@@ -157,6 +160,8 @@ func (r *cachedRepository) getPackages(ctx context.Context, filter repository.Li
 
 // getCachedPackages returns cachedPackages; fetching it if not cached or if forceRefresh.
 func (r *cachedRepository) getCachedPackages(ctx context.Context, forceRefresh bool) (map[repository.PackageKey]*cachedPackage, map[repository.PackageRevisionKey]*cachedPackageRevision, error) {
+	ctx, span := tracer.Start(ctx, "cachedRepository::getCachedPackages", trace.WithAttributes())
+	defer span.End()
 	r.mutex.RLock()
 	packages := r.cachedPackages
 	packageRevisions := r.cachedPackageRevisions
@@ -251,7 +256,7 @@ func (r *cachedRepository) ClosePackageRevisionDraft(ctx context.Context, prd re
 		return nil, err
 	}
 
-	sent := r.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Added, cachedPr)
+	sent := r.repoPRChangeNotifier.NotifyPackageRevisionChange(ctx, watch.Added, cachedPr)
 	klog.Infof("cache: sent %d for new PackageRevision %s/%s", sent, cachedPr.KubeObjectNamespace(), cachedPr.KubeObjectName())
 	return cachedPr, nil
 }
@@ -386,7 +391,7 @@ func (r *cachedRepository) DeletePackageRevision(ctx context.Context, prToDelete
 
 	if len(pkgRevMeta.Finalizers) > 0 {
 		klog.Infof("PackageRevision %s deleted, but still have finalizers: %s", prToDelete.KubeObjectName(), strings.Join(pkgRevMeta.Finalizers, ","))
-		sent := r.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Modified, prToDelete)
+		sent := r.repoPRChangeNotifier.NotifyPackageRevisionChange(ctx, watch.Modified, prToDelete)
 		klog.Infof("crcache: sent %d modified for deleted PackageRevision %s/%s with finalizers", sent, prToDelete.KubeObjectNamespace(), prToDelete.KubeObjectName())
 		return nil
 	}
@@ -417,7 +422,7 @@ func (r *cachedRepository) DeletePackageRevision(ctx context.Context, prToDelete
 		}
 	}
 
-	sent := r.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Deleted, prToDelete)
+	sent := r.repoPRChangeNotifier.NotifyPackageRevisionChange(ctx, watch.Deleted, prToDelete)
 	klog.Infof("crcache: sent %d for deleted PackageRevision %s/%s", sent, prToDelete.KubeObjectNamespace(), prToDelete.KubeObjectName())
 
 	return nil
@@ -473,7 +478,7 @@ func (r *cachedRepository) Close(ctx context.Context) error {
 			klog.Warningf("repo %s: error deleting packagerev for %s: %v", r.id, nn.Name, err)
 		}
 		klog.Infof("repo %s: successfully deleted packagerev %s/%s", r.id, nn.Namespace, nn.Name)
-		sent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Deleted, pr)
+		sent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(ctx, watch.Deleted, pr)
 	}
 	klog.Infof("repo %s: sent %d notifications for %d package revisions during close", r.id, sent, len(r.cachedPackageRevisions))
 	return r.repo.Close(ctx)
@@ -615,10 +620,10 @@ func (r *cachedRepository) refreshAllCachedPackages(ctx context.Context) (map[re
 	for kname, newPackage := range newPackageRevisionNames {
 		oldPackage := oldPackageRevisionNames[kname]
 		if oldPackage == nil {
-			addSent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Added, newPackage)
+			addSent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(ctx, watch.Added, newPackage)
 		} else {
 			if oldPackage.ResourceVersion() != newPackage.ResourceVersion() {
-				modSent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Modified, newPackage)
+				modSent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(ctx, watch.Modified, newPackage)
 			}
 		}
 	}
@@ -651,7 +656,7 @@ func (r *cachedRepository) refreshAllCachedPackages(ctx context.Context) (map[re
 			}
 			klog.Infof("repo %s: deleting PackageRev %s/%s because PackageRevision was removed from SoT",
 				r.id, nn.Namespace, nn.Name)
-			delSent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Deleted, oldPackage)
+			delSent += r.repoPRChangeNotifier.NotifyPackageRevisionChange(ctx, watch.Deleted, oldPackage)
 		}
 	}
 	klog.Infof("repo %s: addSent %d, modSent %d, delSent for %d old and %d new repo packages", r.id, addSent, modSent, len(oldPackageRevisionNames), len(newPackageRevisionNames))

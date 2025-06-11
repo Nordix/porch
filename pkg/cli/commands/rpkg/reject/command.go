@@ -99,10 +99,10 @@ func (r *runner) runE(_ *cobra.Command, args []string) error {
 			}
 			switch pr.Spec.Lifecycle {
 			case v1alpha1.PackageRevisionLifecycleProposed:
-				proposedFor = "approval"
+				proposedFor = string(v1alpha1.PackageRevisionLifecycleProposed)
 				return porch.UpdatePackageRevisionApproval(r.ctx, r.client, &pr, v1alpha1.PackageRevisionLifecycleDraft)
 			case v1alpha1.PackageRevisionLifecycleDeletionProposed:
-				proposedFor = "deletion"
+				proposedFor = string(v1alpha1.PackageRevisionLifecycleDeletionProposed)
 				// NOTE(kispaljr): should we use UpdatePackageRevisionApproval() here?
 				pr.Spec.Lifecycle = v1alpha1.PackageRevisionLifecyclePublished
 				return r.client.Update(r.ctx, &pr)
@@ -114,7 +114,7 @@ func (r *runner) runE(_ *cobra.Command, args []string) error {
 			messages = append(messages, err.Error())
 			fmt.Fprintf(r.Command.ErrOrStderr(), "%s failed (%s)\n", name, err)
 		} else {
-			fmt.Fprintf(r.Command.OutOrStdout(), "%s no longer proposed for %s\n", name, proposedFor)
+			fmt.Fprintf(r.Command.OutOrStdout(), "User request to reject %s with state %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", name, proposedFor, namespace, name)
 		}
 	}
 	if len(messages) > 0 {

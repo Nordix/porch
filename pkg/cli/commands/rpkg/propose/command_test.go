@@ -43,7 +43,7 @@ func createScheme() (*runtime.Scheme, error) {
 }
 
 func TestCmd(t *testing.T) {
-	pkgRevName := "test-fjdos9u2nfe2f32"
+	pkgRevName := "test-rpkg-propose"
 	ns := "ns"
 	var scheme, err = createScheme()
 	if err != nil {
@@ -59,7 +59,7 @@ func TestCmd(t *testing.T) {
 			lc:     porchapi.PackageRevisionLifecycleProposed,
 		},
 		"Propose package": {
-			output: pkgRevName + " proposed\n",
+			output: "User request to propose " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
 			lc:     porchapi.PackageRevisionLifecycleDraft,
 		},
 		"Cannot propose package": {

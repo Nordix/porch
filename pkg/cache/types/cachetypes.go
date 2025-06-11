@@ -61,7 +61,7 @@ type CacheFactory interface {
 }
 
 type RepoPRChangeNotifier interface {
-	NotifyPackageRevisionChange(eventType watch.EventType, obj repository.PackageRevision) int
+	NotifyPackageRevisionChange(ctx context.Context, eventType watch.EventType, obj repository.PackageRevision) int
 }
 
 func IsACacheType(ct string) bool {

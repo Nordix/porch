@@ -17,7 +17,6 @@ package update
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -103,7 +102,7 @@ func TestPreRun(t *testing.T) {
 
 func TestUpdateCommand(t *testing.T) {
 	ctx := context.Background()
-	pkgRevName := "repo-testrevision"
+	pkgRevName := "test-rpkg-update"
 	ns := "ns"
 	upstream := porchapi.UpstreamPackage{
 		Type: porchapi.RepositoryTypeGit,
@@ -135,7 +134,7 @@ func TestUpdateCommand(t *testing.T) {
 		{
 			name:           "Successful package update",
 			args:           []string{pkgRevName},
-			expectedOutput: fmt.Sprintf("%s updated\n", pkgRevName),
+			expectedOutput: "User request to update " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
 			expectedError:  "",
 		},
 		{

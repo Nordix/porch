@@ -18,7 +18,8 @@ commands:
       - --workspace=clone-1
       - unready-edit
     stdout: |
-      git.unready-edit.clone-1 created
+      User request to clone git.unready-edit.clone-1 to repo git is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-unready git.unready-edit.clone-1"
   - args:
       - porchctl
       - rpkg
@@ -27,7 +28,9 @@ commands:
       - --workspace=copy-2
       - --replay-strategy=true
       - git.unready-edit.clone-1
-    stdout: "git.unready-edit.copy-2 created\n"
+    stdout: |
+      User request to copy git.unready-edit.clone-1 to workspace copy-2 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-unready git.unready-edit.copy-2"
   - args:
       - porchctl
       - rpkg
@@ -72,7 +75,8 @@ commands:
       - git.unready-edit.copy-2
       - /tmp/porch-e2e/pkg-unready-git.unready-edit.copy-2
     stdout: |
-      git.unready-edit.copy-2 pushed
+      User request to push git.unready-edit.copy-2 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-unready git.unready-edit.copy-2"
   - args:
       - porchctl
       - rpkg
@@ -80,7 +84,8 @@ commands:
       - --namespace=rpkg-unready
       - git.unready-edit.copy-2
     stdout: |
-      git.unready-edit.copy-2 proposed
+      User request to propose git.unready-edit.copy-2 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-unready git.unready-edit.copy-2"
     exitCode: 0
   - args:
       - porchctl
@@ -89,6 +94,7 @@ commands:
       - --namespace=rpkg-unready
       - git.unready-edit.copy-2
     stdout: |
-      git.unready-edit.copy-2 approved
+      User request to approve git.unready-edit.copy-2 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-unready git.unready-edit.copy-2"
     exitCode: 0
   

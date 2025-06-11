@@ -3,8 +3,11 @@
 package cachetypes
 
 import (
+	context "context"
+
 	repository "github.com/nephio-project/porch/pkg/repository"
 	mock "github.com/stretchr/testify/mock"
+
 	watch "k8s.io/apimachinery/pkg/watch"
 )
 
@@ -21,17 +24,17 @@ func (_m *MockRepoPRChangeNotifier) EXPECT() *MockRepoPRChangeNotifier_Expecter 
 	return &MockRepoPRChangeNotifier_Expecter{mock: &_m.Mock}
 }
 
-// NotifyPackageRevisionChange provides a mock function with given fields: eventType, obj
-func (_m *MockRepoPRChangeNotifier) NotifyPackageRevisionChange(eventType watch.EventType, obj repository.PackageRevision) int {
-	ret := _m.Called(eventType, obj)
+// NotifyPackageRevisionChange provides a mock function with given fields: ctx, eventType, obj
+func (_m *MockRepoPRChangeNotifier) NotifyPackageRevisionChange(ctx context.Context, eventType watch.EventType, obj repository.PackageRevision) int {
+	ret := _m.Called(ctx, eventType, obj)
 
 	if len(ret) == 0 {
 		panic("no return value specified for NotifyPackageRevisionChange")
 	}
 
 	var r0 int
-	if rf, ok := ret.Get(0).(func(watch.EventType, repository.PackageRevision) int); ok {
-		r0 = rf(eventType, obj)
+	if rf, ok := ret.Get(0).(func(context.Context, watch.EventType, repository.PackageRevision) int); ok {
+		r0 = rf(ctx, eventType, obj)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
@@ -45,15 +48,16 @@ type MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call struct {
 }
 
 // NotifyPackageRevisionChange is a helper method to define mock.On call
+//   - ctx context.Context
 //   - eventType watch.EventType
 //   - obj repository.PackageRevision
-func (_e *MockRepoPRChangeNotifier_Expecter) NotifyPackageRevisionChange(eventType interface{}, obj interface{}) *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call {
-	return &MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call{Call: _e.mock.On("NotifyPackageRevisionChange", eventType, obj)}
+func (_e *MockRepoPRChangeNotifier_Expecter) NotifyPackageRevisionChange(ctx interface{}, eventType interface{}, obj interface{}) *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call {
+	return &MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call{Call: _e.mock.On("NotifyPackageRevisionChange", ctx, eventType, obj)}
 }
 
-func (_c *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call) Run(run func(eventType watch.EventType, obj repository.PackageRevision)) *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call {
+func (_c *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call) Run(run func(ctx context.Context, eventType watch.EventType, obj repository.PackageRevision)) *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(watch.EventType), args[1].(repository.PackageRevision))
+		run(args[0].(context.Context), args[1].(watch.EventType), args[2].(repository.PackageRevision))
 	})
 	return _c
 }
@@ -63,7 +67,7 @@ func (_c *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call) Return(_a0 
 	return _c
 }
 
-func (_c *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call) RunAndReturn(run func(watch.EventType, repository.PackageRevision) int) *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call {
+func (_c *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call) RunAndReturn(run func(context.Context, watch.EventType, repository.PackageRevision) int) *MockRepoPRChangeNotifier_NotifyPackageRevisionChange_Call {
 	_c.Call.Return(run)
 	return _c
 }

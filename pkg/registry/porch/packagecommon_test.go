@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
@@ -163,6 +164,15 @@ func (f *fakeCaDEngine) UpdatePackage(ctx context.Context, repositoryObj *config
 func (f *fakeCaDEngine) DeletePackage(ctx context.Context, repositoryObj *configapi.Repository, obj repository.Package) error {
 	return nil
 }
+
+func (f *fakeCaDEngine) SavePackageRevisionJob(ctx context.Context, newApiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision, errMessage string) error {
+	return nil
+}
+
+func (f *fakeCaDEngine) GetCtxTimeout() time.Duration {
+	return 3 * time.Minute
+}
+
 func TestWatchPackages_CallsCallback(t *testing.T) {
 	fakeWatcher := &fakeWatcherManager{}
 	fakeCad := &fakeCaDEngine{watcherManager: fakeWatcher}

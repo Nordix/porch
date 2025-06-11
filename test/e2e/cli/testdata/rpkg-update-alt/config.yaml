@@ -20,7 +20,9 @@ commands:
       - --workspace=v1
       - --strategy=copy-merge
       - deployment
-    stdout: "git.deployment.v1 created\n"
+    stdout: |
+      User request to clone git.deployment.v1 to repo git is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update-alt git.deployment.v1"
   - args:
       - porchctl
       - rpkg
@@ -51,7 +53,9 @@ commands:
       - git.deployment.v1
       - --namespace=rpkg-update-alt
       - /tmp/porch-e2e/local-pack-deployment
-    stdout: "git.deployment.v1 pushed\n"
+    stdout: |
+      User request to push git.deployment.v1 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update-alt git.deployment.v1"
   - args:
       - porchctl
       - rpkg
@@ -59,7 +63,9 @@ commands:
       - git.deployment.v1
       - --namespace=rpkg-update-alt
       - --revision=2
-    stdout: "git.deployment.v1 updated\n"
+    stdout: |
+      User request to update git.deployment.v1 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update-alt git.deployment.v1"
   - args:
       - porchctl
       - rpkg

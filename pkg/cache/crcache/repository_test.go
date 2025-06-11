@@ -54,7 +54,7 @@ func TestCachedRepoRefresh(t *testing.T) {
 	repoClosePRDCall := mockRepo.EXPECT().ClosePackageRevisionDraft(mock.Anything, mock.Anything, 1).Return(nil, errors.New("create draft error")).Maybe()
 
 	metaListCall := mockMeta.EXPECT().List(mock.Anything, mock.Anything).Return(metaMap, nil).Maybe()
-	mockNotifier.EXPECT().NotifyPackageRevisionChange(mock.Anything, mock.Anything).Return(0).Maybe()
+	mockNotifier.EXPECT().NotifyPackageRevisionChange(mock.Anything, mock.Anything, mock.Anything).Return(0).Maybe()
 
 	cr := newRepository("my-cached-repo", &repoSpec, mockRepo, mockMeta, options)
 	assert.Equal(t, cr.id, "my-cached-repo")

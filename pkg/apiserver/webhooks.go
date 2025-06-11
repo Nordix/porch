@@ -73,6 +73,7 @@ type WebhookConfig struct {
 	Port             int32
 	CertStorageDir   string
 	CertManWebhook   bool
+	timeout          int32
 }
 
 // newWebhookConfig creates a new WebhookConfig object filled with values read from environment variables
@@ -277,6 +278,9 @@ func createValidatingWebhook(ctx context.Context, cfg *WebhookConfig, caCert []b
 
 	klog.Infof("Creating validating webhook for %s:%d", cfg.Host, cfg.Port)
 
+	// Set max timeout value for ValidatingWebhooks
+	cfg.timeout = 30
+
 	kubeConfig := ctrl.GetConfigOrDie()
 	kubeClient, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
@@ -294,7 +298,8 @@ func createValidatingWebhook(ctx context.Context, cfg *WebhookConfig, caCert []b
 			Name: validationCfgName,
 		},
 		Webhooks: []admissionregistrationv1.ValidatingWebhook{{
-			Name: "packagerevdeletion.google.com",
+			TimeoutSeconds: &cfg.timeout,
+			Name:           "packagerevdeletion.google.com",
 			ClientConfig: admissionregistrationv1.WebhookClientConfig{
 				CABundle: caCert, // CA bundle created earlier
 			},
@@ -424,7 +429,7 @@ func runWebhookServer(ctx context.Context, cfg *WebhookConfig) error {
 		Addr: fmt.Sprintf(":%d", cfg.Port),
 		TLSConfig: &tls.Config{
 			GetCertificate: getCertificate,
-			MinVersion: tls.VersionTLS12,
+			MinVersion:     tls.VersionTLS12,
 		},
 		ReadHeaderTimeout: 10 * time.Second,
 	}

@@ -17,7 +17,8 @@ commands:
       - --workspace=push
       - test-package
     stdout: |
-      git.test-package.push created
+      User request to init git.test-package.push is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-push git.test-package.push"
   - args:
       - porchctl
       - rpkg
@@ -144,7 +145,8 @@ commands:
       - git.test-package.push
       - /tmp/porch-e2e/rpkg-push-git.test-package.push
     stdout: |
-      git.test-package.push pushed
+      User request to push git.test-package.push is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-push git.test-package.push"
   - args:
       - porchctl
       - rpkg
