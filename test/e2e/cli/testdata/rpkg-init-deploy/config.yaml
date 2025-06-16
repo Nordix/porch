@@ -32,7 +32,8 @@ commands:
       - --workspace=deploy
       - deploy-package
     stdout: |
-      git.deploy-package.deploy created
+      User request to init git.deploy-package.deploy is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-init-deploy git.deploy-package.deploy"
   - args:
       - porchctl
       - rpkg

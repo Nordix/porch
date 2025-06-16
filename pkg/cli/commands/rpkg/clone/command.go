@@ -125,7 +125,7 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 		return err
 	}
 	if pkgExists {
-		return fmt.Errorf("`clone` cannot create a new revision for package %q that already exists in repo %q; make subsequent revisions using `copy`",
+		return fmt.Errorf("`clone` cannot create a new revision for package %q that already exists in repo %q; try with a unique package name or make subsequent revisions using `copy`",
 			target, r.repository)
 	}
 
@@ -211,7 +211,7 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 		return errors.E(op, err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "%s created\n", pr.Name)
+	fmt.Fprintf(cmd.OutOrStdout(), "User request to clone %s to repo %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Spec.RepositoryName, pr.Namespace, pr.Name)
 	return nil
 }
 

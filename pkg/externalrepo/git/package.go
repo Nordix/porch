@@ -43,6 +43,7 @@ type gitPackageRevision struct {
 	tasks     []v1alpha1.Task
 	metadata  metav1.ObjectMeta
 	mutex     sync.Mutex
+	err       string
 }
 
 var _ repository.PackageRevision = &gitPackageRevision{}
@@ -69,6 +70,18 @@ func (p *gitPackageRevision) Key() repository.PackageRevisionKey {
 
 func (p *gitPackageRevision) SetRepository(repo repository.Repository) {
 	p.repo = repo.(*gitRepository)
+}
+
+func (p *gitPackageRevision) SetError(ctx context.Context, err string) {
+	_, span := tracer.Start(ctx, "gitPackageRevision::SetError", trace.WithAttributes())
+	defer span.End()
+	p.err = err
+}
+
+func (p *gitPackageRevision) GetError(ctx context.Context) string {
+	_, span := tracer.Start(ctx, "gitPackageRevision::GetError", trace.WithAttributes())
+	defer span.End()
+	return p.err
 }
 
 func (p *gitPackageRevision) GetPackageRevision(ctx context.Context) (*v1alpha1.PackageRevision, error) {
@@ -101,6 +114,7 @@ func (p *gitPackageRevision) GetPackageRevision(ctx context.Context) (*v1alpha1.
 		UpstreamLock: lockCopy,
 		Deployment:   p.repo.deployment,
 		Conditions:   repository.ToApiConditions(kf),
+		Err:          p.GetError(ctx),
 	}
 
 	if v1alpha1.LifecycleIsPublished(p.Lifecycle(ctx)) {

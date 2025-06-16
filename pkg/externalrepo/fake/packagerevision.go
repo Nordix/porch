@@ -53,6 +53,13 @@ func (c *FakePackageRevision) UID() types.UID {
 func (c *FakePackageRevision) SetRepository(repo repository.Repository) {
 }
 
+func (c *FakePackageRevision) SetError(ctx context.Context, err string) {
+}
+
+func (c *FakePackageRevision) GetError(ctx context.Context) string {
+	return ""
+}
+
 var _ repository.PackageRevision = &FakePackageRevision{}
 
 // ToMainPackageRevision implements repository.PackageRevision.

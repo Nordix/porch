@@ -127,6 +127,10 @@ type PackageRevisionStatus struct {
 	Deployment bool `json:"deployment,omitempty"`
 
 	Conditions []Condition `json:"conditions,omitempty"`
+
+	// Update with error message if package revision update fails.
+	// Only in memory and it doesn't persist after pod restarts.
+	Err string `json:"err,omitempty"`
 }
 
 type TaskType string

@@ -97,3 +97,7 @@ func RemoveRevisionMetadata(prr *api.PackageRevisionResources) error {
 	delete(prr.Spec.Resources, kptfilev1.RevisionMetaDataFileName)
 	return nil
 }
+
+func CreatePackageRevisionName(repository, packageName, workspace string) string {
+	return fmt.Sprintf("%s.%s.%s", repository, packageName, workspace)
+}

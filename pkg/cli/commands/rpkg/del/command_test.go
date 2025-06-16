@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -43,41 +44,94 @@ func createScheme() (*runtime.Scheme, error) {
 }
 
 func TestCmd(t *testing.T) {
-	pkgRevName := "test-fjdos9u2nfe2f32"
+	pkgRevName := "test-rpkg-del"
+	ns := "ns"
 	var scheme, err = createScheme()
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 	testCases := map[string]struct {
-		output  string
-		wantErr bool
-		ns      string
+		output     string
+		wantErr    bool
+		ns         string
+		fakeclient client.WithWatch
 	}{
 		"Package not found in ns": {
-			output:  pkgRevName + " failed (packagerevisions.porch.kpt.dev \"" + pkgRevName + "\" not found)\n",
+			output:  "test-rpkg-del failed (packagerevisions.porch.kpt.dev \"" + pkgRevName + "\" not found)\n",
 			ns:      "doesnotexist",
 			wantErr: true,
+			fakeclient: fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(&porchapi.PackageRevision{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "PackageRevision",
+						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
+					},
+					Spec: porchapi.PackageRevisionSpec{
+						Lifecycle: porchapi.PackageRevisionLifecycleDraft,
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: ns,
+						Name:      pkgRevName,
+					}}).Build(),
 		},
-		"delete package": {
-			output: pkgRevName + " deleted\n",
-			ns:     "ns",
+		"wrong lifecycle": {
+			wantErr: true,
+			output:  "test-rpkg-del failed: cannot delete test-rpkg-del with lifecycle '" + string(porchapi.PackageRevisionLifecyclePublished) + "'\n",
+			ns:      ns,
+			fakeclient: fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(&porchapi.PackageRevision{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "PackageRevision",
+						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
+					},
+					Spec: porchapi.PackageRevisionSpec{
+						Lifecycle: porchapi.PackageRevisionLifecyclePublished,
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: ns,
+						Name:      pkgRevName,
+					}}).Build(),
+		},
+		"delete Draft package": {
+			output: "User request to del " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
+			ns:     ns,
+			fakeclient: fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(&porchapi.PackageRevision{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "PackageRevision",
+						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
+					},
+					Spec: porchapi.PackageRevisionSpec{
+						Lifecycle: porchapi.PackageRevisionLifecycleDraft,
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: ns,
+						Name:      pkgRevName,
+					}}).Build(),
+		},
+		"delete DeletionProposed package": {
+			output: "User request to del " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
+			ns:     ns,
+			fakeclient: fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(&porchapi.PackageRevision{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "PackageRevision",
+						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
+					},
+					Spec: porchapi.PackageRevisionSpec{
+						Lifecycle: porchapi.PackageRevisionLifecycleDeletionProposed,
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: ns,
+						Name:      pkgRevName,
+					}}).Build(),
 		},
 	}
 
 	for tn := range testCases {
 		tc := testCases[tn]
 		t.Run(tn, func(t *testing.T) {
-			c := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithObjects(&porchapi.PackageRevision{
-					TypeMeta: metav1.TypeMeta{
-						Kind:       "PackageRevision",
-						APIVersion: porchapi.SchemeGroupVersion.Identifier(),
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "ns",
-						Name:      pkgRevName,
-					}}).Build()
+			c := tc.fakeclient
 
 			cmd := &cobra.Command{}
 			o := os.Stdout

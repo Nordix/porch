@@ -168,7 +168,7 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 			r.printFnResult(result, printOpt)
 		}
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "%s pushed\n", packageName)
+	fmt.Fprintf(cmd.OutOrStdout(), "User request to push %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", packageName, pkgResources.Namespace, packageName)
 	return nil
 }
 

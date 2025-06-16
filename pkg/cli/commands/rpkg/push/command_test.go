@@ -31,9 +31,9 @@ import (
 )
 
 func TestCmd(t *testing.T) {
-	pkgRevName := "test-fjdos9u2nfe2f32"
+	pkgRevName := "test-rpkg-push"
 	ns := "ns"
-	pkgDir := "testdata/test-fjdos9u2nfe2f32"
+	pkgDir := "testdata/test-rpkg-push"
 
 	scheme, err := createScheme()
 	if err != nil {
@@ -46,7 +46,7 @@ func TestCmd(t *testing.T) {
 		wantErr bool
 	}{
 		"Push package": {
-			output: pkgRevName + " pushed\n",
+			output: "User request to push " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
 			args:   []string{pkgRevName, pkgDir},
 		},
 		"Args not provided": {
