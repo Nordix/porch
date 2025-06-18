@@ -86,6 +86,13 @@ var RegExamples = `
   $ porchctl repo register https://github.com/platkrm/blueprints-deployment.git --name=foo --deployment --namespace=bar
 `
 
+var RefreshShort = `Refresh the repository cache.`
+
+var RefreshExamples = `
+  # Refresh the repository cache of all repositories registered in Porch 
+  $ porchctl repo refresh
+`
+
 var UnregShort = `Unregister a repository.`
 var UnregLong = `
   porchctl repo unreg REPOSITORY_NAME [flags]

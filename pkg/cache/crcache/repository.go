@@ -83,7 +83,7 @@ func newRepository(id string, repoSpec *configapi.Repository, repo repository.Re
 }
 
 func (r *cachedRepository) Refresh(ctx context.Context) error {
-
+	klog.Infof("repo %s: refresh started", r.id)
 	_, _, err := r.refreshAllCachedPackages(ctx)
 
 	return err
@@ -541,6 +541,7 @@ func (r *cachedRepository) refreshAllCachedPackages(ctx context.Context) (map[re
 	lastVer := r.lastVersion
 	r.mutex.RUnlock()
 	if curVer == lastVer {
+		klog.Infof("repo %s: cache is up-to-date", r.id)
 		return r.cachedPackages, r.cachedPackageRevisions, nil
 	}
 

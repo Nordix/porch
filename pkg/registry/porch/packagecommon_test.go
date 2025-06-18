@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
@@ -163,6 +164,9 @@ func (f *fakeCaDEngine) UpdatePackage(ctx context.Context, repositoryObj *config
 func (f *fakeCaDEngine) DeletePackage(ctx context.Context, repositoryObj *configapi.Repository, obj repository.Package) error {
 	return nil
 }
+
+func (f *fakeCaDEngine) ForceRefreshCache(ctx context.Context) {
+}
 func TestWatchPackages_CallsCallback(t *testing.T) {
 	fakeWatcher := &fakeWatcherManager{}
 	fakeCad := &fakeCaDEngine{watcherManager: fakeWatcher}
@@ -211,6 +215,11 @@ type errorWatcherManager struct{}
 func (e *errorWatcherManager) WatchPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback engine.ObjectWatcher) error {
 	return fmt.Errorf("simulated error")
 }
+
+func (f *fakeCaDEngine) GetCtxTimeout() time.Duration {
+	return 3 * time.Minute
+}
+
 func TestWatchPackages_ErrorPath(t *testing.T) {
 	fakeCad := &fakeCaDEngine{watcherManager: &errorWatcherManager{}}
 	pc := &packageCommon{cad: fakeCad}

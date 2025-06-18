@@ -54,6 +54,7 @@ type Cache interface {
 	CloseRepository(ctx context.Context, repositorySpec *configapi.Repository, allRepos []configapi.Repository) error
 	GetRepositories(ctx context.Context) []*configapi.Repository
 	UpdateRepository(ctx context.Context, repositorySpec *configapi.Repository) error
+	ForceRefreshCache(ctx context.Context) error
 }
 
 type CacheFactory interface {

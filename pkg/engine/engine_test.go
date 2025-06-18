@@ -361,3 +361,8 @@ func (m *mockCache) UpdateRepository(ctx context.Context, repositoryObj *configa
 	args := m.Called(ctx, repositoryObj)
 	return args.Error(0)
 }
+
+func (m *mockCache) ForceRefreshCache(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}

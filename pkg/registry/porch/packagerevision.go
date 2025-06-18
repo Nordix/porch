@@ -73,6 +73,14 @@ func (r *packageRevisions) List(ctx context.Context, options *metainternalversio
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisions::List", trace.WithAttributes())
 	defer span.End()
 
+	// Refresh the cache if requested - Workaround
+	if options.Continue == "refresh-cache" {
+		//create dummy object to return
+		result := &api.PackageRevisionList{}
+		go r.forceRefreshCache()
+		return result, nil
+	}
+
 	result := &api.PackageRevisionList{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PackageRevisionList",
@@ -97,6 +105,13 @@ func (r *packageRevisions) List(ctx context.Context, options *metainternalversio
 	}
 
 	return result, nil
+}
+
+func (r *packageRevisions) forceRefreshCache() {
+	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
+	defer cancel()
+	r.cad.ForceRefreshCache(goCtx)
+
 }
 
 // Get implements the Getter interface

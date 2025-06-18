@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
@@ -50,7 +51,8 @@ type CaDEngine interface {
 	CreatePackageRevision(ctx context.Context, repositoryObj *configapi.Repository, obj *api.PackageRevision, parent repository.PackageRevision) (repository.PackageRevision, error)
 	UpdatePackageRevision(ctx context.Context, version int, repositoryObj *configapi.Repository, oldPackage repository.PackageRevision, old, new *api.PackageRevision, parent repository.PackageRevision) (repository.PackageRevision, error)
 	DeletePackageRevision(ctx context.Context, repositoryObj *configapi.Repository, obj repository.PackageRevision) error
-
+	ForceRefreshCache(ctx context.Context)
+	GetCtxTimeout() time.Duration
 	ListPackages(ctx context.Context, repositorySpec *configapi.Repository, filter repository.ListPackageFilter) ([]repository.Package, error)
 	CreatePackage(ctx context.Context, repositoryObj *configapi.Repository, obj *api.PorchPackage) (repository.Package, error)
 	UpdatePackage(ctx context.Context, repositoryObj *configapi.Repository, oldPackage repository.Package, old, new *api.PorchPackage) (repository.Package, error)
@@ -76,6 +78,7 @@ type cadEngine struct {
 	userInfoProvider repository.UserInfoProvider
 	watcherManager   *watcherManager
 	taskHandler      task.TaskHandler
+	CtxTimeout       time.Duration
 }
 
 var _ CaDEngine = &cadEngine{}
@@ -85,11 +88,21 @@ func (cad *cadEngine) ObjectCache() WatcherManager {
 	return cad.watcherManager
 }
 
+func (cad *cadEngine) GetCtxTimeout() time.Duration {
+	return cad.CtxTimeout
+}
+
 func (cad *cadEngine) OpenRepository(ctx context.Context, repositorySpec *configapi.Repository) (repository.Repository, error) {
 	ctx, span := tracer.Start(ctx, "cadEngine::OpenRepository", trace.WithAttributes())
 	defer span.End()
 
 	return cad.cache.OpenRepository(ctx, repositorySpec)
+}
+
+func (cad *cadEngine) ForceRefreshCache(ctx context.Context) {
+	if err := cad.cache.ForceRefreshCache(ctx); err != nil {
+		klog.Error(err)
+	}
 }
 
 func (cad *cadEngine) ListPackageRevisions(ctx context.Context, repositorySpec *configapi.Repository, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error) {

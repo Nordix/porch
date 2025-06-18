@@ -127,3 +127,13 @@ func (c *Cache) GetRepositories(ctx context.Context) []*configapi.Repository {
 	}
 	return repoSlice
 }
+
+func (c *Cache) ForceRefreshCache(ctx context.Context) error {
+
+	for _, repo := range c.repositories {
+		if err := repo.Refresh(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
