@@ -642,7 +642,7 @@ func (t *PorchSuite) TestEditPackageRevision() {
 	t.WaitUntilObjectDeleted(
 		packageRevisionGVK,
 		types.NamespacedName{
-			Name:      otherPackageName,
+			Name:      packageName,
 			Namespace: t.Namespace,
 		},
 		10*time.Second,
