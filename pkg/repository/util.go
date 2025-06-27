@@ -97,3 +97,16 @@ func ComposePkgObjName(key PackageKey) string {
 func ComposePkgRevObjName(key PackageRevisionKey) string {
 	return util.ComposePkgRevObjName(key.PkgKey.RepoKey.Name, key.PkgKey.Path, key.PkgKey.Package, key.WorkspaceName)
 }
+
+func ParseObjToPkgRevKey(apiPkgRev *api.PackageRevision) PackageRevisionKey {
+	return PackageRevisionKey{
+		PkgKey: PackageKey{
+			RepoKey: RepositoryKey{
+				Namespace: apiPkgRev.Namespace,
+				Name:      apiPkgRev.Spec.RepositoryName,
+			},
+			Package: apiPkgRev.Spec.PackageName},
+		Revision:      apiPkgRev.Spec.Revision,
+		WorkspaceName: apiPkgRev.Spec.WorkspaceName,
+	}
+}

@@ -357,6 +357,7 @@ func (t *TestSuite) delete(obj client.Object, opts []client.DeleteOption, eh Err
 	if err := t.Client.Delete(t.GetContext(), obj, opts...); err != nil {
 		eh("failed to delete resource %s: %v", DebugFormat(obj), err)
 	}
+
 }
 
 func (t *TestSuite) update(obj client.Object, opts []client.UpdateOption, eh ErrorHandler) {

@@ -210,6 +210,15 @@ func (m *mockPackageRevision) SetRepository(repo repository.Repository) {
 	m.Called(repo)
 }
 
+func (m *mockPackageRevision) SetError(ctx context.Context, err string) {
+	m.Called(err)
+}
+
+func (m *mockPackageRevision) GetError(ctx context.Context) string {
+	args := m.Called()
+	return args.String(0)
+}
+
 func TestCreatePackageRevisionRollback(t *testing.T) {
 	tests := []struct {
 		name          string

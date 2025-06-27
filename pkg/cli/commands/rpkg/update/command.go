@@ -127,7 +127,7 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return errors.E(op, err)
 		}
-		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s updated\n", pr.Name); err != nil {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "User request to update %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, pr.Namespace, pr.Name); err != nil {
 			return errors.E(op, err)
 		}
 	} else if err := r.discoverUpdates(cmd, args); err != nil {

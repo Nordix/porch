@@ -180,6 +180,11 @@ type PackageRevision interface {
 	// Set the repository of this package revision
 	SetRepository(repository Repository)
 
+	// SetError sets the error state of the package revision
+	SetError(ctx context.Context, err string)
+
+	GetError(ctx context.Context) string
+
 	// Lifecycle returns the current lifecycle state of the package.
 	Lifecycle(ctx context.Context) v1alpha1.PackageRevisionLifecycle
 

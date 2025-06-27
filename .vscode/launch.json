@@ -33,6 +33,8 @@
             "env": {
                 "CERT_STORAGE_DIR": "${workspaceFolder}/.build/pki/tmp",
                 "WEBHOOK_HOST": "localhost",
+                // "OTEL": "otel://${env:OTEL_IP}:4317", // Uncomment to enable tracing
+                // "OTEL_SERVICE_NAME": "porch-server", // Uncomment to enable tracing
                 "GOOGLE_API_GO_EXPERIMENTAL_DISABLE_NEW_AUTH_LIB": "true",
                 // "CGO_ENABLED": "1"   // Enables Race Condition Monitoring
             },
