@@ -633,8 +633,30 @@ func (t *PorchSuite) TestEditPackageRevision() {
 			},
 		},
 	}
+	// This invalid create will sill create the draft for a small period of time until the error is discovered
 	if err := t.Client.Create(t.GetContext(), editPR); err == nil {
 		t.Fatalf("Expected error for source revision not being published")
+	}
+
+	// We await for this invalid packageRevision creation to be deleted then proceed else timeout after 10 seconds
+	var existingPR porchapi.PackageRevision
+	err := t.Client.Get(t.GetContext(),
+		client.ObjectKey{
+			Namespace: t.Namespace,
+			Name:      repository + "." + packageName + "." + workspace2,
+		},
+		&existingPR,
+	)
+
+	if err == nil {
+		t.WaitUntilObjectDeleted(
+			packageRevisionGVK,
+			types.NamespacedName{
+				Name:      repository + "." + packageName + "." + workspace2,
+				Namespace: t.Namespace,
+			},
+			10*time.Second,
+		)
 	}
 
 	// Publish the source package to make it a valid source for edit.
