@@ -107,6 +107,8 @@ func (r *cachedRepository) Version(ctx context.Context) (string, error) {
 }
 
 func (r *cachedRepository) ListPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error) {
+	ctx, span := tracer.Start(ctx, "cachedRepository::VersListPackageRevisionsion", trace.WithAttributes())
+	defer span.End()
 	packages, err := r.getPackageRevisions(ctx, filter, false)
 	if err != nil {
 		return nil, err
@@ -144,7 +146,8 @@ func (r *cachedRepository) getRefreshError() error {
 }
 
 func (r *cachedRepository) getPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, forceRefresh bool) ([]repository.PackageRevision, error) {
-
+	ctx, span := tracer.Start(ctx, "cachedRepository::getPackageRevisions", trace.WithAttributes())
+	defer span.End()
 	_, packageRevisions, err := r.getCachedPackages(ctx, forceRefresh)
 	if err != nil {
 		return nil, err
@@ -167,6 +170,8 @@ func (r *cachedRepository) getPackages(ctx context.Context, filter repository.Li
 
 // getCachedPackages returns cachedPackages; fetching it if not cached or if forceRefresh.
 func (r *cachedRepository) getCachedPackages(ctx context.Context, forceRefresh bool) (map[repository.PackageKey]*cachedPackage, map[repository.PackageRevisionKey]*cachedPackageRevision, error) {
+	ctx, span := tracer.Start(ctx, "cachedRepository::getCachedPackages", trace.WithAttributes())
+	defer span.End()
 	r.mutex.RLock()
 	packages := r.cachedPackages
 	packageRevisions := r.cachedPackageRevisions

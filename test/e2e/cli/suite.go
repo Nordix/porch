@@ -124,7 +124,7 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 		KubectlDeleteNamespace(t, tc.TestCase)
 		deleteRemoteTestRepo(t, tc.TestCase)
 	})
-	
+
 	createRemoteTestRepo(t, tc.TestCase)
 
 	if tc.Repository != "" {
@@ -209,6 +209,11 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 			} else {
 				t.Fatalf("Failed to get repo name for registration: %s", tc.TestCase)
 			}
+		}
+
+		if command.ExitCode == 0 {
+
+			KubectlCheckPackageLifecycle(t, cmd.Args, command.Stdout, tc.TestCase)
 		}
 	}
 
@@ -360,7 +365,7 @@ func exitCode(exit error) int {
 	return 0
 }
 
-func deleteRemoteTestRepo (t *testing.T, testcaseName string) {
+func deleteRemoteTestRepo(t *testing.T, testcaseName string) {
 
 	apiURL := fmt.Sprintf("http://localhost:3000/api/v1/repos/%s/%s", testGitUserOrg, testcaseName)
 
@@ -385,7 +390,7 @@ func deleteRemoteTestRepo (t *testing.T, testcaseName string) {
 	}
 }
 
-func createRemoteTestRepo (t *testing.T, testcaseName string) {
+func createRemoteTestRepo(t *testing.T, testcaseName string) {
 
 	tmpPath := t.TempDir()
 	repo, err := git.PlainInit(tmpPath, false)
@@ -400,7 +405,7 @@ func createRemoteTestRepo (t *testing.T, testcaseName string) {
 		t.Fatalf("Failed to set refs: %v", err)
 	}
 
-	err = os.WriteFile(tmpPath + "/README.md", []byte("# Test Go-Git Repo\nCreated programmatically."), 0644)
+	err = os.WriteFile(tmpPath+"/README.md", []byte("# Test Go-Git Repo\nCreated programmatically."), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write to file: %v", err)
 	}
@@ -433,7 +438,7 @@ func createRemoteTestRepo (t *testing.T, testcaseName string) {
 	err = repo.Push(&git.PushOptions{
 		RemoteName: "origin",
 		Auth: &http.BasicAuth{
-			Username: testGitUserOrg, 
+			Username: testGitUserOrg,
 			Password: testGitPassword,
 		},
 		RequireRemoteRefs: []config.RefSpec{},

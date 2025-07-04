@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/nephio-project/porch/pkg/repository"
+	"go.opentelemetry.io/otel/trace"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/klog/v2"
 )
@@ -61,6 +62,8 @@ type watcher struct {
 
 // WatchPackageRevision adds a change-listener that will be called for all changes.
 func (r *watcherManager) WatchPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback ObjectWatcher) error {
+	ctx, span := tracer.Start(ctx, "watcherManager::WatchPackageRevisions", trace.WithAttributes())
+	defer span.End()
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 

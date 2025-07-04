@@ -24,6 +24,7 @@ import (
 	"github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
+	"github.com/nephio-project/porch/pkg/dbhandler"
 	"github.com/nephio-project/porch/pkg/externalrepo"
 	"github.com/nephio-project/porch/pkg/externalrepo/fake"
 	externalrepotypes "github.com/nephio-project/porch/pkg/externalrepo/types"
@@ -179,7 +180,7 @@ func TestDBRepositorySync(t *testing.T) {
 func TestDBRepositorCorner(t *testing.T) {
 	switchToMockSQL(t)
 
-	mockSQL := dbHandler.db.(*mocksql.MockdbSQLInterface)
+	mockSQL := dbhandler.DbHandler.Db.(*mocksql.MockdbSQLInterface)
 	mockSQL.EXPECT().Exec(
 		mock.Anything,
 		mock.Anything,

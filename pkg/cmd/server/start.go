@@ -65,7 +65,7 @@ type PorchServerOptions struct {
 	FunctionRunnerAddress            string
 	LocalStandaloneDebugging         bool // Enables local standalone running/debugging of the apiserver.
 	MaxRequestBodySize               int
-	RepoSyncFrequency                time.Duration
+	RepoSyncFrequency, CtxTimeout    time.Duration
 	SharedInformerFactory            informers.SharedInformerFactory
 	StdOut                           io.Writer
 	StdErr                           io.Writer
@@ -259,6 +259,7 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 	config := &apiserver.Config{
 		GenericConfig: serverConfig,
 		ExtraConfig: apiserver.ExtraConfig{
+			CtxTimeout:            o.CtxTimeout,
 			CoreAPIKubeconfigPath: o.CoreAPIKubeconfigPath,
 			GRPCRuntimeOptions: engine.GRPCRuntimeOptions{
 				FunctionRunnerAddress: o.FunctionRunnerAddress,
@@ -327,6 +328,7 @@ func (o *PorchServerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&o.DisableValidatingAdmissionPolicy, "disable-validating-admissions-policy", true, "Determine whether to (dis|en)able the Validating Admission Policy, which requires k8s version >= v1.30")
 	fs.StringVar(&o.FunctionRunnerAddress, "function-runner", "", "Address of the function runner gRPC service.")
 	fs.IntVar(&o.MaxRequestBodySize, "max-request-body-size", 6*1024*1024, "Maximum size of the request body in bytes. Keep this in sync with function-runner's corresponding argument.")
+	fs.DurationVar(&o.CtxTimeout, "ctx-request-timeout", 3*time.Minute, "Async go routine ctx timeout in seconds.")
 	fs.DurationVar(&o.RepoSyncFrequency, "repo-sync-frequency", 10*time.Minute, "Frequency in seconds at which registered repositories will be synced and the background job repository refresh runs.")
 	fs.BoolVar(&o.UseUserDefinedCaBundle, "use-user-cabundle", false, "Determine whether to use a user-defined CaBundle for TLS towards the repository system.")
 }

@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +32,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -106,6 +104,7 @@ func (t *PorchSuite) TestGitRepository() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches("git", "test-bucket", "workspace", porchapi.PackageRevisionLifecycleDraft)
 
 	// Get package resources
 	var resources porchapi.PackageRevisionResources
@@ -188,6 +187,7 @@ func (t *PorchSuite) TestCloneFromUpstream() {
 	}
 
 	t.CreateF(clonedPr)
+	clonedPr = t.WaitUntilPackageRevisionLifecycleMatches("downstream", "istions", "test-workspace", porchapi.PackageRevisionLifecycleDraft)
 
 	// Get istions resources
 	var istions porchapi.PackageRevisionResources
@@ -244,7 +244,7 @@ func (t *PorchSuite) TestConcurrentClones() {
 	const (
 		upstreamRepository   = "upstream"
 		upstreamPackage      = "basens"
-		downstreamRepository = "downstream"
+		downstreamRepository = "downstream-concurrent"
 		downstreamPackage    = "istions-concurrent"
 		workspace            = "test-workspace"
 	)
@@ -286,13 +286,14 @@ func (t *PorchSuite) TestConcurrentClones() {
 		return t.Client.Create(t.GetContext(), clonedPr)
 	}
 	results := RunInParallel(cloneFunction, cloneFunction)
-
 	assert.Contains(t, results, nil, "expected one request to succeed, but did not happen - results: %v", results)
 
-	conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	t.WaitUntilPackageRevisionLifecycleMatches(downstreamRepository, downstreamPackage, workspace, porchapi.PackageRevisionLifecycleDraft)
 }
 
 func (t *PorchSuite) TestInitEmptyPackage() {
@@ -324,6 +325,7 @@ func (t *PorchSuite) TestInitEmptyPackage() {
 		},
 	}
 	t.CreateF(pr)
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Get the package
 	var newPackage porchapi.PackageRevisionResources
@@ -363,17 +365,16 @@ func (t *PorchSuite) TestConcurrentInits() {
 	}
 	results := RunInParallel(creationFunction, creationFunction)
 
-	// one client succeeds; one receives a conflict error
-	expectedResultCount := 2
-	actualResultCount := len(results)
-	assert.Equal(t, expectedResultCount, actualResultCount, "expected %d results but was %d", expectedResultCount, actualResultCount)
-
+	// Two clients at the same time try to run the Create operation for the clone
 	assert.Contains(t, results, nil, "expected one request to succeed, but did not happen - results: %v", results)
 
-	conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
+
 }
 
 func (t *PorchSuite) TestInitTaskPackage() {
@@ -416,6 +417,7 @@ func (t *PorchSuite) TestInitTaskPackage() {
 		},
 	}
 	t.CreateF(pr)
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Get the package
 	var newPackage porchapi.PackageRevisionResources
@@ -489,6 +491,7 @@ func (t *PorchSuite) TestCloneIntoDeploymentRepository() {
 		},
 	}
 	t.CreateF(pr)
+	t.WaitUntilPackageRevisionLifecycleMatches(downstreamRepository, downstreamPackage, downstreamWorkspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Get istions resources
 	var istions porchapi.PackageRevisionResources
@@ -579,6 +582,7 @@ func (t *PorchSuite) TestEditPackageRevision() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Create a new revision, but with a different package as the source.
 	// This is not allowed.
@@ -607,7 +611,7 @@ func (t *PorchSuite) TestEditPackageRevision() {
 		},
 	}
 	if err := t.Client.Create(t.GetContext(), invalidEditPR); err == nil {
-		t.Fatalf("Expected error for source revision being from different package")
+		t.MustNotExist(invalidEditPR)
 	}
 
 	// Create a new revision of the package with a source that is a revision
@@ -638,29 +642,28 @@ func (t *PorchSuite) TestEditPackageRevision() {
 	}
 	// This invalid create will still create the draft for a small period of time until the error is discovered
 	if err := t.Client.Create(t.GetContext(), editPR); err == nil {
-		t.Fatalf("Expected error for source revision not being published")
+		// Cannot copy a non published package
+		t.MustNotExist(editPR)
 	}
 
 	// Publish the source package to make it a valid source for edit.
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	// Approve the package
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	t.UpdateApprovalF(pr, metav1.UpdateOptions{})
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	// Changing the workspace of the EditPR to avoid clashing with invalid create negative test above
 	editPR.Spec.WorkspaceName = workspaceToAvoidCreationClash
 
 	// Create a new revision with the edit task.
 	t.CreateF(editPR)
-
+	pkgRev := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspaceToAvoidCreationClash, porchapi.PackageRevisionLifecycleDraft)
 	// Check its task list
-	var pkgRev porchapi.PackageRevision
-	t.GetF(client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      editPR.Name,
-	}, &pkgRev)
+
 	tasks := pkgRev.Spec.Tasks
 	for _, tsk := range tasks {
 		t.Logf("Task: %s", tsk.Type)
@@ -670,7 +673,7 @@ func (t *PorchSuite) TestEditPackageRevision() {
 
 func (t *PorchSuite) TestConcurrentEdits() {
 	const (
-		repository  = "edit-test"
+		repository  = "edit-test-concurrent"
 		packageName = "simple-package-concurrent"
 		workspace   = "workspace"
 		workspace2  = "workspace2"
@@ -681,12 +684,16 @@ func (t *PorchSuite) TestConcurrentEdits() {
 	// Create a new package (via init)
 	pr := t.CreatePackageSkeleton(repository, packageName, workspace)
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Publish and approve the source package to make it a valid source for edit.
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
+
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	t.UpdateApprovalF(pr, metav1.UpdateOptions{})
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	// Create a new revision of the package with a source that is a revision
 	// of the same package.
@@ -712,10 +719,12 @@ func (t *PorchSuite) TestConcurrentEdits() {
 
 	assert.Contains(t, results, nil, "expected one request to succeed, but did not happen - results: %v", results)
 
-	conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	t.AsyncSleep(10)
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
 
 	// Check its task list
 	var pkgRev porchapi.PackageRevision
@@ -754,6 +763,7 @@ func (t *PorchSuite) TestUpdateResources() {
 		},
 	}
 	t.CreateF(pr)
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Get the package resources
 	var newPackage porchapi.PackageRevisionResources
@@ -786,7 +796,13 @@ func (t *PorchSuite) TestUpdateResources() {
 	newPackage.Spec.Resources["config-map.yaml"] = string(cm)
 	t.UpdateF(&newPackage)
 
-	updated, ok := newPackage.Spec.Resources["config-map.yaml"]
+	nsN := types.NamespacedName{
+		Namespace: t.Namespace,
+		Name:      pr.Name,
+	}
+	prr := t.WaitUntilPackageRevisionResourcesExists(nsN)
+
+	updated, ok := prr.Spec.Resources["config-map.yaml"]
 	if !ok {
 		t.Fatalf("Updated config map config-map.yaml not found")
 	}
@@ -830,13 +846,8 @@ func (t *PorchSuite) TestUpdateResourcesEmptyPatch() {
 		},
 	}
 	t.CreateF(pr)
+	pkgBeforeUpdate := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
-	// Check its task list
-	var pkgBeforeUpdate porchapi.PackageRevision
-	t.GetF(client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      pr.Name,
-	}, &pkgBeforeUpdate)
 	tasksBeforeUpdate := pkgBeforeUpdate.Spec.Tasks
 	assert.Equal(t, 2, len(tasksBeforeUpdate))
 
@@ -884,6 +895,7 @@ func (t *PorchSuite) TestConcurrentResourceUpdates() {
 	// Create a new package (via init)
 	pr := t.CreatePackageSkeleton(repository, packageName, workspace)
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Get the package resources
 	var newPackageResources porchapi.PackageRevisionResources
@@ -900,10 +912,21 @@ func (t *PorchSuite) TestConcurrentResourceUpdates() {
 
 	assert.Contains(t, results, nil, "expected one request to succeed, but did not happen - results: %v", results)
 
-	conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	t.AsyncSleep(10)
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+
+	var packageResources porchapi.PackageRevisionResources
+	t.GetF(client.ObjectKey{
+		Namespace: t.Namespace,
+		Name:      pr.Name,
+	}, &packageResources)
+	if diff := cmp.Diff(&newPackageResources, &packageResources); diff != "" {
+		t.Errorf("Unexpected package resources after update: (-want,+got): %s", diff)
+	}
 }
 
 func (t *PorchSuite) NewClientWithTimeout(timeout time.Duration) client.Client {
@@ -961,22 +984,12 @@ func (t *PorchSuite) TestProposeApprove() {
 		},
 	}
 	t.CreateF(pr)
-
-	var pkg porchapi.PackageRevision
-	t.GetF(client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      pr.Name,
-	}, &pkg)
+	pkg := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose the package revision to be finalized
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkg)
-
-	var proposed porchapi.PackageRevision
-	t.GetF(client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      pr.Name,
-	}, &proposed)
+	t.UpdateF(pkg)
+	proposed := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	if got, want := proposed.Spec.Lifecycle, porchapi.PackageRevisionLifecycleProposed; got != want {
 		t.Fatalf("Proposed package lifecycle value: got %s, want %s", got, want)
@@ -984,13 +997,14 @@ func (t *PorchSuite) TestProposeApprove() {
 
 	// Approve using Update should fail.
 	proposed.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	if err := t.Client.Update(t.GetContext(), &proposed); err == nil {
-		t.Fatalf("Finalization of a package via Update unexpectedly succeeded")
+	if err := t.Client.Update(t.GetContext(), proposed); err == nil {
+		proposed = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 	}
 
 	// Approve the package
 	proposed.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	approved := t.UpdateApprovalF(&proposed, metav1.UpdateOptions{})
+	t.UpdateApprovalF(proposed, metav1.UpdateOptions{})
+	approved := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 	if got, want := approved.Spec.Lifecycle, porchapi.PackageRevisionLifecyclePublished; got != want {
 		t.Fatalf("Approved package lifecycle value: got %s, want %s", got, want)
 	}
@@ -1003,7 +1017,7 @@ func (t *PorchSuite) TestProposeApprove() {
 
 func (t *PorchSuite) TestConcurrentProposeApprove() {
 	const (
-		repository  = "lifecycle"
+		repository  = "lifecycle-concurrent"
 		packageName = "test-package-concurrent"
 		workspace   = "workspace"
 	)
@@ -1020,6 +1034,7 @@ func (t *PorchSuite) TestConcurrentProposeApprove() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	var pkg porchapi.PackageRevision
 	t.GetF(client.ObjectKey{
@@ -1036,31 +1051,30 @@ func (t *PorchSuite) TestConcurrentProposeApprove() {
 
 	assert.Contains(t, proposeResults, nil, "expected one 'propose' request to succeed, but did not happen - results: %v", proposeResults)
 
-	conflictFailurePresent := slices.ContainsFunc(proposeResults, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one 'propose' request to fail with a conflict, but did not happen - results: %v", proposeResults)
-
-	var proposed porchapi.PackageRevision
-	t.GetF(client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      pr.Name,
-	}, &proposed)
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(proposeResults, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one 'propose' request to fail with a conflict, but did not happen - results: %v", proposeResults)
+	proposed := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	// Approve the package
 	proposed.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	approveFunction := func() any {
-		_, err := t.Clientset.PorchV1alpha1().PackageRevisions(proposed.Namespace).UpdateApproval(t.GetContext(), proposed.Name, &proposed, metav1.UpdateOptions{})
+		_, err := t.Clientset.PorchV1alpha1().PackageRevisions(proposed.Namespace).UpdateApproval(t.GetContext(), proposed.Name, proposed, metav1.UpdateOptions{})
 		return err
 	}
 	approveResults := RunInParallel(approveFunction, approveFunction)
 
 	assert.Contains(t, approveResults, nil, "expected one 'approve' request to succeed, but did not happen - results: %v", approveResults)
 
-	conflictFailurePresent = slices.ContainsFunc(approveResults, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one 'approve' request to fail with a conflict, but did not happen - results: %v", approveResults)
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
+
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent = slices.ContainsFunc(approveResults, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one 'approve' request to fail with a conflict, but did not happen - results: %v", approveResults)
 }
 
 func (t *PorchSuite) TestSubfolderPackageRevisionIncrementation() {
@@ -1079,19 +1093,28 @@ func (t *PorchSuite) TestSubfolderPackageRevisionIncrementation() {
 	t.RegisterGitRepositoryWithDirectoryF(subfolderRepository, subfolderDirectory)
 
 	// Create a new package (via init)
-	subfolderPr := t.CreatePackageDraftF(repository, subfolderPackageName, workspace)
-	prInSubfolder := t.CreatePackageDraftF(subfolderRepository, normalPackageName, workspace)
+	t.CreatePackageDraftF(repository, subfolderPackageName, workspace)
+	subfolderPr := t.WaitUntilPackageRevisionLifecycleMatches(repository, subfolderPackageName, workspace, porchapi.PackageRevisionLifecycleDraft)
+
+	t.CreatePackageDraftF(subfolderRepository, normalPackageName, workspace)
+	prInSubfolder := t.WaitUntilPackageRevisionLifecycleMatches(subfolderRepository, normalPackageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose and approve the package revisions
 	subfolderPr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	prInSubfolder.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(subfolderPr)
+	subfolderPr = t.WaitUntilPackageRevisionLifecycleMatches(repository, subfolderPackageName, workspace, porchapi.PackageRevisionLifecycleProposed)
+
+	prInSubfolder.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(prInSubfolder)
+	prInSubfolder = t.WaitUntilPackageRevisionLifecycleMatches(subfolderRepository, normalPackageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	subfolderPr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
+	t.UpdateApprovalF(subfolderPr, metav1.UpdateOptions{})
+	subfolderPr = t.WaitUntilPackageRevisionLifecycleMatches(repository, subfolderPackageName, workspace, porchapi.PackageRevisionLifecyclePublished)
+
 	prInSubfolder.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	subfolderPr = t.UpdateApprovalF(subfolderPr, metav1.UpdateOptions{})
-	prInSubfolder = t.UpdateApprovalF(prInSubfolder, metav1.UpdateOptions{})
+	t.UpdateApprovalF(prInSubfolder, metav1.UpdateOptions{})
+	prInSubfolder = t.WaitUntilPackageRevisionLifecycleMatches(subfolderRepository, normalPackageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	assert.Equal(t, porchapi.PackageRevisionLifecyclePublished, subfolderPr.Spec.Lifecycle)
 	assert.Equal(t, 1, subfolderPr.Spec.Revision)
@@ -1111,6 +1134,8 @@ func (t *PorchSuite) TestSubfolderPackageRevisionIncrementation() {
 		},
 	}
 	t.CreateF(editedSubfolderPr)
+	editedSubfolderPr = t.WaitUntilPackageRevisionLifecycleMatches(repository, subfolderPackageName, workspace2, porchapi.PackageRevisionLifecycleDraft)
+
 	editedPrInSubfolder := t.CreatePackageSkeleton(subfolderRepository, normalPackageName, workspace2)
 	editedPrInSubfolder.Spec.Tasks = []porchapi.Task{
 		{
@@ -1123,17 +1148,23 @@ func (t *PorchSuite) TestSubfolderPackageRevisionIncrementation() {
 		},
 	}
 	t.CreateF(editedPrInSubfolder)
+	editedPrInSubfolder = t.WaitUntilPackageRevisionLifecycleMatches(subfolderRepository, normalPackageName, workspace2, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose and approve these package revisions as well
 	editedSubfolderPr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	editedPrInSubfolder.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(editedSubfolderPr)
+	editedSubfolderPr = t.WaitUntilPackageRevisionLifecycleMatches(repository, subfolderPackageName, workspace2, porchapi.PackageRevisionLifecycleProposed)
+
+	editedPrInSubfolder.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(editedPrInSubfolder)
+	editedPrInSubfolder = t.WaitUntilPackageRevisionLifecycleMatches(subfolderRepository, normalPackageName, workspace2, porchapi.PackageRevisionLifecycleProposed)
 
 	editedSubfolderPr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	editedPrInSubfolder.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	editedSubfolderPr = t.UpdateApprovalF(editedSubfolderPr, metav1.UpdateOptions{})
-	editedPrInSubfolder = t.UpdateApprovalF(editedPrInSubfolder, metav1.UpdateOptions{})
+	t.UpdateApprovalF(editedSubfolderPr, metav1.UpdateOptions{})
+	editedSubfolderPr = t.WaitUntilPackageRevisionLifecycleMatches(repository, subfolderPackageName, workspace2, porchapi.PackageRevisionLifecyclePublished)
+	t.UpdateApprovalF(editedPrInSubfolder, metav1.UpdateOptions{})
+	editedPrInSubfolder = t.WaitUntilPackageRevisionLifecycleMatches(subfolderRepository, normalPackageName, workspace2, porchapi.PackageRevisionLifecyclePublished)
 
 	assert.Equal(t, porchapi.PackageRevisionLifecyclePublished, editedSubfolderPr.Spec.Lifecycle)
 	assert.Equal(t, 2, editedSubfolderPr.Spec.Revision)
@@ -1153,11 +1184,8 @@ func (t *PorchSuite) TestDeleteDraft() {
 	t.RegisterMainGitRepositoryF(repository)
 
 	// Create a draft package
-	created := t.CreatePackageDraftF(repository, packageName, workspace)
-
-	// Check the package exists
-	var draft porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &draft)
+	t.CreatePackageDraftF(repository, packageName, workspace)
+	created := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Delete the package
 	t.DeleteE(&porchapi.PackageRevision{
@@ -1167,12 +1195,21 @@ func (t *PorchSuite) TestDeleteDraft() {
 		},
 	})
 
-	t.MustNotExist(&draft)
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      created.Name,
+			Namespace: t.Namespace,
+		},
+		10*time.Second,
+	)
+
+	t.MustNotExist(created)
 }
 
 func (t *PorchSuite) TestConcurrentDeletes() {
 	const (
-		repository  = "delete-draft"
+		repository  = "delete-draft-concurrent"
 		packageName = "test-delete-draft-concurrent"
 		revision    = 1
 		workspace   = "test-workspace"
@@ -1180,18 +1217,16 @@ func (t *PorchSuite) TestConcurrentDeletes() {
 
 	// Register the repository and create a draft package
 	t.RegisterMainGitRepositoryF(repository)
-	created := t.CreatePackageDraftF(repository, packageName, workspace)
+	t.CreatePackageDraftF(repository, packageName, workspace)
 
-	// Check the package exists
-	var draft porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &draft)
+	draft := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Delete the same package with two clients at the same time
 	deleteFunction := func() any {
 		return t.Client.Delete(t.GetContext(), &porchapi.PackageRevision{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: t.Namespace,
-				Name:      created.Name,
+				Name:      draft.Name,
 			},
 		})
 	}
@@ -1204,12 +1239,21 @@ func (t *PorchSuite) TestConcurrentDeletes() {
 	assert.Equal(t, expectedResultCount, actualResultCount, "expected %d results but was %d", expectedResultCount, actualResultCount)
 
 	assert.Contains(t, results, nil, "expected one request to succeed, but did not happen - results: %v", results)
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
 
-	conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
-	t.MustNotExist(&draft)
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      draft.Name,
+			Namespace: draft.Namespace,
+		},
+		10*time.Second,
+	)
+
 }
 
 func (t *PorchSuite) TestDeleteProposed() {
@@ -1224,15 +1268,13 @@ func (t *PorchSuite) TestDeleteProposed() {
 	t.RegisterMainGitRepositoryF(repository)
 
 	// Create a draft package
-	created := t.CreatePackageDraftF(repository, packageName, workspace)
-
-	// Check the package exists
-	var pkg porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.CreatePackageDraftF(repository, packageName, workspace)
+	created := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose the package revision to be finalized
-	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkg)
+	created.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
+	t.UpdateF(created)
+	created = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	// Delete the package
 	t.DeleteE(&porchapi.PackageRevision{
@@ -1242,7 +1284,16 @@ func (t *PorchSuite) TestDeleteProposed() {
 		},
 	})
 
-	t.MustNotExist(&pkg)
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      created.Name,
+			Namespace: created.Namespace,
+		},
+		10*time.Second,
+	)
+
+	t.MustNotExist(created)
 }
 
 func (t *PorchSuite) TestDeleteFinal() {
@@ -1256,22 +1307,21 @@ func (t *PorchSuite) TestDeleteFinal() {
 	t.RegisterMainGitRepositoryF(repository)
 
 	// Create a draft package
-	created := t.CreatePackageDraftF(repository, packageName, workspace)
-
-	// Check the package exists
-	var pkg porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.CreatePackageDraftF(repository, packageName, workspace)
+	created := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose the package revision to be finalized
 	t.Log("Proposing package")
-	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkg)
+	created.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
+	t.UpdateF(created)
+
+	created = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	t.Log("Approving package")
-	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	t.UpdateApprovalF(&pkg, metav1.UpdateOptions{})
+	created.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
+	t.UpdateApprovalF(created, metav1.UpdateOptions{})
 
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	created = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	// Try to delete the package. This should fail because it hasn't been proposed for deletion.
 	t.Log("Trying to delete package (should fail)")
@@ -1281,12 +1331,13 @@ func (t *PorchSuite) TestDeleteFinal() {
 			Name:      created.Name,
 		},
 	})
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, created)
 
 	// Propose deletion and then delete the package
 	t.Log("Proposing deletion of  package")
-	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
-	t.UpdateApprovalF(&pkg, metav1.UpdateOptions{})
+	created.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
+	t.UpdateApprovalF(created, metav1.UpdateOptions{})
+	created = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDeletionProposed)
 
 	t.Log("Deleting package")
 	t.DeleteE(&porchapi.PackageRevision{
@@ -1296,45 +1347,54 @@ func (t *PorchSuite) TestDeleteFinal() {
 		},
 	})
 
-	t.MustNotExist(&pkg)
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      created.Name,
+			Namespace: created.Namespace,
+		},
+		10*time.Second,
+	)
+
+	t.MustNotExist(created)
 }
 
 func (t *PorchSuite) TestConcurrentProposeDeletes() {
 	const (
-		repository  = "delete-final"
+		repository  = "delete-final-concurrent"
 		packageName = "test-delete-final-concurrent"
 		workspace   = "workspace"
 	)
 
 	// Register the repository and create a draft package
 	t.RegisterMainGitRepositoryF(repository)
-	created := t.CreatePackageDraftF(repository, packageName, workspace)
-	// Check the package exists
-	var pkg porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.CreatePackageDraftF(repository, packageName, workspace)
+	pkg := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose and approve the package revision to be finalized
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkg)
+	t.UpdateF(pkg)
+	pkg = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	t.UpdateApprovalF(&pkg, metav1.UpdateOptions{})
+	t.UpdateApprovalF(pkg, metav1.UpdateOptions{})
 
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	pkg = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	// Propose deletion with two clients at once
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 	proposeDeleteFunction := func() any {
-		_, err := t.Clientset.PorchV1alpha1().PackageRevisions(pkg.Namespace).UpdateApproval(t.GetContext(), pkg.Name, &pkg, metav1.UpdateOptions{})
+		_, err := t.Clientset.PorchV1alpha1().PackageRevisions(pkg.Namespace).UpdateApproval(t.GetContext(), pkg.Name, pkg, metav1.UpdateOptions{})
 		return err
 	}
 	proposeDeleteResults := RunInParallel(proposeDeleteFunction, proposeDeleteFunction)
 
 	assert.Contains(t, proposeDeleteResults, nil, "expected one 'propose-delete' request to succeed, but did not happen - results: %v", proposeDeleteResults)
-
-	conflictFailurePresent := slices.ContainsFunc(proposeDeleteResults, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one 'propose-delete' request to fail with a conflict, but did not happen")
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(proposeDeleteResults, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one 'propose-delete' request to fail with a conflict, but did not happen")
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDeletionProposed)
 }
 
 func (t *PorchSuite) TestProposeDeleteAndUndo() {
@@ -1348,21 +1408,17 @@ func (t *PorchSuite) TestProposeDeleteAndUndo() {
 	t.RegisterMainGitRepositoryF(repository)
 
 	// Create a draft package
-	created := t.CreatePackageDraftF(repository, packageName, workspace)
-
-	// Check the package exists
-	var pkg porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.CreatePackageDraftF(repository, packageName, workspace)
+	pkg := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose the package revision to be finalized
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkg)
+	t.UpdateF(pkg)
+	pkg = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	t.UpdateApprovalF(&pkg, metav1.UpdateOptions{})
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
-
-	_ = t.WaitUntilPackageRevisionExists(repository, packageName, -1)
+	t.UpdateApprovalF(pkg, metav1.UpdateOptions{})
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	var list porchapi.PackageRevisionList
 	t.ListF(&list, client.InNamespace(t.Namespace))
@@ -1373,10 +1429,12 @@ func (t *PorchSuite) TestProposeDeleteAndUndo() {
 			// Propose deletion
 			pkgRev.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 			t.UpdateApprovalF(&pkgRev, metav1.UpdateOptions{})
+			pkgRev = *t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, pkgRev.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDeletionProposed)
 
 			// Undo proposal of deletion
 			pkgRev.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 			t.UpdateApprovalF(&pkgRev, metav1.UpdateOptions{})
+			pkgRev = *t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, pkgRev.Spec.WorkspaceName, porchapi.PackageRevisionLifecyclePublished)
 
 			// Try to delete the package. This should fail because the lifecycle should be changed back to Published.
 			t.DeleteL(&porchapi.PackageRevision{
@@ -1390,6 +1448,7 @@ func (t *PorchSuite) TestProposeDeleteAndUndo() {
 			// Propose deletion and then delete the package
 			pkgRev.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 			t.UpdateApprovalF(&pkgRev, metav1.UpdateOptions{})
+			pkgRev = *t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, pkgRev.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDeletionProposed)
 
 			t.DeleteE(&porchapi.PackageRevision{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1397,7 +1456,14 @@ func (t *PorchSuite) TestProposeDeleteAndUndo() {
 					Name:      pkgRev.Name,
 				},
 			})
-
+			t.WaitUntilObjectDeleted(
+				packageRevisionGVK,
+				types.NamespacedName{
+					Name:      pkgRev.Name,
+					Namespace: pkgRev.Namespace,
+				},
+				10*time.Second,
+			)
 			t.MustNotExist(&pkgRev)
 		})
 	}
@@ -1415,39 +1481,46 @@ func (t *PorchSuite) TestDeleteAndRecreate() {
 	t.RegisterMainGitRepositoryF(repository)
 
 	// Create a draft package
-	created := t.CreatePackageDraftF(repository, packageName, workspace)
-
-	// Check the package exists
-	var pkg porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.CreatePackageDraftF(repository, packageName, workspace)
+	pkg := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	t.Log("Propose the package revision to be finalized")
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkg)
+	t.UpdateF(pkg)
+	pkg = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	t.Log("Approve the package revision to be finalized")
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	t.UpdateApprovalF(&pkg, metav1.UpdateOptions{})
-
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.UpdateApprovalF(pkg, metav1.UpdateOptions{})
+	pkg = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	mainPkg := t.WaitUntilPackageRevisionExists(repository, packageName, -1)
 
 	t.Log("Propose deletion and then delete the package with revision v1")
 	pkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
-	t.UpdateApprovalF(&pkg, metav1.UpdateOptions{})
+	t.UpdateApprovalF(pkg, metav1.UpdateOptions{})
+	pkg = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDeletionProposed)
 
 	t.DeleteE(&porchapi.PackageRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: t.Namespace,
-			Name:      created.Name,
+			Name:      pkg.Name,
 		},
 	})
-	t.MustNotExist(&pkg)
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      pkg.Name,
+			Namespace: pkg.Namespace,
+		},
+		10*time.Second,
+	)
+	t.MustNotExist(pkg)
 
 	t.Log("Propose deletion and then delete the package with revision main")
 	mainPkg.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 	t.UpdateApprovalF(mainPkg, metav1.UpdateOptions{})
+	mainPkg = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, "main", porchapi.PackageRevisionLifecycleDeletionProposed)
 
 	t.DeleteE(&porchapi.PackageRevision{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1455,13 +1528,19 @@ func (t *PorchSuite) TestDeleteAndRecreate() {
 			Name:      mainPkg.Name,
 		},
 	})
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      mainPkg.Name,
+			Namespace: t.Namespace,
+		},
+		10*time.Second,
+	)
 	t.MustNotExist(mainPkg)
 
 	// Recreate the package with the same name and workspace
-	created = t.CreatePackageDraftF(repository, packageName, workspace)
-
-	// Check the package exists
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: created.Name}, &pkg)
+	t.CreatePackageDraftF(repository, packageName, workspace)
+	t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Ensure that there is only one init task in the package revision history
 	foundInitTask := false
@@ -1488,36 +1567,34 @@ func (t *PorchSuite) TestDeleteFromMain() {
 	t.RegisterMainGitRepositoryF(repository)
 
 	t.Logf("Create and approve package: %s", packageNameFirst)
-	createdFirst := t.CreatePackageDraftF(repository, packageNameFirst, workspace)
-
-	// Check the package exists
-	var pkgFirst porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: createdFirst.Name}, &pkgFirst)
+	t.CreatePackageDraftF(repository, packageNameFirst, workspace)
+	pkgFirst := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameFirst, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose the package revision to be finalized
 	pkgFirst.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkgFirst)
+	t.UpdateF(pkgFirst)
+	pkgFirst = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameFirst, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	pkgFirst.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	t.UpdateApprovalF(&pkgFirst, metav1.UpdateOptions{})
+	t.UpdateApprovalF(pkgFirst, metav1.UpdateOptions{})
+	pkgFirst = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameFirst, workspace, porchapi.PackageRevisionLifecyclePublished)
 
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: createdFirst.Name}, &pkgFirst)
+	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: pkgFirst.Name}, pkgFirst)
 
 	t.Logf("Create and approve package: %s", packageNameSecond)
-	createdSecond := t.CreatePackageDraftF(repository, packageNameSecond, workspace)
-
-	// Check the package exists
-	var pkgSecond porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: createdSecond.Name}, &pkgSecond)
+	t.CreatePackageDraftF(repository, packageNameSecond, workspace)
+	pkgSecond := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameSecond, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Propose the package revision to be finalized
 	pkgSecond.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
-	t.UpdateF(&pkgSecond)
+	t.UpdateF(pkgSecond)
+	pkgSecond = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameSecond, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	pkgSecond.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	t.UpdateApprovalF(&pkgSecond, metav1.UpdateOptions{})
+	t.UpdateApprovalF(pkgSecond, metav1.UpdateOptions{})
+	pkgSecond = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameSecond, workspace, porchapi.PackageRevisionLifecyclePublished)
 
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: createdSecond.Name}, &pkgSecond)
+	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: pkgSecond.Name}, pkgSecond)
 
 	t.Log("Wait for the 'main' revisions to get created")
 	firstPkgRevFromMain := t.WaitUntilPackageRevisionExists(repository, packageNameFirst, -1)
@@ -1526,8 +1603,11 @@ func (t *PorchSuite) TestDeleteFromMain() {
 	t.Log("Propose deletion of both main packages")
 	firstPkgRevFromMain.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 	t.UpdateApprovalF(firstPkgRevFromMain, metav1.UpdateOptions{})
+	firstPkgRevFromMain = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameFirst, firstPkgRevFromMain.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDeletionProposed)
+
 	secondPkgRevFromMain.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 	t.UpdateApprovalF(secondPkgRevFromMain, metav1.UpdateOptions{})
+	secondPkgRevFromMain = t.WaitUntilPackageRevisionLifecycleMatches(repository, packageNameSecond, secondPkgRevFromMain.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDeletionProposed)
 
 	t.Log("Delete the first package revision from main")
 	t.DeleteE(&porchapi.PackageRevision{
@@ -1536,6 +1616,14 @@ func (t *PorchSuite) TestDeleteFromMain() {
 			Name:      firstPkgRevFromMain.Name,
 		},
 	})
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      firstPkgRevFromMain.Name,
+			Namespace: t.Namespace,
+		},
+		10*time.Second,
+	)
 
 	t.Log("Delete the second package revision from main")
 	t.DeleteE(&porchapi.PackageRevision{
@@ -1544,6 +1632,14 @@ func (t *PorchSuite) TestDeleteFromMain() {
 			Name:      secondPkgRevFromMain.Name,
 		},
 	})
+	t.WaitUntilObjectDeleted(
+		packageRevisionGVK,
+		types.NamespacedName{
+			Name:      secondPkgRevFromMain.Name,
+			Namespace: t.Namespace,
+		},
+		10*time.Second,
+	)
 
 	// Propose and delete the original package revisions (cleanup)
 	var list porchapi.PackageRevisionList
@@ -1552,12 +1648,21 @@ func (t *PorchSuite) TestDeleteFromMain() {
 		t.Logf("Propose deletion and delete package revision: %s", pkgrev.Name)
 		pkgrev.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 		t.UpdateApprovalF(&pkgrev, metav1.UpdateOptions{})
+		pkgrev = *t.WaitUntilPackageRevisionLifecycleMatches(repository, pkgrev.Spec.PackageName, pkgrev.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDeletionProposed)
 		t.DeleteE(&porchapi.PackageRevision{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: t.Namespace,
 				Name:      pkgrev.Name,
 			},
 		})
+		t.WaitUntilObjectDeleted(
+			packageRevisionGVK,
+			types.NamespacedName{
+				Name:      pkgrev.Name,
+				Namespace: t.Namespace,
+			},
+			10*time.Second,
+		)
 	}
 }
 
@@ -1607,9 +1712,9 @@ func (t *PorchSuite) TestCloneLeadingSlash() {
 	}
 
 	t.CreateF(new)
+	pr := t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
-	var pr porchapi.PackageRevision
-	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: new.Name}, &pr)
+	t.MustExist(client.ObjectKey{Namespace: t.Namespace, Name: new.Name}, pr)
 }
 
 func (t *PorchSuite) TestPackageUpdate() {
@@ -1657,6 +1762,7 @@ func (t *PorchSuite) TestPackageUpdate() {
 	}
 
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(gitRepository, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 
 	var revisionResources porchapi.PackageRevisionResources
 	t.GetF(client.ObjectKey{
@@ -1670,7 +1776,6 @@ func (t *PorchSuite) TestPackageUpdate() {
 		t.Fatalf("Failed to read ConfigMap from %q: %v", filename, err)
 	}
 	revisionResources.Spec.Resources["config-map.yaml"] = string(cm)
-	t.UpdateF(&revisionResources)
 
 	var newrr porchapi.PackageRevisionResources
 	t.GetF(client.ObjectKey{
@@ -1696,6 +1801,7 @@ func (t *PorchSuite) TestPackageUpdate() {
 	})
 
 	t.UpdateE(pr, &client.UpdateOptions{})
+	t.AsyncSleep()
 
 	t.GetF(client.ObjectKey{
 		Namespace: t.Namespace,
@@ -1709,7 +1815,7 @@ func (t *PorchSuite) TestPackageUpdate() {
 
 func (t *PorchSuite) TestConcurrentPackageUpdates() {
 	const (
-		gitRepository = "package-update"
+		gitRepository = "package-update-concurrent"
 		packageName   = "testns-concurrent"
 		workspace     = "test-workspace"
 	)
@@ -1740,6 +1846,7 @@ func (t *PorchSuite) TestConcurrentPackageUpdates() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(gitRepository, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 
 	upstream := pr.Spec.Tasks[0].Clone.Upstream.DeepCopy()
 	upstream.UpstreamRef.Name = basensV2.Name
@@ -1758,10 +1865,20 @@ func (t *PorchSuite) TestConcurrentPackageUpdates() {
 
 	assert.Contains(t, results, nil, "expected one request to succeed, but did not happen - results: %v", results)
 
-	conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
-		return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
-	})
-	assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	// Server log will contain the error message because of asynchronous nature of the operation
+	// conflictFailurePresent := slices.ContainsFunc(results, func(eachResult any) bool {
+	// 	return eachResult != nil && strings.Contains(eachResult.(error).Error(), "another request is already in progress")
+	// })
+	// assert.True(t, conflictFailurePresent, "expected one request to fail with a conflict, but did not happen - results: %v", results)
+	t.AsyncSleep()
+	var pkgRev porchapi.PackageRevision
+	t.GetF(client.ObjectKey{
+		Namespace: t.Namespace,
+		Name:      pr.Name,
+	}, &pkgRev)
+	tasks := pkgRev.Spec.Tasks
+	assert.Equal(t, 4, len(tasks))
+
 }
 
 func (t *PorchSuite) TestRegisterRepository() {
@@ -1786,8 +1903,15 @@ func (t *PorchSuite) TestRegisterRepository() {
 }
 
 func (t *PorchSuite) TestBuiltinFunctionEvaluator() {
+
+	const (
+		gitRepository = "git-builtin-fn"
+		packageName   = "test-builtin-fn-bucket"
+		workspace     = "test-workspace"
+	)
+
 	// Register the repository as 'git-fn'
-	t.RegisterMainGitRepositoryF("git-builtin-fn")
+	t.RegisterMainGitRepositoryF(gitRepository)
 
 	// Create Package Revision
 	pr := &porchapi.PackageRevision{
@@ -1795,9 +1919,9 @@ func (t *PorchSuite) TestBuiltinFunctionEvaluator() {
 			Namespace: t.Namespace,
 		},
 		Spec: porchapi.PackageRevisionSpec{
-			PackageName:    "test-builtin-fn-bucket",
-			WorkspaceName:  "test-workspace",
-			RepositoryName: "git-builtin-fn",
+			PackageName:    packageName,
+			WorkspaceName:  workspace,
+			RepositoryName: gitRepository,
 			Tasks: []porchapi.Task{
 				{
 					Type: "clone",
@@ -1841,13 +1965,14 @@ func (t *PorchSuite) TestBuiltinFunctionEvaluator() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(gitRepository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
-	// Get package resources
-	var resources porchapi.PackageRevisionResources
-	t.GetF(client.ObjectKey{
+	// Wait and get package resources
+	nsN := types.NamespacedName{
 		Namespace: t.Namespace,
 		Name:      pr.Name,
-	}, &resources)
+	}
+	resources := t.WaitUntilPackageRevisionResourcesExists(nsN)
 
 	bucket, ok := resources.Spec.Resources["bucket.yaml"]
 	if !ok {
@@ -1867,8 +1992,14 @@ func (t *PorchSuite) TestBuiltinFunctionEvaluator() {
 }
 
 func (t *PorchSuite) TestExecFunctionEvaluator() {
+
+	const (
+		gitRepository = "git-fn"
+		packageName   = "test-fn-bucket"
+		workspace     = "test-workspace"
+	)
 	// Register the repository as 'git-fn'
-	t.RegisterMainGitRepositoryF("git-fn")
+	t.RegisterMainGitRepositoryF(gitRepository)
 
 	// Create Package Revision
 	pr := &porchapi.PackageRevision{
@@ -1923,13 +2054,14 @@ for resource in ctx.resource_list["items"]:
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(gitRepository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
-	// Get package resources
-	var resources porchapi.PackageRevisionResources
-	t.GetF(client.ObjectKey{
+	// Wait and get package resources
+	nsN := types.NamespacedName{
 		Namespace: t.Namespace,
 		Name:      pr.Name,
-	}, &resources)
+	}
+	resources := t.WaitUntilPackageRevisionResourcesExists(nsN)
 
 	bucket, ok := resources.Spec.Resources["bucket.yaml"]
 	if !ok {
@@ -1953,7 +2085,13 @@ func (t *PorchSuite) TestPodFunctionEvaluatorWithDistrolessImage() {
 		t.Skipf("Skipping due to not having pod evaluator in local mode")
 	}
 
-	t.RegisterMainGitRepositoryF("git-fn-distroless")
+	const (
+		gitRepository = "git-fn-distroless"
+		packageName   = "test-fn-redis-bucket"
+		workspace     = "test-description"
+	)
+
+	t.RegisterMainGitRepositoryF(gitRepository)
 
 	// Create Package Revision
 	pr := &porchapi.PackageRevision{
@@ -1961,9 +2099,9 @@ func (t *PorchSuite) TestPodFunctionEvaluatorWithDistrolessImage() {
 			Namespace: t.Namespace,
 		},
 		Spec: porchapi.PackageRevisionSpec{
-			PackageName:    "test-fn-redis-bucket",
-			WorkspaceName:  "test-description",
-			RepositoryName: "git-fn-distroless",
+			PackageName:    packageName,
+			WorkspaceName:  workspace,
+			RepositoryName: gitRepository,
 			Tasks: []porchapi.Task{
 				{
 					Type: "clone",
@@ -2013,13 +2151,14 @@ data:
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(gitRepository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
-	// Get package resources
-	var resources porchapi.PackageRevisionResources
-	t.GetF(client.ObjectKey{
+	// Wait and get package resources
+	nsN := types.NamespacedName{
 		Namespace: t.Namespace,
 		Name:      pr.Name,
-	}, &resources)
+	}
+	resources := t.WaitUntilPackageRevisionResourcesExists(nsN)
 
 	bucket, ok := resources.Spec.Resources["bucket.yaml"]
 	if !ok {
@@ -2100,13 +2239,14 @@ func (t *PorchSuite) TestPodEvaluator() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches("git-fn-pod", "test-fn-pod-hierarchy", "workspace-1", porchapi.PackageRevisionLifecycleDraft)
 
-	// Get package resources
-	var resources porchapi.PackageRevisionResources
-	t.GetF(client.ObjectKey{
+	// Wait and get package resources
+	nsN := types.NamespacedName{
 		Namespace: t.Namespace,
 		Name:      pr.Name,
-	}, &resources)
+	}
+	resources := t.WaitUntilPackageRevisionResourcesExists(nsN)
 
 	counter := 0
 	for name, obj := range resources.Spec.Resources {
@@ -2136,7 +2276,7 @@ func (t *PorchSuite) TestPodEvaluator() {
 			// Await pod deletion with a 1 minute timeout
 			err := wait.PollUntilContextTimeout(t.GetContext(), time.Second, time.Minute, false, func(ctx context.Context) (bool, error) {
 				getErr := t.Client.Get(ctx, client.ObjectKey{Namespace: pod.Namespace, Name: pod.Name}, &corev1.Pod{})
-				if errors.IsNotFound(getErr) {
+				if apierrors.IsNotFound(getErr) {
 					return true, nil // Pod has been deleted
 				}
 				if getErr != nil {
@@ -2197,12 +2337,14 @@ func (t *PorchSuite) TestPodEvaluator() {
 		},
 	}
 	t.CreateF(pr2)
+	pr2 = t.WaitUntilPackageRevisionLifecycleMatches("git-fn-pod", "test-fn-pod-hierarchy", "workspace-2", porchapi.PackageRevisionLifecycleDraft)
 
-	// Get package resources
-	t.GetF(client.ObjectKey{
+	// Wait and get package resources
+	nsN2 := types.NamespacedName{
 		Namespace: t.Namespace,
 		Name:      pr2.Name,
-	}, &resources)
+	}
+	resources = t.WaitUntilPackageRevisionResourcesExists(nsN2)
 
 	counter = 0
 	for name, obj := range resources.Spec.Resources {
@@ -2227,7 +2369,13 @@ func (t *PorchSuite) TestPodEvaluatorWithFailure() {
 		t.Skipf("Skipping due to not having pod evaluator in local mode")
 	}
 
-	t.RegisterMainGitRepositoryF("git-fn-pod-failure")
+	const (
+		gitRepository = "git-fn-pod-failure"
+		packageName   = "test-fn-pod-bucket"
+		workspace     = "workspace"
+	)
+
+	t.RegisterMainGitRepositoryF(gitRepository)
 
 	// Create Package Revision
 	pr := &porchapi.PackageRevision{
@@ -2235,9 +2383,9 @@ func (t *PorchSuite) TestPodEvaluatorWithFailure() {
 			Namespace: t.Namespace,
 		},
 		Spec: porchapi.PackageRevisionSpec{
-			PackageName:    "test-fn-pod-bucket",
-			WorkspaceName:  "workspace",
-			RepositoryName: "git-fn-pod-failure",
+			PackageName:    packageName,
+			WorkspaceName:  workspace,
+			RepositoryName: gitRepository,
 			Tasks: []porchapi.Task{
 				{
 					Type: "clone",
@@ -2266,9 +2414,13 @@ func (t *PorchSuite) TestPodEvaluatorWithFailure() {
 		},
 	}
 	err := t.Client.Create(t.GetContext(), pr)
+	// Wait for the package revision creation to fail
+	t.AsyncSleep()
+	// Error message will be printed to server logs because of async operations.
 	expectedErrMsg := "Validating arbitrary CRDs is not supported"
 	if err == nil || !strings.Contains(err.Error(), expectedErrMsg) {
-		t.Fatalf("expected the error to contain %q, but got %v", expectedErrMsg, err)
+		// t.Fatalf("expected the error to contain %q, but got %v", expectedErrMsg, err)
+		t.MustNotExist(pr)
 	}
 }
 
@@ -2277,7 +2429,12 @@ func (t *PorchSuite) TestFailedPodEvictionAndRecovery() {
 		t.Skipf("Skipping test: evaluator pod not available in local mode")
 	}
 
-	t.RegisterMainGitRepositoryF("git-fn-failed-recovery")
+	const (
+		gitRepository = "git-fn-failed-recovery"
+		packageName   = "test-fn-pod-eviction"
+		workspace     = "workspace"
+	)
+	t.RegisterMainGitRepositoryF(gitRepository)
 
 	// Define a bogus kpt function image that will fail (image doesn't exist)
 	bogusFnImage := "quay.io/invalid/kpt-fn-broken:v0.0.1"
@@ -2288,9 +2445,9 @@ func (t *PorchSuite) TestFailedPodEvictionAndRecovery() {
 			Namespace: t.Namespace,
 		},
 		Spec: porchapi.PackageRevisionSpec{
-			PackageName:    "test-fn-pod-eviction",
-			WorkspaceName:  "workspace",
-			RepositoryName: "git-fn-failed-recovery",
+			PackageName:    packageName,
+			WorkspaceName:  workspace,
+			RepositoryName: gitRepository,
 			Tasks: []porchapi.Task{
 				{
 					Type: "clone",
@@ -2317,10 +2474,13 @@ func (t *PorchSuite) TestFailedPodEvictionAndRecovery() {
 
 	// Create the package revision
 	err := t.Client.Create(t.GetContext(), pr)
-
+	// Wait for the package revision creation to fail
+	t.AsyncSleep()
 	// Assert: creation should fail, and the error should reflect evaluator pod failure
 	if err == nil || !strings.Contains(err.Error(), "failed to evaluate function") {
-		t.Fatalf("expected evaluator failure for broken image, but got: %v", err)
+		// Error message will be printed to server logs because of async operations.
+		// t.Fatalf("expected evaluator failure for broken image, but got: %v", err)
+		t.MustNotExist(pr)
 	}
 
 	// Optional: verify no stuck pods exist for the failed image
@@ -2341,11 +2501,17 @@ func (t *PorchSuite) TestFailedPodEvictionAndRecovery() {
 }
 
 func (t *PorchSuite) TestLargePackageRevision() {
-	const testDataSize = 5 * 1024 * 1024
+
+	const (
+		testDataSize  = 5 * 1024 * 1024
+		gitRepository = "git-fn-pod-large"
+		packageName   = "new-package"
+		workspace     = "workspace"
+	)
 
 	setAnnotationsImage := t.gcrPrefix + "/set-annotations:v0.1.3" // set-annotations:v0.1.3 is an older version that porch maps neither to built-in nor exec.
 
-	t.RegisterMainGitRepositoryF("git-fn-pod-large")
+	t.RegisterMainGitRepositoryF(gitRepository)
 
 	// Create Package Revision
 	pr := &porchapi.PackageRevision{
@@ -2357,9 +2523,9 @@ func (t *PorchSuite) TestLargePackageRevision() {
 			Namespace: t.Namespace,
 		},
 		Spec: porchapi.PackageRevisionSpec{
-			PackageName:    "new-package",
-			WorkspaceName:  "workspace",
-			RepositoryName: "git-fn-pod-large",
+			PackageName:    packageName,
+			WorkspaceName:  workspace,
+			RepositoryName: gitRepository,
 			Tasks: []porchapi.Task{
 				{
 					Type: porchapi.TaskTypeInit,
@@ -2372,9 +2538,14 @@ func (t *PorchSuite) TestLargePackageRevision() {
 	}
 
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(gitRepository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
-	var prr porchapi.PackageRevisionResources
-	t.GetF(client.ObjectKeyFromObject(pr), &prr)
+	// Wait and get package resources
+	nsN := types.NamespacedName{
+		Namespace: t.Namespace,
+		Name:      pr.Name,
+	}
+	prr := t.WaitUntilPackageRevisionResourcesExists(nsN)
 
 	if !t.TestRunnerIsLocal {
 		// pod evaluator is not available in local test mode, skip testing it
@@ -2400,7 +2571,9 @@ data:
   value: "` + strings.Repeat("a", testDataSize) + `"
 `
 
-	t.UpdateF(&prr)
+	t.UpdateF(prr)
+	// Wait for the package to be rendered and updated
+	t.AsyncSleep(10)
 
 	rs := prr.Status.RenderStatus
 	if rs.Err != "" || rs.Result.ExitCode != 0 {
@@ -2408,7 +2581,7 @@ data:
 	}
 
 	// Get package resources
-	t.GetF(client.ObjectKeyFromObject(pr), &prr)
+	t.GetF(client.ObjectKeyFromObject(pr), prr)
 
 	for name, obj := range prr.Spec.Resources {
 		if !strings.HasSuffix(name, ".yaml") {
@@ -2503,15 +2676,17 @@ func (t *PorchSuite) TestRepositoryError() {
 
 func (t *PorchSuite) TestNewPackageRevisionLabels() {
 	const (
-		repository = "pkg-rev-labels"
-		labelKey1  = "kpt.dev/label"
-		labelVal1  = "foo"
-		labelKey2  = "kpt.dev/other-label"
-		labelVal2  = "bar"
-		annoKey1   = "kpt.dev/anno"
-		annoVal1   = "foo"
-		annoKey2   = "kpt.dev/other-anno"
-		annoVal2   = "bar"
+		repository  = "pkg-rev-labels"
+		labelKey1   = "kpt.dev/label"
+		labelVal1   = "foo"
+		labelKey2   = "kpt.dev/other-label"
+		labelVal2   = "bar"
+		annoKey1    = "kpt.dev/anno"
+		annoVal1    = "foo"
+		annoKey2    = "kpt.dev/other-anno"
+		annoVal2    = "bar"
+		packageName = "new-package"
+		workspace   = "workspace"
 	)
 
 	t.RegisterMainGitRepositoryF(repository)
@@ -2533,8 +2708,8 @@ func (t *PorchSuite) TestNewPackageRevisionLabels() {
 			},
 		},
 		Spec: porchapi.PackageRevisionSpec{
-			PackageName:    "new-package",
-			WorkspaceName:  "workspace",
+			PackageName:    packageName,
+			WorkspaceName:  workspace,
 			RepositoryName: repository,
 			Tasks: []porchapi.Task{
 				{
@@ -2547,6 +2722,7 @@ func (t *PorchSuite) TestNewPackageRevisionLabels() {
 		},
 	}
 	t.CreateF(&pr)
+	pr = *t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 	t.ValidateLabelsAndAnnos(pr.Name,
 		map[string]string{
 			labelKey1: labelVal1,
@@ -2560,6 +2736,7 @@ func (t *PorchSuite) TestNewPackageRevisionLabels() {
 	// Propose the package.
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(&pr)
+	pr = *t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 
 	// retrieve the updated object
 	t.GetF(client.ObjectKey{
@@ -2579,7 +2756,8 @@ func (t *PorchSuite) TestNewPackageRevisionLabels() {
 
 	// Approve the package
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	_ = t.UpdateApprovalF(&pr, metav1.UpdateOptions{})
+	t.UpdateApprovalF(&pr, metav1.UpdateOptions{})
+	pr = *t.WaitUntilPackageRevisionLifecycleMatches(repository, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 	t.ValidateLabelsAndAnnos(pr.Name,
 		map[string]string{
 			labelKey1:                         labelVal1,
@@ -2591,18 +2769,20 @@ func (t *PorchSuite) TestNewPackageRevisionLabels() {
 		},
 	)
 
-	// retrieve the updated object
-	t.GetF(client.ObjectKey{
-		Namespace: pr.Namespace,
-		Name:      pr.Name,
-	}, &pr)
-
 	// Update the labels and annotations on the approved package.
 	delete(pr.ObjectMeta.Labels, labelKey1)
 	pr.ObjectMeta.Labels[labelKey2] = labelVal2
 	delete(pr.ObjectMeta.Annotations, annoKey2)
 	pr.Spec.Revision = 1
 	t.UpdateF(&pr)
+	t.AsyncSleep()
+
+	// retrieve the updated object
+	t.GetF(client.ObjectKey{
+		Namespace: pr.Namespace,
+		Name:      pr.Name,
+	}, &pr)
+
 	t.ValidateLabelsAndAnnos(pr.Name,
 		map[string]string{
 			labelKey2:                         labelVal2,
@@ -2642,6 +2822,7 @@ func (t *PorchSuite) TestNewPackageRevisionLabels() {
 		},
 	}
 	t.CreateF(&clonedPr)
+	clonedPr = *t.WaitUntilPackageRevisionLifecycleMatches(repository, clonedPr.Spec.PackageName, clonedPr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 	t.ValidateLabelsAndAnnos(clonedPr.Name,
 		map[string]string{},
 		map[string]string{},
@@ -2671,6 +2852,7 @@ func (t *PorchSuite) TestRegisteredPackageRevisionLabels() {
 	}
 	basens.ObjectMeta.Annotations[annoKey] = annoVal
 	t.UpdateF(basens)
+	t.AsyncSleep()
 
 	t.ValidateLabelsAndAnnos(basens.Name,
 		map[string]string{
@@ -2708,6 +2890,7 @@ func (t *PorchSuite) TestPackageRevisionGCWithOwner() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, pr.Spec.PackageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	cm := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
@@ -2799,6 +2982,7 @@ func (t *PorchSuite) TestPackageRevisionGCAsOwner() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, pr.Spec.PackageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	t.DeleteF(cm)
 	t.WaitUntilObjectDeleted(
@@ -2859,6 +3043,7 @@ func (t *PorchSuite) TestPackageRevisionOwnerReferences() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, pr.Spec.PackageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 	t.ValidateOwnerReferences(pr.Name, []metav1.OwnerReference{})
 
 	ownerRef := metav1.OwnerReference{
@@ -2869,10 +3054,18 @@ func (t *PorchSuite) TestPackageRevisionOwnerReferences() {
 	}
 	pr.ObjectMeta.OwnerReferences = []metav1.OwnerReference{ownerRef}
 	t.UpdateF(pr)
+	t.AsyncSleep()
+	// retrieve the updated object
+	t.GetF(client.ObjectKey{
+		Namespace: pr.Namespace,
+		Name:      pr.Name,
+	}, pr)
+
 	t.ValidateOwnerReferences(pr.Name, []metav1.OwnerReference{ownerRef})
 
 	pr.ObjectMeta.OwnerReferences = []metav1.OwnerReference{}
 	t.UpdateF(pr)
+	t.AsyncSleep()
 	t.ValidateOwnerReferences(pr.Name, []metav1.OwnerReference{})
 }
 
@@ -2900,13 +3093,21 @@ func (t *PorchSuite) TestPackageRevisionFinalizers() {
 		},
 	}
 	t.CreateF(pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repository, pr.Spec.PackageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 	t.ValidateFinalizers(pr.Name, []string{})
 
 	pr.Finalizers = append(pr.Finalizers, "foo-finalizer")
 	t.UpdateF(pr)
+	t.AsyncSleep()
+	// retrieve the updated object
+	t.GetF(client.ObjectKey{
+		Namespace: pr.Namespace,
+		Name:      pr.Name,
+	}, pr)
 	t.ValidateFinalizers(pr.Name, []string{"foo-finalizer"})
 
 	t.DeleteF(pr)
+	t.AsyncSleep()
 	t.ValidateFinalizers(pr.Name, []string{"foo-finalizer"})
 
 	pr.Finalizers = []string{}
@@ -3097,26 +3298,32 @@ func (t *PorchSuite) TestLatestVersionOnDelete() {
 
 	t.RegisterMainGitRepositoryF(repositoryName)
 
-	pr1 := t.CreatePackageDraftF(repositoryName, packageName, workspacev1)
+	t.CreatePackageDraftF(repositoryName, packageName, workspacev1)
+	pr1 := t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev1, porchapi.PackageRevisionLifecycleDraft)
 
 	pr1.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(pr1)
+	pr1 = t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev1, porchapi.PackageRevisionLifecycleProposed)
 
 	pr1.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	t.UpdateApprovalF(pr1, metav1.UpdateOptions{})
+	pr1 = t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev1, porchapi.PackageRevisionLifecyclePublished)
 
 	//After approval of the first revision, the package should be labeled as latest
 	t.MustHaveLabels(pr1.Name, map[string]string{
 		porchapi.LatestPackageRevisionKey: porchapi.LatestPackageRevisionValue,
 	})
 
-	pr2 := t.CreatePackageDraftF(repositoryName, packageName, workspacev2)
+	t.CreatePackageDraftF(repositoryName, packageName, workspacev2)
+	pr2 := t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev2, porchapi.PackageRevisionLifecycleDraft)
 
 	pr2.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(pr2)
+	pr2 = t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev2, porchapi.PackageRevisionLifecycleProposed)
 
 	pr2.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	t.UpdateApprovalF(pr2, metav1.UpdateOptions{})
+	pr2 = t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev2, porchapi.PackageRevisionLifecyclePublished)
 
 	//After approval of the second revision, the latest label should migrate to the
 	//v2 packageRevision
@@ -3132,8 +3339,14 @@ func (t *PorchSuite) TestLatestVersionOnDelete() {
 
 	pr2.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 	t.UpdateF(pr2)
+	pr2 = t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev2, porchapi.PackageRevisionLifecycleDeletionProposed)
 
 	t.DeleteF(pr2)
+	t.WaitUntilObjectDeleted(packageRevisionGVK, types.NamespacedName{
+		Name:      pr2.Name,
+		Namespace: pr2.Namespace,
+	}, 10*time.Second)
+
 	//After deletion of the v2 pacakgeRevision,
 	//the label should migrate back to the v2 packageRevision
 	t.MustHaveLabels(pr1.Name, map[string]string{
@@ -3144,8 +3357,14 @@ func (t *PorchSuite) TestLatestVersionOnDelete() {
 
 	pr1.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 	t.UpdateF(pr1)
+	pr1 = t.WaitUntilPackageRevisionLifecycleMatches(repositoryName, packageName, workspacev1, porchapi.PackageRevisionLifecycleDeletionProposed)
 
 	t.DeleteF(pr1)
+	t.WaitUntilObjectDeleted(packageRevisionGVK, types.NamespacedName{
+		Name:      pr1.Name,
+		Namespace: pr1.Namespace,
+	}, 10*time.Second)
+
 	//After the removal of all versioned packageRevisions, the main branch
 	//packageRevision should still not get the latest label.
 	mainPr := t.GetPackageRevision(repositoryName, packageName, -1)
@@ -3256,17 +3475,13 @@ func (t *PorchSuite) TestMetadataAfterApproveAndBackgroundJob() {
 	pr := t.CreatePackageSkeleton(repoName, packageName, workspace)
 	pr.Spec.Tasks = []porchapi.Task{{Type: porchapi.TaskTypeInit, Init: &porchapi.PackageInitTaskSpec{}}}
 	t.CreateF(pr)
-	prKey := client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      pr.Name,
-	}
-	t.GetF(prKey, pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repoName, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(pr)
-	t.GetF(prKey, pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repoName, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	t.UpdateApprovalF(pr, metav1.UpdateOptions{})
-	t.GetF(prKey, pr)
+	_ = t.WaitUntilPackageRevisionLifecycleMatches(repoName, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	// List package revisions and check they are as expected
 	// (one as the latest with revision 1; one for the "main"/-1 revision)
@@ -3301,17 +3516,13 @@ func (t *PorchSuite) TestMetadataAfterDeleteAndBackgroundJob() {
 	pr := t.CreatePackageSkeleton(repoName, packageName, workspace)
 	pr.Spec.Tasks = []porchapi.Task{{Type: porchapi.TaskTypeInit, Init: &porchapi.PackageInitTaskSpec{}}}
 	t.CreateF(pr)
-	prKey := client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      pr.Name,
-	}
-	t.GetF(prKey, pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repoName, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(pr)
-	t.GetF(prKey, pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repoName, packageName, workspace, porchapi.PackageRevisionLifecycleProposed)
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
 	t.UpdateApprovalF(pr, metav1.UpdateOptions{})
-	t.GetF(prKey, pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repoName, packageName, workspace, porchapi.PackageRevisionLifecyclePublished)
 
 	// List package revisions and check they are as expected
 	// (one as the latest with revision 1; one for the "main"/-1 revision)
@@ -3329,12 +3540,17 @@ func (t *PorchSuite) TestMetadataAfterDeleteAndBackgroundJob() {
 	// (henceforth called "the v1 package revision")
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDeletionProposed
 	t.UpdateApprovalF(pr, metav1.UpdateOptions{})
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(repoName, packageName, workspace, porchapi.PackageRevisionLifecycleDeletionProposed)
 	t.DeleteE(&porchapi.PackageRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: t.Namespace,
 			Name:      pr.Name,
 		},
 	})
+	t.WaitUntilObjectDeleted(packageRevisionGVK, types.NamespacedName{
+		Name:      pr.Name,
+		Namespace: pr.Namespace,
+	}, 10*time.Second)
 
 	// Check that the "main" package revision still exists, while the v1 package
 	// revision does not
@@ -3408,7 +3624,13 @@ func (t *PorchSuite) TestCreatePackageRevisionRollback() {
 
 	// Attempt to create the package revision
 	_, err := t.Clientset.PorchV1alpha1().PackageRevisions(t.Namespace).Create(ctx, pr, metav1.CreateOptions{})
-	assert.Error(t, err, "Expected error when creating package revision with invalid task configuration")
+	if err == nil {
+		t.Log("Ignoring - Expected error when creating package revision with invalid task configuration")
+	}
+	t.AsyncSleep()
+
+	// Error printed in server log because of async operation.
+	//assert.Error(t, err, "Expected error when creating package revision with invalid task configuration")
 
 	// Verify that the package revision was not created
 	_, err = t.Clientset.PorchV1alpha1().PackageRevisions(t.Namespace).Get(ctx, pr.Name, metav1.GetOptions{})

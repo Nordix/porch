@@ -468,7 +468,7 @@ func (t *TestSuite) WaitUntilRepositoryReady(name, namespace string) {
 	}
 
 	// While we're using an aggregated apiserver, make sure we can query the generated objects
-	if err := wait.PollUntilContextTimeout(t.GetContext(), time.Second, 10*time.Second, true, func(ctx context.Context) (bool, error) {
+	if err := wait.PollUntilContextTimeout(t.GetContext(), time.Second, 20*time.Second, true, func(ctx context.Context) (bool, error) {
 		var revisions porchapi.PackageRevisionList
 		if err := t.Client.List(ctx, &revisions, client.InNamespace(nn.Namespace)); err != nil {
 			innerErr = err
@@ -726,4 +726,35 @@ func (t *TestSuite) AddResourceToPackage(resources *porchapi.PackageRevisionReso
 		t.Fatalf("Failed to read file from %q: %v", filePath, err)
 	}
 	resources.Spec.Resources[name] = string(file)
+}
+
+func (t *TestSuite) WaitUntilPackageRevisionLifecycleMatches(repository string, pkgName string, workspace string, lifecycle porchapi.PackageRevisionLifecycle) *porchapi.PackageRevision {
+	t.T().Helper()
+	t.Logf("Waiting for package revision (%v/%v) with lifecycle %v to exist", repository, pkgName, lifecycle)
+	timeout := 60 * time.Second
+	foundPkgRev, err := t.WaitUntilPackageRevisionFulfillingConditionExists(timeout, func(pkgRev porchapi.PackageRevision) bool {
+		return pkgRev.Spec.RepositoryName == repository &&
+			pkgRev.Spec.PackageName == pkgName &&
+			pkgRev.Spec.WorkspaceName == workspace &&
+			pkgRev.Spec.Lifecycle == lifecycle
+	})
+	if err != nil {
+		t.Fatalf("Package revision (%v/%v/%v) not found in time (%v)", repository, pkgName, lifecycle, timeout)
+	}
+	t.Logf("Found package revision (%v/%v) with lifecycle %v", repository, pkgName, lifecycle)
+	// sleep for 2 seconds to wait for async operations to complete after metadata create/update
+	// operation to eliminate race conditions
+	time.Sleep(2 * time.Second)
+	return foundPkgRev
+}
+
+func (t *TestSuite) AsyncSleep(duration ...int) {
+	if len(duration) > 0 {
+		// sleep for specified duration
+		time.Sleep(time.Duration(duration[0]) * time.Second)
+		return
+	} else {
+		// sleep for 5 seconds to wait for async operations to complete
+		time.Sleep(5 * time.Second)
+	}
 }

@@ -21,9 +21,11 @@ import (
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	"go.opentelemetry.io/otel/trace"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 )
 
@@ -50,7 +52,12 @@ func (a *packageRevisionsApproval) NamespaceScoped() bool {
 }
 
 func (a *packageRevisionsApproval) Get(ctx context.Context, name string, options *metav1.GetOptions) (runtime.Object, error) {
-	pkg, err := a.common.getRepoPkgRev(ctx, name)
+
+	namespace, namespaced := genericapirequest.NamespaceFrom(ctx)
+	if !namespaced {
+		return nil, apierrors.NewBadRequest("namespace must be specified")
+	}
+	pkg, err := a.common.getRepoPkgRev(ctx, name, namespace)
 	if err != nil {
 		return nil, err
 	}

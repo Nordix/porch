@@ -225,6 +225,15 @@ func (m *mockPackageRevision) SetMeta(ctx context.Context, meta metav1.ObjectMet
 	return args.Error(0)
 }
 
+func (m *mockPackageRevision) SetError(ctx context.Context, err string) {
+	m.Called(err)
+}
+
+func (m *mockPackageRevision) GetError(ctx context.Context) string {
+	args := m.Called()
+	return args.String(0)
+}
+
 func TestCreatePackageRevisionRollback(t *testing.T) {
 	tests := []struct {
 		name          string

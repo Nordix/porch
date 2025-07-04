@@ -101,7 +101,12 @@ func (r *packageRevisionResources) Get(ctx context.Context, name string, options
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisionResources::Get", trace.WithAttributes())
 	defer span.End()
 
-	pkg, err := r.packageCommon.getRepoPkgRev(ctx, name)
+	namespace, namespaced := genericapirequest.NamespaceFrom(ctx)
+	if !namespaced {
+		return nil, apierrors.NewBadRequest("namespace must be specified")
+	}
+
+	pkg, err := r.packageCommon.getRepoPkgRev(ctx, name, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +142,7 @@ func (r *packageRevisionResources) Update(ctx context.Context, name string, objI
 	}
 	defer pkgMutex.Unlock()
 
-	oldRepoPkgRev, err := r.packageCommon.getRepoPkgRev(ctx, name)
+	oldRepoPkgRev, err := r.packageCommon.getRepoPkgRev(ctx, name, namespace)
 	if err != nil {
 		return nil, false, err
 	}

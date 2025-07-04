@@ -107,3 +107,16 @@ func PrSlice2Map(prSlice []PackageRevision) map[PackageRevisionKey]PackageRevisi
 
 	return prMap
 }
+
+func ParseObjToPkgRevKey(apiPkgRev *api.PackageRevision) PackageRevisionKey {
+	return PackageRevisionKey{
+		PkgKey: PackageKey{
+			RepoKey: RepositoryKey{
+				Namespace: apiPkgRev.Namespace,
+				Name:      apiPkgRev.Spec.RepositoryName,
+			},
+			Package: apiPkgRev.Spec.PackageName},
+		Revision:      apiPkgRev.Spec.Revision,
+		WorkspaceName: apiPkgRev.Spec.WorkspaceName,
+	}
+}

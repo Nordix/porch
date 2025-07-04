@@ -45,7 +45,7 @@ func createScheme() (*runtime.Scheme, error) {
 }
 
 func TestCmd(t *testing.T) {
-	pkgRevName := "test-pr"
+	pkgRevName := "test-rpkg-reject"
 	repoName := "test-repo"
 	ns := "ns"
 	var scheme, err = createScheme()
@@ -76,7 +76,7 @@ func TestCmd(t *testing.T) {
 					}}).Build(),
 		},
 		"Reject deletion-proposed package": {
-			output: pkgRevName + " no longer proposed for deletion\n",
+			output: "User request to reject " + pkgRevName + " with state " + string(porchapi.PackageRevisionLifecycleDeletionProposed) + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
 			fakeclient: fake.NewClientBuilder().WithScheme(scheme).
 				WithObjects(&porchapi.PackageRevision{
 					TypeMeta: metav1.TypeMeta{
@@ -129,7 +129,7 @@ func TestCmd(t *testing.T) {
 					}}).Build(),
 		},
 		"Reject proposed package": {
-			output: pkgRevName + " no longer proposed for approval\n",
+			output: "User request to reject " + pkgRevName + " with state " + string(porchapi.PackageRevisionLifecycleProposed) + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n",
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				//fake subresourceupdate
 				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {

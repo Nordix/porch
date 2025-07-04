@@ -275,6 +275,7 @@ type ociPackageRevision struct {
 	tasks  []v1alpha1.Task
 
 	lifecycle v1alpha1.PackageRevisionLifecycle
+	err       string
 }
 
 var _ repository.PackageRevision = &ociPackageRevision{}
@@ -285,6 +286,18 @@ func (c *ociPackageRevision) KubeObjectName() string {
 
 func (c *ociPackageRevision) KubeObjectNamespace() string {
 	return c.Key().RKey().Namespace
+}
+
+func (p *ociPackageRevision) SetError(ctx context.Context, err string) {
+	_, span := tracer.Start(ctx, "ociPackageRevision::SetError", trace.WithAttributes())
+	defer span.End()
+	p.err = err
+}
+
+func (p *ociPackageRevision) GetError(ctx context.Context) string {
+	_, span := tracer.Start(ctx, "ociPackageRevision::GetError", trace.WithAttributes())
+	defer span.End()
+	return p.err
 }
 
 func (c *ociPackageRevision) UID() types.UID {
@@ -371,6 +384,7 @@ func (p *ociPackageRevision) GetPackageRevision(ctx context.Context) (*v1alpha1.
 			// TODO:        UpstreamLock,
 			Deployment: p.parent.deployment,
 			Conditions: repository.ToApiConditions(kf),
+			Err:        p.GetError(ctx),
 		},
 	}, nil
 }

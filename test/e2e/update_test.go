@@ -15,15 +15,20 @@
 package e2e
 
 import (
+	"time"
+
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
 	"github.com/nephio-project/porch/pkg/repository"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (t *PorchSuite) TestPackageUpdateRecloneAndReplay() {
 	const (
 		gitRepository = "package-update"
+		packageName   = "testrecloneandreplay"
+		workspace     = "testdescr"
 	)
 
 	t.RegisterTestBlueprintRepository("test-blueprints", "")
@@ -47,8 +52,8 @@ func (t *PorchSuite) TestPackageUpdateRecloneAndReplay() {
 			Namespace: t.Namespace,
 		},
 		Spec: porchapi.PackageRevisionSpec{
-			PackageName:    "testrecloneandreplay",
-			WorkspaceName:  "testdescr",
+			PackageName:    packageName,
+			WorkspaceName:  workspace,
 			RepositoryName: gitRepository,
 			Tasks: []porchapi.Task{
 				{
@@ -71,11 +76,7 @@ func (t *PorchSuite) TestPackageUpdateRecloneAndReplay() {
 	}
 
 	t.CreateF(pr)
-
-	t.GetF(client.ObjectKey{
-		Namespace: t.Namespace,
-		Name:      pr.Name,
-	}, pr)
+	pr = t.WaitUntilPackageRevisionLifecycleMatches(gitRepository, packageName, workspace, porchapi.PackageRevisionLifecycleDraft)
 
 	// Update the clone task
 	pr.Spec.Tasks[0].Clone = &porchapi.PackageCloneTaskSpec{
@@ -93,16 +94,19 @@ func (t *PorchSuite) TestPackageUpdateRecloneAndReplay() {
 
 	t.UpdateF(pr)
 
+	// wait for package to be updated in the background
+	time.Sleep(5 * time.Second)
+
 	t.GetF(client.ObjectKey{
 		Namespace: t.Namespace,
 		Name:      pr.Name,
 	}, pr)
 
-	var revisionResources porchapi.PackageRevisionResources
-	t.GetF(client.ObjectKey{
+	nsN := types.NamespacedName{
 		Namespace: t.Namespace,
 		Name:      pr.Name,
-	}, &revisionResources)
+	}
+	revisionResources := t.WaitUntilPackageRevisionResourcesExists(nsN)
 
 	if _, found := revisionResources.Spec.Resources["resourcequota.yaml"]; !found {
 		t.Errorf("Updated package should contain 'resourcequota.yaml` file")

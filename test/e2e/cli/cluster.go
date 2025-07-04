@@ -17,6 +17,7 @@ package e2e
 import (
 	"bytes"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,71 @@ func KubectlWaitForRepoReady(t *testing.T, repoName, namespace string) {
 				msg = err.Error()
 			}
 			t.Fatalf("Repo %s/%s has not become Ready. Giving up: %s", namespace, repoName, msg)
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func KubectlCheckPackageLifecycle(t *testing.T, cliArgs []string, cmdStdout, namespace string) {
+	// determine the required lifecycle from the command executed
+	var requiredLifecycle string
+	if slices.Contains(cliArgs, "init") {
+		requiredLifecycle = "Draft"
+	} else if slices.Contains(cliArgs, "propose") {
+		requiredLifecycle = "Proposed"
+	} else if slices.Contains(cliArgs, "approve") {
+		requiredLifecycle = "Published"
+	} else if slices.Contains(cliArgs, "propose-delete") {
+		requiredLifecycle = "DeletionProposed"
+	} else if slices.Contains(cliArgs, "reject") {
+		if strings.Contains(cmdStdout, "DeletionProposed") {
+			requiredLifecycle = "Published"
+		} else {
+			requiredLifecycle = "Draft"
+		}
+	} else if slices.Contains(cliArgs, "delete") {
+		requiredLifecycle = "Deleted"
+	} else if slices.Contains(cliArgs, "clone") {
+		requiredLifecycle = "Draft"
+	} else if slices.Contains(cliArgs, "copy") {
+		requiredLifecycle = "Draft"
+	} else {
+		time.Sleep(5 * time.Second)
+		return
+	}
+
+	// Get the package name from command.stdout
+	pkgFromstdout := strings.Split(cmdStdout, "\"")
+	pkgFromstdout = strings.Split(pkgFromstdout[len(pkgFromstdout)-2], " ")
+	pkgName := pkgFromstdout[len(pkgFromstdout)-1]
+
+	t.Logf("waiting for package revision %s/%s to have the required lifecycle", namespace, pkgName)
+	args := []string{"get", "packagerevision", pkgName, "--namespace", namespace, "--output=jsonpath={.spec.lifecycle}"}
+	giveUp := time.Now().Add(20 * time.Second)
+	for {
+		cmd := exec.Command("kubectl", args...)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		t.Logf("running command %v", strings.Join(cmd.Args, " "))
+		err := cmd.Run()
+		pkgLifecycle := stdout.String()
+		if requiredLifecycle == "Deleted" {
+			if strings.Contains(stderr.String(), "not found") {
+				return
+			}
+		} else {
+			if err == nil && string(pkgLifecycle) == requiredLifecycle {
+				t.Logf("Package revision %s/%s is Ready", namespace, pkgName)
+				return
+			}
+		}
+		if time.Now().After(giveUp) {
+			var msg string
+			if err != nil {
+				msg = err.Error()
+			}
+			t.Fatalf("Package revision %s/%s is not Ready. Giving up: %s", namespace, pkgName, msg)
 		}
 		time.Sleep(2 * time.Second)
 	}

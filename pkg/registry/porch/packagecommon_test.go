@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
@@ -43,6 +44,8 @@ func (f *fakePackageRevision) Key() repository.PackageRevisionKey {
 }
 func (f *fakePackageRevision) KubeObjectName() string                                 { return "" }
 func (f *fakePackageRevision) UID() types.UID                                         { return "" }
+func (f *fakePackageRevision) SetError(ctx context.Context, err string)               {}
+func (f *fakePackageRevision) GetError(ctx context.Context) string                    { return "" }
 func (f *fakePackageRevision) SetMeta(context.Context, metav1.ObjectMeta) error       { return nil }
 func (f *fakePackageRevision) ResourceVersion() string                                { return "" }
 func (f *fakePackageRevision) Lifecycle(context.Context) api.PackageRevisionLifecycle { return "" }
@@ -176,6 +179,15 @@ func (f *fakeCaDEngine) UpdatePackage(ctx context.Context, repositoryObj *config
 func (f *fakeCaDEngine) DeletePackage(ctx context.Context, repositoryObj *configapi.Repository, obj repository.Package) error {
 	return nil
 }
+
+func (f *fakeCaDEngine) SavePackageRevisionJob(ctx context.Context, newApiPkgRev *api.PackageRevision, repoPkgRev repository.PackageRevision, errMessage string) error {
+	return nil
+}
+
+func (f *fakeCaDEngine) GetCtxTimeout() time.Duration {
+	return 3 * time.Minute
+}
+
 func TestWatchPackages_CallsCallback(t *testing.T) {
 	fakeWatcher := &fakeWatcherManager{}
 	fakeCad := &fakeCaDEngine{watcherManager: fakeWatcher}

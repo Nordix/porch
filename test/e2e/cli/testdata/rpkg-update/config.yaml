@@ -19,7 +19,9 @@ commands:
       - --repository=git
       - --workspace=update-1
       - basens-edit
-    stdout: "git.basens-edit.update-1 created\n"
+    stdout: |
+      User request to clone git.basens-edit.update-1 to repo git is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update git.basens-edit.update-1"
   - args:
       - porchctl
       - rpkg
@@ -31,7 +33,9 @@ commands:
       - --repository=git
       - --workspace=update-2
       - basens-edit-clone
-    stdout: "git.basens-edit-clone.update-2 created\n"
+    stdout: |
+      User request to clone git.basens-edit-clone.update-2 to repo git is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update git.basens-edit-clone.update-2"
   - args:
       - porchctl
       - rpkg
@@ -40,21 +44,27 @@ commands:
       - --workspace=update-3
       - --replay-strategy=true
       - git.basens-edit.update-1
-    stdout: "git.basens-edit.update-3 created\n"
+    stdout: |
+      User request to copy git.basens-edit.update-1 to workspace update-3 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update git.basens-edit.update-3"
   - args:
       - porchctl
       - rpkg
       - propose
       - --namespace=rpkg-update
       - git.basens-edit.update-3
-    stdout: "git.basens-edit.update-3 proposed\n"
+    stdout: |
+      User request to propose git.basens-edit.update-3 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update git.basens-edit.update-3"
   - args:
       - porchctl
       - rpkg
       - approve
       - --namespace=rpkg-update
       - git.basens-edit.update-3
-    stdout: "git.basens-edit.update-3 approved\n"
+    stdout: |
+      User request to approve git.basens-edit.update-3 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update git.basens-edit.update-3"
   - args:
       - porchctl
       - rpkg
@@ -104,7 +114,9 @@ commands:
       - --namespace=rpkg-update
       - --revision=1
       - git.basens-edit-clone.update-2
-    stdout: "git.basens-edit-clone.update-2 updated\n"
+    stdout: |
+      User request to update git.basens-edit-clone.update-2 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update git.basens-edit-clone.update-2"
   - args:
       - porchctl
       - rpkg
@@ -144,7 +156,9 @@ commands:
       - --namespace=rpkg-update
       - git.basens-edit-clone.update-2
       - /tmp/porch-e2e/pkg-update-git.basens-edit-clone.update-2
-    stdout: "git.basens-edit-clone.update-2 pushed\n"
+    stdout: |
+      User request to push git.basens-edit-clone.update-2 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-update git.basens-edit-clone.update-2"
   - args:
       - porchctl
       - rpkg

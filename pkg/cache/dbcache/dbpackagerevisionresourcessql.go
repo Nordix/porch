@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/nephio-project/porch/pkg/dbhandler"
 	"github.com/nephio-project/porch/pkg/repository"
 	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
@@ -34,7 +35,7 @@ func pkgRevResourceReadFromDB(ctx context.Context, prk repository.PackageRevisio
 	var resVal string
 
 	klog.V(6).Infof("pkgRevResourceReadFromDB: running query %q on package revision %+v key %q", sqlStatement, prk, resKey)
-	err := GetDB().db.QueryRow(sqlStatement, prk.K8SNS(), prk.K8SName(), resKey).Scan(&resVal)
+	err := dbhandler.GetDB().Db.QueryRow(sqlStatement, prk.K8SNS(), prk.K8SName(), resKey).Scan(&resVal)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -61,7 +62,7 @@ func pkgRevResourcesReadFromDB(ctx context.Context, prk repository.PackageRevisi
 	resources := make(map[string]string)
 
 	klog.V(6).Infof("pkgRevResourcesReadFromDB: running query %q on package revision %+v", sqlStatement, prk)
-	rows, err := GetDB().db.Query(sqlStatement, prk.K8SNS(), prk.K8SName())
+	rows, err := dbhandler.GetDB().Db.Query(sqlStatement, prk.K8SNS(), prk.K8SName())
 	if err != nil {
 		klog.Warningf("pkgRevResourcesReadFromDB: query failed for %+v: %q", prk, err)
 		return nil, err
@@ -95,7 +96,7 @@ func pkgRevResourceWriteToDB(ctx context.Context, prk repository.PackageRevision
 			DO UPDATE SET resource_value = EXCLUDED.resource_value`
 
 	klog.V(6).Infof("pkgRevResourceWriteToDB: running query %q on package revision %+v", sqlStatement, prk)
-	if _, err := GetDB().db.Exec(sqlStatement, prk.K8SNS(), prk.K8SName(), prk.Revision, resKey, resVal); err == nil {
+	if _, err := dbhandler.GetDB().Db.Exec(sqlStatement, prk.K8SNS(), prk.K8SName(), prk.Revision, resKey, resVal); err == nil {
 		klog.V(5).Infof("pkgRevResourceWriteToDB: query succeeded, row created/updated")
 		return nil
 	} else {
@@ -138,7 +139,7 @@ func pkgRevResourcesDeleteFromDB(ctx context.Context, prk repository.PackageRevi
 	sqlStatement := `DELETE FROM resources WHERE k8s_name_space=$1 AND k8s_name=$2`
 
 	klog.V(6).Infof("pkgRevResourcesDeleteFromDB: running query %q on package revision %+v", sqlStatement, prk)
-	_, err := GetDB().db.Exec(sqlStatement, prk.K8SNS(), prk.K8SName())
+	_, err := dbhandler.GetDB().Db.Exec(sqlStatement, prk.K8SNS(), prk.K8SName())
 
 	if err == nil {
 		klog.V(5).Infof("pkgRevResourcesDeleteFromDB: deleted package revision resources for %+v", prk)
@@ -158,7 +159,7 @@ func pkgRevResourceDeleteFromDB(ctx context.Context, prk repository.PackageRevis
 	sqlStatement := `DELETE FROM resources WHERE k8s_name_space=$1 AND k8s_name=$2 AND resource_key=$3`
 
 	klog.V(6).Infof("pkgRevResourceDeleteFromDB: running query %q on package revision %+v", sqlStatement, prk)
-	_, err := GetDB().db.Exec(sqlStatement, prk.K8SNS(), prk.K8SName(), resKey)
+	_, err := dbhandler.GetDB().Db.Exec(sqlStatement, prk.K8SNS(), prk.K8SName(), resKey)
 
 	if err == nil {
 		klog.V(5).Infof("pkgRevResourceDeleteFromDB: deleted package revision resource %q from %+v", resKey, prk)

@@ -186,7 +186,7 @@ func TestValidatePkgRevName(t *testing.T) {
 			got := ValidPkgRevObjName(tc.Repo, tc.Path, tc.Pkg, tc.Ws)
 			if got == nil {
 				if tc.Err == true {
-					t.Errorf("didn't get an an error when expecting one")
+					t.Errorf("didn't get an error when expecting one")
 				}
 				return
 			}
