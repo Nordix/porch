@@ -1,0 +1,36 @@
+apiVersion: fn.kpt.dev/v1alpha1
+kind: StarlarkRun
+metadata:
+  name: remove-postgres-on-cr-cache
+  annotations:
+    config.kubernetes.io/local-config: "true"
+source: |-
+  load("krmfn.star", "krmfn")
+  def is_cr_cache(resources):
+    for r in resources:
+      if krmfn.match_gvk(r,"v1", "ConfigMap") and krmfn.match_namespace(r, "porch-system") and krmfn.match_name(r, "porch-config") and "cache-type" in r["data"]:
+        if r["data"]["cache-type"].upper() == "CR":
+          return True
+        else:
+          return False
+    return False
+
+  def remove_resource(resources, res_version, res_kind, res_ns, res_name):
+    db_schema_resource_index = -1
+    for i in range(len(resources)):
+      if krmfn.match_gvk(resources[i], res_version, res_kind) and krmfn.match_namespace(resources[i], res_ns) and krmfn.match_name(resources[i], res_name):
+        db_schema_resource_index = i
+    if db_schema_resource_index > -1:
+      resources.pop(db_schema_resource_index)
+      print("Deleted resource " + res_kind + ":" + res_ns + ":" + res_name)
+
+  if is_cr_cache(ctx.resource_list["items"]):
+    print("Configuring for CR cache")
+    remove_resource(ctx.resource_list["items"], "v1", "ConfigMap", "porch-system", "porch-schema")
+    remove_resource(ctx.resource_list["items"], "v1", "Secret", "porch-system", "porch-db-secret")
+    remove_resource(ctx.resource_list["items"], "v1", "ConfigMap", "porch-system", "porch-db-config")
+    remove_resource(ctx.resource_list["items"], "v1", "Service", "porch-system", "porch-postgresql-lb")
+    remove_resource(ctx.resource_list["items"], "v1", "Service", "porch-system", "porch-postgresql")
+    remove_resource(ctx.resource_list["items"], "apps/v1", "StatefulSet", "porch-system", "porch-postgresql")
+  else:
+    print("Configuring for DB cache")
