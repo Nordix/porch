@@ -17,7 +17,8 @@ commands:
       - --workspace=lifecycle
       - lifecycle-package
     stdout: |
-      git.lifecycle-package.lifecycle created
+      User request to init git.lifecycle-package.lifecycle is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
@@ -25,7 +26,8 @@ commands:
       - --namespace=rpkg-lifecycle
       - git.lifecycle-package.lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle proposed
+      User request to propose git.lifecycle-package.lifecycle is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
@@ -51,7 +53,8 @@ commands:
       - --namespace=rpkg-lifecycle
       - git.lifecycle-package.lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle no longer proposed for approval
+      User request to reject git.lifecycle-package.lifecycle with state Proposed is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
@@ -76,7 +79,8 @@ commands:
       - --namespace=rpkg-lifecycle
       - git.lifecycle-package.lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle proposed
+      User request to propose git.lifecycle-package.lifecycle is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
@@ -93,7 +97,8 @@ commands:
       - --namespace=rpkg-lifecycle
       - git.lifecycle-package.lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle approved
+      User request to approve git.lifecycle-package.lifecycle is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
@@ -109,7 +114,7 @@ commands:
       - delete
       - git.lifecycle-package.lifecycle
       - --namespace=rpkg-lifecycle
-    stderr: "git.lifecycle-package.lifecycle failed (admission webhook \"packagerevdeletion.google.com\" denied the request: failed to delete package revision \"git.lifecycle-package.lifecycle\": published PackageRevisions must be proposed for deletion by setting spec.lifecycle to 'DeletionProposed' prior to deletion)\nError: errors:\n  admission webhook \"packagerevdeletion.google.com\" denied the request: failed to delete package revision \"git.lifecycle-package.lifecycle\": published PackageRevisions must be proposed for deletion by setting spec.lifecycle to 'DeletionProposed' prior to deletion \n"
+    stderr: "git.lifecycle-package.lifecycle failed: cannot delete git.lifecycle-package.lifecycle with lifecycle 'Published'\nError: errors:\n  cannot delete git.lifecycle-package.lifecycle with lifecycle 'Published' \n"
     exitCode: 1
   - args:
       - porchctl
@@ -118,15 +123,16 @@ commands:
       - git.lifecycle-package.lifecycle
       - --namespace=rpkg-lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle proposed for deletion
+      User request to propose-delete git.lifecycle-package.lifecycle is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
       - propose-delete
       - git.lifecycle-package.lifecycle
       - --namespace=rpkg-lifecycle
-    stderr: |
-      git.lifecycle-package.lifecycle is already proposed for deletion
+    stderr: "git.lifecycle-package.lifecycle failed (git.lifecycle-package.lifecycle is already proposed for deletion)\nError: errors:\n  git.lifecycle-package.lifecycle is already proposed for deletion \n"
+    exitCode: 1
   - args:
       - porchctl
       - rpkg
@@ -143,7 +149,8 @@ commands:
       - git.lifecycle-package.lifecycle
       - --namespace=rpkg-lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle no longer proposed for deletion
+      User request to reject git.lifecycle-package.lifecycle with state DeletionProposed is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
@@ -168,7 +175,8 @@ commands:
       - git.lifecycle-package.lifecycle
       - --namespace=rpkg-lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle proposed for deletion
+      User request to propose-delete git.lifecycle-package.lifecycle is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg
@@ -185,7 +193,8 @@ commands:
       - git.lifecycle-package.lifecycle
       - --namespace=rpkg-lifecycle
     stdout: |
-      git.lifecycle-package.lifecycle deleted
+      User request to del git.lifecycle-package.lifecycle is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-lifecycle git.lifecycle-package.lifecycle"
   - args:
       - porchctl
       - rpkg

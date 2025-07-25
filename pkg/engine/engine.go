@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
@@ -50,7 +51,8 @@ type CaDEngine interface {
 	CreatePackageRevision(ctx context.Context, repositoryObj *configapi.Repository, obj *api.PackageRevision, parent repository.PackageRevision) (repository.PackageRevision, error)
 	UpdatePackageRevision(ctx context.Context, version int, repositoryObj *configapi.Repository, oldPackage repository.PackageRevision, old, new *api.PackageRevision, parent repository.PackageRevision) (repository.PackageRevision, error)
 	DeletePackageRevision(ctx context.Context, repositoryObj *configapi.Repository, obj repository.PackageRevision) error
-
+	GetCtxTimeout() time.Duration
+	GetCacheOpts() cachetypes.CacheOptions
 	ListPackages(ctx context.Context, repositorySpec *configapi.Repository, filter repository.ListPackageFilter) ([]repository.Package, error)
 	CreatePackage(ctx context.Context, repositoryObj *configapi.Repository, obj *api.PorchPackage) (repository.Package, error)
 	UpdatePackage(ctx context.Context, repositoryObj *configapi.Repository, oldPackage repository.Package, old, new *api.PorchPackage) (repository.Package, error)
@@ -71,11 +73,12 @@ func NewCaDEngine(opts ...EngineOption) (CaDEngine, error) {
 }
 
 type cadEngine struct {
-	cache cachetypes.Cache
-
+	cache            cachetypes.Cache
 	userInfoProvider repository.UserInfoProvider
 	watcherManager   *watcherManager
 	taskHandler      task.TaskHandler
+	CtxTimeout       time.Duration
+	CacheOpts        cachetypes.CacheOptions
 }
 
 var _ CaDEngine = &cadEngine{}
@@ -83,6 +86,14 @@ var _ CaDEngine = &cadEngine{}
 // ObjectCache is a cache of all our objects.
 func (cad *cadEngine) ObjectCache() WatcherManager {
 	return cad.watcherManager
+}
+
+func (cad *cadEngine) GetCtxTimeout() time.Duration {
+	return cad.CtxTimeout
+}
+
+func (cad *cadEngine) GetCacheOpts() cachetypes.CacheOptions {
+	return cad.CacheOpts
 }
 
 func (cad *cadEngine) OpenRepository(ctx context.Context, repositorySpec *configapi.Repository) (repository.Repository, error) {
@@ -280,7 +291,6 @@ func (cad *cadEngine) UpdatePackageRevision(ctx context.Context, version int, re
 	if err != nil {
 		return nil, err
 	}
-
 	if err := cad.taskHandler.DoPRMutations(ctx, repositoryObj.Namespace, repoPr, oldObj, newObj, draft); err != nil {
 		return nil, err
 	}
@@ -327,7 +337,6 @@ func (cad *cadEngine) updatePkgRevMeta(ctx context.Context, repoPkgRev repositor
 func (cad *cadEngine) DeletePackageRevision(ctx context.Context, repositoryObj *configapi.Repository, pr2Del repository.PackageRevision) error {
 	ctx, span := tracer.Start(ctx, "cadEngine::DeletePackageRevision", trace.WithAttributes())
 	defer span.End()
-
 	repo, err := cad.cache.OpenRepository(ctx, repositoryObj)
 	if err != nil {
 		return err
@@ -343,7 +352,6 @@ func (cad *cadEngine) deletePackageRevision(ctx context.Context, repo repository
 	if err := repo.DeletePackageRevision(ctx, repoPkgRev); err != nil {
 		return err
 	}
-
 	return nil
 }
 

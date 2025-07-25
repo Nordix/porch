@@ -18,7 +18,8 @@ commands:
       - --workspace=clone-2
       - basens-clone
     stdout: |
-      git.basens-clone.clone-2 created
+      User request to clone git.basens-clone.clone-2 to repo git is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-clone git.basens-clone.clone-2"
   - args:
       - porchctl
       - rpkg
@@ -29,7 +30,7 @@ commands:
       - --workspace=clone-3
       - basens-clone
     stderr: |
-      error: `clone` cannot create a new revision for package "basens-clone" that already exists in repo "git"; make subsequent revisions using `copy`
+      error: `clone` cannot create a new revision for package "basens-clone" that already exists in repo "git"; try with a unique package name or make subsequent revisions using `copy`
     exitCode: 1
   - args:
       - porchctl
@@ -61,7 +62,8 @@ commands:
       - --workspace=clone-1
       - empty-clone
     stdout: |
-      git.empty-clone.clone-1 created
+      User request to clone git.empty-clone.clone-1 to repo git is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-clone git.empty-clone.clone-1"
   - args:
       - porchctl
       - rpkg

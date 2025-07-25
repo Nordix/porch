@@ -126,6 +126,7 @@ func (t *PorchSuite) TestApplySetters() {
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 
 			var resources porchapi.PackageRevisionResources
 			t.GetF(client.ObjectKey{
@@ -140,6 +141,12 @@ func (t *PorchSuite) TestApplySetters() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
+
 			t.FailOnRenderError(&resources)
 
 			for name, obj := range resources.Spec.Resources {
@@ -180,6 +187,7 @@ func (t *PorchSuite) TestSetNamespace() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-set-namespace")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -197,6 +205,11 @@ func (t *PorchSuite) TestSetNamespace() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			bucket, ok := resources.Spec.Resources["bucket.yaml"]
@@ -235,6 +248,7 @@ func (t *PorchSuite) TestSetLabels() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-set-labels")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -252,6 +266,11 @@ func (t *PorchSuite) TestSetLabels() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			t.GetF(client.ObjectKey{
@@ -292,6 +311,7 @@ func (t *PorchSuite) TestSetAnnotations() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-set-annotations")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -309,6 +329,11 @@ func (t *PorchSuite) TestSetAnnotations() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			daemonset, ok := resources.Spec.Resources["daemonset.yaml"]
@@ -344,6 +369,7 @@ func (t *PorchSuite) TestSearchReplace() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-search-replace")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -362,6 +388,11 @@ func (t *PorchSuite) TestSearchReplace() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			service, ok := resources.Spec.Resources["service.yaml"]
@@ -406,6 +437,7 @@ func (t *PorchSuite) TestStarlark() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-starlark")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -424,6 +456,11 @@ func (t *PorchSuite) TestStarlark() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			bucket, ok := resources.Spec.Resources["bucket.yaml"]
@@ -462,6 +499,7 @@ func (t *PorchSuite) TestEnsureNameSubstring() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-ensure-name-substring")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -479,6 +517,11 @@ func (t *PorchSuite) TestEnsureNameSubstring() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			service := resources.Spec.Resources["service.yaml"]
@@ -512,6 +555,7 @@ func (t *PorchSuite) TestGenerateFolders() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-generate-folders")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -527,6 +571,11 @@ func (t *PorchSuite) TestGenerateFolders() {
 			t.AddMutator(&resources, tc.image)
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			counter := 0
@@ -558,6 +607,7 @@ func (t *PorchSuite) TestSetImage() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-set-image")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -577,6 +627,11 @@ func (t *PorchSuite) TestSetImage() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			daemonset, ok := resources.Spec.Resources["daemonset.yaml"]
@@ -628,6 +683,7 @@ func (t *PorchSuite) TestApplyReplacements() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-apply-replacements")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -645,6 +701,11 @@ func (t *PorchSuite) TestApplyReplacements() {
 			t.AddMutator(&resources, tc.image, WithConfigPath("applyreplacement.yaml"))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			job, ok := resources.Spec.Resources["job.yaml"]
@@ -683,6 +744,7 @@ func (t *PorchSuite) TestCreateSetters() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-create-setters")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -703,6 +765,11 @@ func (t *PorchSuite) TestCreateSetters() {
 			}))
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			packageResources, ok := resources.Spec.Resources["resources.yaml"]
@@ -743,6 +810,7 @@ func (t *PorchSuite) TestEnableGcpServices() {
 		t.Run(tn, func() {
 			pr := t.CreateEmptyPackageRevision("test-enable-gcp-services")
 			t.CreateF(&pr)
+			pr = *t.WaitUntilPackageRevisionLifecycleMatches(pr.Spec.RepositoryName, pr.Spec.PackageName, pr.Spec.WorkspaceName, porchapi.PackageRevisionLifecycleDraft)
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
@@ -758,6 +826,11 @@ func (t *PorchSuite) TestEnableGcpServices() {
 			t.AddMutator(&resources, tc.image)
 
 			t.UpdateF(&resources)
+			t.AsyncSleep()
+			t.GetF(client.ObjectKey{
+				Namespace: t.Namespace,
+				Name:      pr.Name,
+			}, &resources)
 			t.FailOnRenderError(&resources)
 
 			keys := make([]string, 0, len(resources.Spec.Resources))

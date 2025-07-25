@@ -45,9 +45,10 @@ func createScheme() (*runtime.Scheme, error) {
 }
 
 func TestCmd(t *testing.T) {
-	pkgRevName := "test-pr"
+	pkgRevName := "test-rpkg-approve"
 	repoName := "test-repo"
 	ns := "ns"
+	output := "User request to approve " + pkgRevName + " is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n " + ns + " " + pkgRevName + "\"\n"
 	var scheme, err = createScheme()
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
@@ -121,7 +122,8 @@ func TestCmd(t *testing.T) {
 					}}).Build(),
 		},
 		"Approve published package": {
-			output: pkgRevName + " approved\n",
+			wantErr: true,
+			output:  pkgRevName + " failed (" + pkgRevName + " is already published)\n",
 			fakeclient: fake.NewClientBuilder().WithScheme(scheme).
 				WithObjects(&porchapi.PackageRevision{
 					TypeMeta: metav1.TypeMeta{
@@ -138,7 +140,7 @@ func TestCmd(t *testing.T) {
 					}}).Build(),
 		},
 		"Approve deletion-proposed package": {
-			output: pkgRevName + " approved\n",
+			output: output,
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				//fake subresourceupdate
 				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
@@ -160,7 +162,7 @@ func TestCmd(t *testing.T) {
 					}}).Build(),
 		},
 		"Approve proposed package": {
-			output: pkgRevName + " approved\n",
+			output: output,
 			fakeclient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 				//fake subresourceupdate
 				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {

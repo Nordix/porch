@@ -5,12 +5,17 @@ package engine
 import (
 	context "context"
 
+	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
+
 	engine "github.com/nephio-project/porch/pkg/engine"
+
 	mock "github.com/stretchr/testify/mock"
 
 	porchv1alpha1 "github.com/nephio-project/porch/api/porch/v1alpha1"
 
 	repository "github.com/nephio-project/porch/pkg/repository"
+
+	time "time"
 
 	v1alpha1 "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 )
@@ -241,6 +246,96 @@ func (_c *MockCaDEngine_DeletePackageRevision_Call) Return(_a0 error) *MockCaDEn
 }
 
 func (_c *MockCaDEngine_DeletePackageRevision_Call) RunAndReturn(run func(context.Context, *v1alpha1.Repository, repository.PackageRevision) error) *MockCaDEngine_DeletePackageRevision_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetCacheOpts provides a mock function with no fields
+func (_m *MockCaDEngine) GetCacheOpts() cachetypes.CacheOptions {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCacheOpts")
+	}
+
+	var r0 cachetypes.CacheOptions
+	if rf, ok := ret.Get(0).(func() cachetypes.CacheOptions); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(cachetypes.CacheOptions)
+	}
+
+	return r0
+}
+
+// MockCaDEngine_GetCacheOpts_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCacheOpts'
+type MockCaDEngine_GetCacheOpts_Call struct {
+	*mock.Call
+}
+
+// GetCacheOpts is a helper method to define mock.On call
+func (_e *MockCaDEngine_Expecter) GetCacheOpts() *MockCaDEngine_GetCacheOpts_Call {
+	return &MockCaDEngine_GetCacheOpts_Call{Call: _e.mock.On("GetCacheOpts")}
+}
+
+func (_c *MockCaDEngine_GetCacheOpts_Call) Run(run func()) *MockCaDEngine_GetCacheOpts_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockCaDEngine_GetCacheOpts_Call) Return(_a0 cachetypes.CacheOptions) *MockCaDEngine_GetCacheOpts_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockCaDEngine_GetCacheOpts_Call) RunAndReturn(run func() cachetypes.CacheOptions) *MockCaDEngine_GetCacheOpts_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetCtxTimeout provides a mock function with no fields
+func (_m *MockCaDEngine) GetCtxTimeout() time.Duration {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCtxTimeout")
+	}
+
+	var r0 time.Duration
+	if rf, ok := ret.Get(0).(func() time.Duration); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(time.Duration)
+	}
+
+	return r0
+}
+
+// MockCaDEngine_GetCtxTimeout_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCtxTimeout'
+type MockCaDEngine_GetCtxTimeout_Call struct {
+	*mock.Call
+}
+
+// GetCtxTimeout is a helper method to define mock.On call
+func (_e *MockCaDEngine_Expecter) GetCtxTimeout() *MockCaDEngine_GetCtxTimeout_Call {
+	return &MockCaDEngine_GetCtxTimeout_Call{Call: _e.mock.On("GetCtxTimeout")}
+}
+
+func (_c *MockCaDEngine_GetCtxTimeout_Call) Run(run func()) *MockCaDEngine_GetCtxTimeout_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockCaDEngine_GetCtxTimeout_Call) Return(_a0 time.Duration) *MockCaDEngine_GetCtxTimeout_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockCaDEngine_GetCtxTimeout_Call) RunAndReturn(run func() time.Duration) *MockCaDEngine_GetCtxTimeout_Call {
 	_c.Call.Return(run)
 	return _c
 }

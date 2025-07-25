@@ -18,6 +18,7 @@ import (
 	"context"
 
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
+	"github.com/nephio-project/porch/pkg/dbhandler"
 	"github.com/nephio-project/porch/pkg/repository"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -31,7 +32,7 @@ func (f *DBCacheFactory) NewCache(ctx context.Context, options cachetypes.CacheO
 	_, span := tracer.Start(ctx, "DbCacheFactory::NewCache", trace.WithAttributes())
 	defer span.End()
 
-	if err := OpenDB(ctx, options); err != nil {
+	if err := dbhandler.OpenDB(ctx, options); err != nil {
 		return nil, err
 	}
 

@@ -213,6 +213,11 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 				t.Fatalf("Failed to get repo name for registration: %s", tc.TestCase)
 			}
 		}
+
+		if command.ExitCode == 0 {
+
+			KubectlCheckPackageLifecycle(t, cmd.Args, command.Stdout, tc.TestCase)
+		}
 	}
 
 	if os.Getenv(updateGoldenFiles) != "" {

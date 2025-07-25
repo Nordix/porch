@@ -1,4 +1,4 @@
-// Copyright 2024-2025 The Nephio Authors
+// Copyright 2025 The Nephio Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dbcache
+package dbhandler
 
 import (
 	"context"
 	"database/sql"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 
@@ -25,73 +26,73 @@ import (
 )
 
 type DBHandler struct {
-	dBCacheOptions cachetypes.DBCacheOptions
-	dataSource     string
-	db             dbSQLInterface
+	DBCacheOptions cachetypes.DBCacheOptions
+	DataSource     string
+	Db             dbSQLInterface
 }
 
-var dbHandler *DBHandler = nil
+var DbHandler *DBHandler = nil
+
+var tracer = otel.Tracer("dbHandler")
 
 func OpenDB(ctx context.Context, opts cachetypes.CacheOptions) error {
 	_, span := tracer.Start(ctx, "DBHandler::OpenDB", trace.WithAttributes())
 	defer span.End()
 
-	klog.V(4).Infof("OpenDB: with driver %+v", opts.DBCacheOptions.Driver)
+	klog.V(4).Infof("OpenDB: %+v %+v", opts.DBCacheOptions.Driver, opts.DBCacheOptions.DataSource)
 
-	if dbHandler != nil {
-		klog.V(4).Infof("OpenDB: database, already open")
+	if DbHandler != nil {
+		klog.V(4).Infof("OpenDB: database %q, already open", opts.DBCacheOptions.DataSource)
 		return nil
 	}
 
 	db, err := sql.Open(opts.DBCacheOptions.Driver, opts.DBCacheOptions.DataSource)
 	if err != nil {
-		klog.V(4).Infof("OpenDB: database open failed: %q", err)
+		klog.V(4).Infof("OpenDB: database %q open failed: %q", opts.DBCacheOptions.DataSource, err)
 		return err
 	}
 
 	if err := db.Ping(); err != nil {
 		db.Close()
-		klog.V(4).Infof("OpenDB: database open failed")
+		klog.V(4).Infof("OpenDB: database %q open failed", opts.DBCacheOptions.DataSource)
 		return err
 	}
 
-	klog.V(4).Infof("OpenDB: database opened")
+	klog.V(4).Infof("OpenDB: database %q opened", opts.DBCacheOptions.DataSource)
 
-	dbHandler = &DBHandler{
-		dBCacheOptions: opts.DBCacheOptions,
-		db: &dbSQL{
-			db: db,
-		},
+	DbHandler = &DBHandler{
+		DBCacheOptions: opts.DBCacheOptions,
+		Db:             db,
 	}
 
 	return nil
 }
 
 func GetDB() *DBHandler {
-	if dbHandler == nil {
+	if DbHandler == nil {
 		klog.Errorf("GetDB: the database is not open")
 		return nil
 	}
 
-	return dbHandler
+	return DbHandler
 }
 
 func CloseDB(ctx context.Context) error {
 	_, span := tracer.Start(ctx, "DBHandler::CloseDB", trace.WithAttributes())
 	defer span.End()
 
-	if dbHandler == nil {
-		klog.V(4).Infof("CloseDB: the database is already closed")
+	if DbHandler == nil {
+		klog.Infof("CloseDB: the databse is already closed")
 		return nil
 	}
 
 	var err error
-	if err = dbHandler.db.Close(); err == nil {
-		klog.V(4).Infof("CloseDB: database %q closed", dbHandler.dataSource)
+	if err = DbHandler.Db.Close(); err == nil {
+		klog.V(4).Infof("CloseDB: database %q closed", DbHandler.DataSource)
 	} else {
-		klog.V(4).Infof("CloseDB: close failed to database %q: %q", dbHandler.dataSource, err)
+		klog.V(4).Infof("CloseDB: close failed to database %q: %q", DbHandler.DataSource, err)
 	}
 
-	dbHandler = nil
+	DbHandler = nil
 	return err
 }

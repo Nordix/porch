@@ -20,9 +20,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/engine"
 	"github.com/nephio-project/porch/pkg/externalrepo/fake"
 	kptfilev1 "github.com/nephio-project/porch/pkg/kpt/api/kptfile/v1"
@@ -50,6 +52,8 @@ func (f *fakePackageRevision) Key() repository.PackageRevisionKey {
 }
 func (f *fakePackageRevision) KubeObjectName() string                                 { return "" }
 func (f *fakePackageRevision) UID() types.UID                                         { return "" }
+func (f *fakePackageRevision) SetError(ctx context.Context, err string)               {}
+func (f *fakePackageRevision) GetError(ctx context.Context) string                    { return "" }
 func (f *fakePackageRevision) SetMeta(context.Context, metav1.ObjectMeta) error       { return nil }
 func (f *fakePackageRevision) ResourceVersion() string                                { return "" }
 func (f *fakePackageRevision) Lifecycle(context.Context) api.PackageRevisionLifecycle { return "" }
@@ -183,6 +187,13 @@ func (f *fakeCaDEngine) UpdatePackage(ctx context.Context, repositoryObj *config
 func (f *fakeCaDEngine) DeletePackage(ctx context.Context, repositoryObj *configapi.Repository, obj repository.Package) error {
 	return nil
 }
+func (f *fakeCaDEngine) GetCacheOpts() cachetypes.CacheOptions {
+	return cachetypes.CacheOptions{}
+}
+func (f *fakeCaDEngine) GetCtxTimeout() time.Duration {
+	return 3 * time.Minute
+}
+
 func TestWatchPackages_CallsCallback(t *testing.T) {
 	fakeWatcher := &fakeWatcherManager{}
 	fakeCad := &fakeCaDEngine{watcherManager: fakeWatcher}
@@ -282,36 +293,37 @@ func TestGetPackage(t *testing.T) {
 	ctx := context.TODO()
 	mockClient := mockclient.NewMockClient(t)
 	mockCaD := mockengine.NewMockCaDEngine(t)
+	namespace := "test-ns"
 
 	pc := packageCommon{
 		coreClient: mockClient,
 		cad:        mockCaD,
 	}
 
-	_, err := pc.getPackage(ctx, "")
+	_, err := pc.getPackage(ctx, "", "")
 	assert.NotNil(t, err)
 	assert.Equal(t, "namespace must be specified", err.Error())
 
 	ctx = request.NewDefaultContext()
-	_, err = pc.getPackage(ctx, "")
+	_, err = pc.getPackage(ctx, "", namespace)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "package kubernetes resource name invalid"))
 
-	_, err = pc.getPackage(ctx, "repo")
+	_, err = pc.getPackage(ctx, "repo", namespace)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "package kubernetes resource name invalid"))
 
 	mockClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	mockCaD.EXPECT().ListPackages(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("list error")).Once()
 
-	_, err = pc.getPackage(ctx, "repo.pkg.ws")
+	_, err = pc.getPackage(ctx, "repo.pkg.ws", namespace)
 	assert.NotNil(t, err)
 	assert.Equal(t, "list error", err.Error())
 
 	pkgList := []repository.Package{}
 	mockCaD.EXPECT().ListPackages(mock.Anything, mock.Anything, mock.Anything).Return(pkgList, nil).Once()
 
-	_, err = pc.getPackage(ctx, "repo.pkg.ws")
+	_, err = pc.getPackage(ctx, "repo.pkg.ws", namespace)
 	assert.True(t, strings.Contains(err.Error(), "not found"))
 
 	pkgList = []repository.Package{
@@ -327,7 +339,7 @@ func TestGetPackage(t *testing.T) {
 
 	mockCaD.EXPECT().ListPackages(mock.Anything, mock.Anything, mock.Anything).Return(pkgList, nil).Once()
 
-	_, err = pc.getPackage(ctx, "repo.pkg")
+	_, err = pc.getPackage(ctx, "repo.pkg", namespace)
 	assert.Nil(t, err)
 }
 
@@ -335,40 +347,41 @@ func TestGetRepoPkgRev(t *testing.T) {
 	ctx := context.TODO()
 	mockClient := mockclient.NewMockClient(t)
 	mockCaD := mockengine.NewMockCaDEngine(t)
+	namespace := "test-ns"
 
 	pc := packageCommon{
 		coreClient: mockClient,
 		cad:        mockCaD,
 	}
 
-	_, err := pc.getRepoPkgRev(ctx, "")
+	_, err := pc.getRepoPkgRev(ctx, "", "")
 	assert.NotNil(t, err)
 	assert.Equal(t, "namespace must be specified", err.Error())
 
 	ctx = request.NewDefaultContext()
-	_, err = pc.getRepoPkgRev(ctx, "")
+	_, err = pc.getRepoPkgRev(ctx, "", namespace)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "package revision kubernetes resource name invalid"))
 
-	_, err = pc.getRepoPkgRev(ctx, "repo")
+	_, err = pc.getRepoPkgRev(ctx, "repo", namespace)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "package revision kubernetes resource name invalid"))
 
-	_, err = pc.getRepoPkgRev(ctx, "repo.pkg")
+	_, err = pc.getRepoPkgRev(ctx, "repo.pkg", namespace)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "package revision kubernetes resource name invalid"))
 
 	mockClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	mockCaD.EXPECT().ListPackageRevisions(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("list error")).Once()
 
-	_, err = pc.getRepoPkgRev(ctx, "repo.pkg.ws")
+	_, err = pc.getRepoPkgRev(ctx, "repo.pkg.ws", namespace)
 	assert.NotNil(t, err)
 	assert.Equal(t, "list error", err.Error())
 
 	pkgRevList := []repository.PackageRevision{}
 	mockCaD.EXPECT().ListPackageRevisions(mock.Anything, mock.Anything, mock.Anything).Return(pkgRevList, nil).Once()
 
-	_, err = pc.getRepoPkgRev(ctx, "repo.pkg.ws")
+	_, err = pc.getRepoPkgRev(ctx, "repo.pkg.ws", namespace)
 	assert.True(t, strings.Contains(err.Error(), "not found"))
 
 	pkgRevList = []repository.PackageRevision{
@@ -387,6 +400,6 @@ func TestGetRepoPkgRev(t *testing.T) {
 
 	mockCaD.EXPECT().ListPackageRevisions(mock.Anything, mock.Anything, mock.Anything).Return(pkgRevList, nil).Once()
 
-	_, err = pc.getRepoPkgRev(ctx, "repo.pkg.ws")
+	_, err = pc.getRepoPkgRev(ctx, "repo.pkg.ws", namespace)
 	assert.Nil(t, err)
 }

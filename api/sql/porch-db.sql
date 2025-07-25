@@ -62,7 +62,7 @@ CREATE OR REPLACE FUNCTION check_immutable_packages_columns() RETURNS trigger
 $BODY$
 BEGIN
     IF NEW.repo_k8s_name != OLD.repo_k8s_name OR NEW.package_path != OLD.package_path THEN
-        RAISE EXCEPTION 'create or create or update not allowed on immutable columns "repo_k8s_name" and "package_path"';
+        RAISE EXCEPTION 'create or update not allowed on immutable columns "repo_k8s_name" and "package_path"';
     END IF;
     RETURN NEW;
 END;
@@ -209,4 +209,11 @@ CREATE TABLE IF NOT EXISTS resources (
         FOREIGN KEY (k8s_name_space, k8s_name)
         REFERENCES package_revisions (k8s_name_space, k8s_name)
         ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS async_jobs (
+    name_space     TEXT NOT NULL,
+    k8s_name   TEXT NOT NULL,
+    status         TEXT NOT NULL,
+    PRIMARY KEY (name_space, k8s_name)
 );

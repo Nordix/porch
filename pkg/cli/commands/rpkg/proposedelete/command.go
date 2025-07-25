@@ -99,12 +99,11 @@ func (r *runner) runE(_ *cobra.Command, args []string) error {
 				pr.Spec.Lifecycle = v1alpha1.PackageRevisionLifecycleDeletionProposed
 				err := r.client.Update(r.ctx, &pr)
 				if err == nil {
-					fmt.Fprintf(r.Command.OutOrStdout(), "%s proposed for deletion\n", name)
+					fmt.Fprintf(r.Command.OutOrStdout(), "User request to propose-delete %s is being processed.\nPlease verify it's status using the command - \"porchctl rpkg get -n %s %s\"\n", pr.Name, namespace, pr.Name)
 				}
 				return err
 			case v1alpha1.PackageRevisionLifecycleDeletionProposed:
-				fmt.Fprintf(r.Command.OutOrStderr(), "%s is already proposed for deletion\n", name)
-				return nil
+				return fmt.Errorf("%s is already proposed for deletion", name)
 			default:
 				return fmt.Errorf("can only propose published packages for deletion; package %s is not published", name)
 			}

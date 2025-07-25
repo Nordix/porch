@@ -32,7 +32,8 @@ commands:
       - --workspace=init-1
       - init-package
     stdout: |
-      git.init-package.init-1 created
+      User request to init git.init-package.init-1 is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-init git.init-package.init-1"
   - args:
       - porchctl
       - rpkg
@@ -92,5 +93,5 @@ commands:
       - --workspace=init-2
       - init-package
     stderr: |
-      error: `init` cannot create a new revision for package "init-package" that already exists in repo "git"; make subsequent revisions using `copy`
+      error: `init` cannot create a new revision for package "init-package" that already exists in repo "git"; try with a unique package name or make subsequent revisions using `copy`
     exitCode: 1

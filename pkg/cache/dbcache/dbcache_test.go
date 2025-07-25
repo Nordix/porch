@@ -24,6 +24,7 @@ import (
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
+	"github.com/nephio-project/porch/pkg/dbhandler"
 	"github.com/nephio-project/porch/pkg/externalrepo"
 	"github.com/nephio-project/porch/pkg/repository"
 	mocksql "github.com/nephio-project/porch/test/mockery/mocks/porch/pkg/cache/dbcache"
@@ -35,7 +36,7 @@ import (
 var (
 	defaultPorchSQLSchema string = "api/sql/porch-db.sql"
 	nextPkgRev            int    = 1
-	savedDBHandler        *DBHandler
+	savedDBHandler        *dbhandler.DBHandler
 )
 
 func TestMain(m *testing.M) {
@@ -70,7 +71,7 @@ func run(m *testing.M) (code int, err error) {
 		},
 	}
 
-	if err := OpenDB(context.TODO(), *dbOpts); err != nil {
+	if err := dbhandler.OpenDB(context.TODO(), *dbOpts); err != nil {
 		return -1, fmt.Errorf("could not connect to test database: %w", err)
 	}
 
@@ -92,7 +93,7 @@ func run(m *testing.M) (code int, err error) {
 		return -1, fmt.Errorf("could not read Porch SQL schema file %q: %w", schemaFile, err)
 	}
 
-	_, err = GetDB().db.Exec(string(schemaBytes))
+	_, err = dbhandler.GetDB().Db.Exec(string(schemaBytes))
 	if err != nil {
 		return -1, fmt.Errorf("could not process Porch SQL schema file %q: %w", schemaFile, err)
 	}
@@ -101,7 +102,7 @@ func run(m *testing.M) (code int, err error) {
 
 	time.Sleep(5 * time.Second)
 
-	if err := CloseDB(context.TODO()); err == nil {
+	if err := dbhandler.CloseDB(context.TODO()); err == nil {
 		return result, nil
 	} else {
 		return result, err
@@ -111,22 +112,22 @@ func run(m *testing.M) (code int, err error) {
 func switchToMockSQL(t *testing.T) {
 	mockSQL := mocksql.NewMockdbSQLInterface(t)
 
-	savedDBHandler = GetDB()
-	dbHandler = nil
+	savedDBHandler = dbhandler.GetDB()
+	dbhandler.DbHandler = nil
 
-	err := CloseDB(context.TODO())
+	err := dbhandler.CloseDB(context.TODO())
 	assert.Nil(t, err)
 
-	dbHandler = &DBHandler{
-		dBCacheOptions: savedDBHandler.dBCacheOptions,
-		dataSource:     savedDBHandler.dataSource,
-		db:             mockSQL,
+	dbhandler.DbHandler = &dbhandler.DBHandler{
+		DBCacheOptions: savedDBHandler.DBCacheOptions,
+		DataSource:     savedDBHandler.DataSource,
+		Db:             mockSQL,
 	}
-	assert.NotNil(t, dbHandler)
+	assert.NotNil(t, dbhandler.DbHandler)
 }
 
 func revertToPostgreSQL(_ *testing.T) {
-	dbHandler = savedDBHandler
+	dbhandler.DbHandler = savedDBHandler
 }
 
 func TestDBRepositoryCrud(t *testing.T) {

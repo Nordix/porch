@@ -16,6 +16,7 @@ package engine
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/nephio-project/porch/internal/kpt/fnruntime"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
@@ -40,6 +41,20 @@ func (f EngineOptionFunc) apply(engine *cadEngine) error {
 func WithCache(cache cachetypes.Cache) EngineOption {
 	return EngineOptionFunc(func(engine *cadEngine) error {
 		engine.cache = cache
+		return nil
+	})
+}
+
+func CtxTimeout(timeout time.Duration) EngineOption {
+	return EngineOptionFunc(func(engine *cadEngine) error {
+		engine.CtxTimeout = timeout
+		return nil
+	})
+}
+
+func CacheOptions(cacheOptions cachetypes.CacheOptions) EngineOption {
+	return EngineOptionFunc(func(engine *cadEngine) error {
+		engine.CacheOpts = cacheOptions
 		return nil
 	})
 }
