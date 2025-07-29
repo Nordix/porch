@@ -11,7 +11,7 @@ import (
 var (
 	numUsers = 10
 	rampUp   = 60 * time.Second
-	duration = 60 * time.Second
+	duration = 600 * time.Second
 
 	failedPkgs     []CreatedPackage
 	failedPkgsLock sync.Mutex
@@ -42,6 +42,8 @@ type CreatedPackage struct {
 }
 
 func main() {
+	stopDockerStats := make(chan struct{})
+	go collectDockerStats(stopDockerStats, time.Second, "porch-test-control-plane", "docker_stats.csv")
 
 	if len(os.Args) > 1 {
 		if n, err := strconv.Atoi(os.Args[1]); err == nil {
@@ -107,6 +109,8 @@ func main() {
 
 			cleanup()
 			printSummaryStats(stats)
+			close(stopDockerStats)
+			printDockerStatsSummary()
 			return
 		case userNum, ok := <-userCh:
 			if !ok {
@@ -122,6 +126,8 @@ func main() {
 
 					cleanup()
 					printSummaryStats(stats)
+					close(stopDockerStats)
+					printDockerStatsSummary()
 					return
 				}
 				continue
@@ -153,6 +159,8 @@ func main() {
 
 			cleanup()
 			printSummaryStats(stats)
+			close(stopDockerStats)
+			printDockerStatsSummary()
 			return
 		}
 	}
@@ -162,7 +170,7 @@ func cleanupAllPackages(pkgs []CreatedPackage, stats *Stats) {
 	fmt.Printf("Cleaning up %d packages...\n", len(pkgs))
 
 	var wg sync.WaitGroup
-	semaphore := make(chan struct{}, 10) 
+	semaphore := make(chan struct{}, 10)
 
 	for _, pkg := range pkgs {
 		wg.Add(1)

@@ -198,7 +198,7 @@ func printSummaryStats(stats *Stats) {
 			count := len(durations)
 			min := slices.Min(durations)
 			max := slices.Max(durations)
-			
+
 			var sum time.Duration
 			for _, d := range durations {
 				sum += d
@@ -223,7 +223,7 @@ func printSummaryStats(stats *Stats) {
 				displayName = "del-main"
 			}
 
-			fmt.Printf("%-15s %8d %8.2f %8.2f %8.2f %8.2f\n", 
+			fmt.Printf("%-15s %8d %8.2f %8.2f %8.2f %8.2f\n",
 				displayName, count, min.Seconds(), avg.Seconds(), max.Seconds(), stdDev)
 		}
 	}
@@ -246,7 +246,7 @@ func cleanupCreatedPackages(pkgs []CreatedPackage) []CreatedPackage {
 			if err := cmd.Run(); err != nil {
 				failedAny = true
 			}
-			
+
 			cmd = exec.Command("porchctl", "rpkg", "delete", rev, "--namespace="+pkg.Namespace)
 			cmd.Stdout = nil
 			cmd.Stderr = nil
