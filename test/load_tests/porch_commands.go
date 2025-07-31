@@ -121,7 +121,6 @@ func fullPackageLifecycle(n int, stats *Stats) CreatedPackage {
 }
 
 func cleanupPackage(pkg CreatedPackage, stats *Stats) {
-	ns := pkg.Namespace
 	pkgName := pkg.Name
 	pkgRev := fmt.Sprintf("%s.%s.%s", repo, pkgName, workspace)
 	pkgRevMain := fmt.Sprintf("%s.%s.main", repo, pkgName)
@@ -130,10 +129,10 @@ func cleanupPackage(pkg CreatedPackage, stats *Stats) {
 		desc string
 		cmd  []string
 	}{
-		{"propose-delete", []string{"rpkg", "propose-delete", pkgRev, "--namespace=" + ns}},
-		{"delete", []string{"rpkg", "delete", pkgRev, "--namespace=" + ns}},
-		{"propose-delete-main", []string{"rpkg", "propose-delete", pkgRevMain, "--namespace=" + ns}},
-		{"delete-main", []string{"rpkg", "delete", pkgRevMain, "--namespace=" + ns}},
+		{"propose-delete", []string{"rpkg", "propose-delete", pkgRev, "--namespace=" + namespace}},
+		{"propose-delete-main", []string{"rpkg", "propose-delete", pkgRevMain, "--namespace=" + namespace}},
+		{"delete", []string{"rpkg", "delete", pkgRev, "--namespace=" + namespace}},
+		{"delete-main", []string{"rpkg", "delete", pkgRevMain, "--namespace=" + namespace}},
 	}
 
 	for _, step := range cleanupSteps {
@@ -141,7 +140,6 @@ func cleanupPackage(pkg CreatedPackage, stats *Stats) {
 		err := runPorchctlCommand(step.cmd...)
 		elapsed := time.Since(start)
 		timestamp := time.Now()
-
 		stats.Lock()
 		stats.Total++
 		stats.Latencies = append(stats.Latencies, LatencyDataPoint{Timestamp: timestamp, Latency: elapsed, Operation: step.desc})
@@ -164,7 +162,6 @@ func printSummaryStats(stats *Stats) {
 		stats.Total, stats.Success, stats.Fail, stats.Load)
 
 	if len(stats.Latencies) > 0 {
-		// Overall statistics
 		durations := make([]time.Duration, len(stats.Latencies))
 		for i, ldp := range stats.Latencies {
 			durations[i] = ldp.Latency
@@ -177,7 +174,6 @@ func printSummaryStats(stats *Stats) {
 		avg := sum / time.Duration(len(durations))
 		fmt.Printf("Overall Latency (s): min=%.2f avg=%.2f max=%.2f\n", min.Seconds(), avg.Seconds(), max.Seconds())
 
-		// Per-operation statistics
 		operationStats := make(map[string][]time.Duration)
 		for _, ldp := range stats.Latencies {
 			operationStats[ldp.Operation] = append(operationStats[ldp.Operation], ldp.Latency)
@@ -232,7 +228,7 @@ func printSummaryStats(stats *Stats) {
 	fmt.Println("Line chart created: latency_chart.html")
 }
 
-func cleanupCreatedPackages(pkgs []CreatedPackage) []CreatedPackage {
+func forceCleanupFailedPackages(pkgs []CreatedPackage) []CreatedPackage {
 	var failed []CreatedPackage
 	for _, pkg := range pkgs {
 		failedAny := false
@@ -246,7 +242,6 @@ func cleanupCreatedPackages(pkgs []CreatedPackage) []CreatedPackage {
 			if err := cmd.Run(); err != nil {
 				failedAny = true
 			}
-
 			cmd = exec.Command("porchctl", "rpkg", "delete", rev, "--namespace="+pkg.Namespace)
 			cmd.Stdout = nil
 			cmd.Stderr = nil
@@ -257,6 +252,7 @@ func cleanupCreatedPackages(pkgs []CreatedPackage) []CreatedPackage {
 		if failedAny {
 			failed = append(failed, pkg)
 		}
+
 	}
 	return failed
 }
@@ -267,7 +263,8 @@ func cleanup() {
 	pkgsToCleanup := make([]CreatedPackage, len(failedPkgs))
 	copy(pkgsToCleanup, failedPkgs)
 	failedPkgsLock.Unlock()
-	failedPkgs := cleanupCreatedPackages(pkgsToCleanup)
+	fmt.Printf("Packages to clean up: %d\n", len(pkgsToCleanup))
+	failedPkgs := forceCleanupFailedPackages(pkgsToCleanup)
 	if len(failedPkgs) > 0 {
 		fmt.Println("Failed to delete the following packages:")
 		for _, pkg := range failedPkgs {

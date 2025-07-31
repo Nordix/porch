@@ -104,7 +104,7 @@ func main() {
 				createdPkgs = append(createdPkgs, pkg)
 			}
 
-			fmt.Println("\n--- Starting cleanup phase ---")
+			fmt.Println("\n--- Starting cleanup packages phase ---")
 			cleanupAllPackages(createdPkgs, stats)
 
 			cleanup()
@@ -121,7 +121,7 @@ func main() {
 						createdPkgs = append(createdPkgs, pkg)
 					}
 
-					fmt.Println("\n--- Starting cleanup phase ---")
+					fmt.Println("\n--- Starting cleanup packages phase ---")
 					cleanupAllPackages(createdPkgs, stats)
 
 					cleanup()
@@ -148,15 +148,12 @@ func main() {
 
 		if allUsersDispatched && runningTasks == 0 {
 			fmt.Println("\nAll tasks completed before test duration ended.")
-
 			close(createdPkgsCh)
 			for pkg := range createdPkgsCh {
 				createdPkgs = append(createdPkgs, pkg)
 			}
-
-			fmt.Println("\n--- Starting cleanup phase ---")
+			fmt.Println("\n--- Starting cleanup packages phase ---")
 			cleanupAllPackages(createdPkgs, stats)
-
 			cleanup()
 			printSummaryStats(stats)
 			close(stopDockerStats)
@@ -168,21 +165,9 @@ func main() {
 
 func cleanupAllPackages(pkgs []CreatedPackage, stats *Stats) {
 	fmt.Printf("Cleaning up %d packages...\n", len(pkgs))
-
-	var wg sync.WaitGroup
-	semaphore := make(chan struct{}, 10)
-
+	time.Sleep(5 * time.Second)
 	for _, pkg := range pkgs {
-		wg.Add(1)
-		go func(pkg CreatedPackage) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			cleanupPackage(pkg, stats)
-		}(pkg)
+		cleanupPackage(pkg, stats)
 	}
-
-	wg.Wait()
 	fmt.Println("Cleanup phase completed.")
 }
