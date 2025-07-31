@@ -65,7 +65,7 @@ func (ah *AsyncHandler) GetPackageRevisionJob(ctx context.Context, cacheOpts cac
 	defer span.End()
 
 	if cacheOpts.CacheType == "DB" {
-		klog.Infof("GetPackageRevisionJob: fetching job for %q", pkgRevK8sName)
+		klog.V(5).Infof("GetPackageRevisionJob: fetching async job for %q", pkgRevK8sName)
 
 		sqlStatement := `
             SELECT name_space, k8s_name, status
@@ -100,7 +100,7 @@ func (ah *AsyncHandler) ListAllPackageRevisionJobs(ctx context.Context, cacheOpt
 	_, span := tracer.Start(ctx, "asyncHandler::ListPackageRevisionJobs", trace.WithAttributes())
 	defer span.End()
 	if cacheOpts.CacheType == "DB" {
-		klog.Infof("ListPackageRevisionJobs: listing package revision jobs in the DB for repo %q", prk.RKey().Name)
+		klog.V(3).Infof("ListPackageRevisionJobs: listing package revision jobs in the DB for repo %q", prk.RKey().Name)
 		sqlStatement := `SELECT * FROM async_jobs WHERE name_space=$1`
 		tasks := make([]*Job, 0)
 		if rows, err := dbhandler.GetDB().Db.Query(
@@ -117,7 +117,7 @@ func (ah *AsyncHandler) ListAllPackageRevisionJobs(ctx context.Context, cacheOpt
 				tasks = append(tasks, &t)
 			}
 		} else {
-			klog.Infof("listPkgRevJob: query failed %q", err)
+			klog.V(3).Infof("listPkgRevJob: query failed %q", err)
 			return nil, err
 		}
 		return tasks, nil

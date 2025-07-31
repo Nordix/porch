@@ -22,6 +22,7 @@ import (
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
 	"github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	"github.com/nephio-project/porch/pkg/async"
 	"github.com/nephio-project/porch/pkg/repository"
 	"go.opentelemetry.io/otel/trace"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -185,18 +186,41 @@ func (r *packageRevisionResources) Update(ctx context.Context, name string, objI
 		return nil, false, apierrors.NewInternalError(fmt.Errorf("error getting repository %v: %w", repositoryID, err))
 	}
 
-	rev, renderStatus, err := r.cad.UpdatePackageResources(ctx, &repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj)
-	if err != nil {
-		return nil, false, apierrors.NewInternalError(err)
+	newRV := newObj.GetResourceVersion()
+	if len(newRV) == 0 {
+		return nil, false, apierrors.NewInternalError(fmt.Errorf("resourceVersion must be specified for an update"))
 	}
 
-	created, err := rev.GetResources(ctx)
-	if err != nil {
-		return nil, false, apierrors.NewInternalError(err)
-	}
-	if renderStatus != nil {
-		created.Status.RenderStatus = *renderStatus
-	}
+	go r.asyncUpdatePackageResources(repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj)
 
-	return created, false, nil
+	return newObj, false, nil
+}
+
+func (r *packageRevisionResources) asyncUpdatePackageResources(repositoryObj v1alpha1.Repository, oldRepoPkgRev repository.PackageRevision, oldApiPkgRevResources *api.PackageRevisionResources, newObj *api.PackageRevisionResources) {
+	goCtx, cancel := context.WithTimeout(context.Background(), r.cad.GetCtxTimeout())
+	defer cancel()
+	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisionResources::asyncUpdatePackageResources", trace.WithAttributes())
+	defer span.End()
+	pkgRevK8sName := composePkgRevK8sNameFromResources(oldApiPkgRevResources)
+
+	r.savePkgRevJobInDB(goCtx, oldApiPkgRevResources.Namespace, pkgRevK8sName, "packageRevisionResources update in progress")
+
+	_, _, err := r.cad.UpdatePackageResources(goCtx, &repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj)
+	if err != nil {
+		r.savePkgRevJobInDB(goCtx, newObj.Namespace, pkgRevK8sName, err.Error())
+		klog.Errorf("error getting created object: %v", apierrors.NewInternalError(err))
+		return
+	}
+	r.savePkgRevJobInDB(goCtx, oldApiPkgRevResources.Namespace, pkgRevK8sName, "packageRevisionResources updated successfully")
+}
+
+func (r *packageRevisionResources) savePkgRevJobInDB(ctx context.Context, namespace, pkgRevK8sName, status string) {
+	asyncHandler := async.GetDefaultAsyncHandler()
+	if err := asyncHandler.SavePackageRevisionJob(ctx, r.cad.GetCacheOpts(), namespace, pkgRevK8sName, status); err != nil {
+		klog.Error(err)
+	}
+}
+
+func composePkgRevK8sNameFromResources(apiPkgRevRes *api.PackageRevisionResources) string {
+	return apiPkgRevRes.Spec.RepositoryName + "." + apiPkgRevRes.Spec.PackageName + "." + apiPkgRevRes.Spec.WorkspaceName
 }

@@ -20,6 +20,9 @@ commands:
       User request to init git.test-package.push is being processed.
       Please verify it's status using the command - "porchctl rpkg get -n rpkg-push git.test-package.push"
   - args:
+      - sleep
+      - "5"
+  - args:
       - porchctl
       - rpkg
       - pull
@@ -148,6 +151,9 @@ commands:
       User request to push git.test-package.push is being processed.
       Please verify it's status using the command - "porchctl rpkg get -n rpkg-push git.test-package.push"
   - args:
+      - sleep
+      - "5" 
+  - args:
       - porchctl
       - rpkg
       - pull
@@ -240,9 +246,57 @@ commands:
             internal.config.kubernetes.io/path: package-context.yaml
           name: kptfile.kpt.dev
       kind: ResourceList
-    stderr: |
-      Error: Internal error occurred: Operation cannot be fulfilled on packagerevisionresources.porch.kpt.dev "git.test-package.push": the object has been modified; please apply your changes to the latest version and try again 
-    exitCode: 1
+    yaml: true
+    stdout: |
+      User request to push git.test-package.push is being processed. Please verify it's status using the command - "porchctl rpkg get -n rpkg-push git.test-package.push"
+  - args:
+      - sleep
+      - "5" 
+  - args:
+      - porchctl
+      - rpkg
+      - pull
+      - --namespace=rpkg-push
+      - git.test-package.push
+    stdout: |
+      apiVersion: config.kubernetes.io/v1
+      items:
+      - apiVersion: ""
+        kind: KptRevisionMetadata
+        metadata:
+          annotations:
+            config.kubernetes.io/index: "0"
+            config.kubernetes.io/path: .KptRevisionMetadata
+            internal.config.kubernetes.io/index: "0"
+            internal.config.kubernetes.io/path: .KptRevisionMetadata
+          name: git.test-package.push
+          namespace: rpkg-push
+          uid: 0e7dd104-514e-5455-b077-6f196b04165c
+      - apiVersion: kpt.dev/v1
+        info:
+          description: Updated Test Package Description
+        kind: Kptfile
+        metadata:
+          annotations:
+            config.kubernetes.io/index: "0"
+            config.kubernetes.io/local-config: "true"
+            config.kubernetes.io/path: Kptfile
+            internal.config.kubernetes.io/index: "0"
+            internal.config.kubernetes.io/path: Kptfile
+          name: test-package
+      - apiVersion: v1
+        data:
+          name: example
+        kind: ConfigMap
+        metadata:
+          annotations:
+            config.kubernetes.io/index: "0"
+            config.kubernetes.io/local-config: "true"
+            config.kubernetes.io/path: package-context.yaml
+            internal.config.kubernetes.io/index: "0"
+            internal.config.kubernetes.io/path: package-context.yaml
+          name: kptfile.kpt.dev
+      kind: ResourceList
     yaml: true
   - args:
       - porchctl
@@ -263,9 +317,6 @@ commands:
       - --namespace=rpkg-push
       - git.test-package.push
       - /tmp/porch-e2e/testing-invalid-render
-    stderr: |
-      Error occurred rendering package in kpt function pipeline.
-      Package has NOT been pushed to remote.
-      Please fix package locally (modify until 'kpt fn render' succeeds) and retry. 
-    containsErrorString: true
-    exitCode: 1
+    stdout: |
+      User request to push git.test-package.push is being processed.
+      Please verify it's status using the command - "porchctl rpkg get -n rpkg-push git.test-package.push"

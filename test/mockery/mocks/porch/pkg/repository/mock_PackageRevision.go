@@ -30,52 +30,6 @@ func (_m *MockPackageRevision) EXPECT() *MockPackageRevision_Expecter {
 	return &MockPackageRevision_Expecter{mock: &_m.Mock}
 }
 
-// GetError provides a mock function with given fields: ctx
-func (_m *MockPackageRevision) GetError(ctx context.Context) string {
-	ret := _m.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetError")
-	}
-
-	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context) string); ok {
-		r0 = rf(ctx)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	return r0
-}
-
-// MockPackageRevision_GetError_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetError'
-type MockPackageRevision_GetError_Call struct {
-	*mock.Call
-}
-
-// GetError is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *MockPackageRevision_Expecter) GetError(ctx interface{}) *MockPackageRevision_GetError_Call {
-	return &MockPackageRevision_GetError_Call{Call: _e.mock.On("GetError", ctx)}
-}
-
-func (_c *MockPackageRevision_GetError_Call) Run(run func(ctx context.Context)) *MockPackageRevision_GetError_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
-	})
-	return _c
-}
-
-func (_c *MockPackageRevision_GetError_Call) Return(_a0 string) *MockPackageRevision_GetError_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockPackageRevision_GetError_Call) RunAndReturn(run func(context.Context) string) *MockPackageRevision_GetError_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetKptfile provides a mock function with given fields: ctx
 func (_m *MockPackageRevision) GetKptfile(ctx context.Context) (v1.KptFile, error) {
 	ret := _m.Called(ctx)
@@ -641,40 +595,6 @@ func (_c *MockPackageRevision_ResourceVersion_Call) Return(_a0 string) *MockPack
 
 func (_c *MockPackageRevision_ResourceVersion_Call) RunAndReturn(run func() string) *MockPackageRevision_ResourceVersion_Call {
 	_c.Call.Return(run)
-	return _c
-}
-
-// SetError provides a mock function with given fields: ctx, err
-func (_m *MockPackageRevision) SetError(ctx context.Context, err string) {
-	_m.Called(ctx, err)
-}
-
-// MockPackageRevision_SetError_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetError'
-type MockPackageRevision_SetError_Call struct {
-	*mock.Call
-}
-
-// SetError is a helper method to define mock.On call
-//   - ctx context.Context
-//   - err string
-func (_e *MockPackageRevision_Expecter) SetError(ctx interface{}, err interface{}) *MockPackageRevision_SetError_Call {
-	return &MockPackageRevision_SetError_Call{Call: _e.mock.On("SetError", ctx, err)}
-}
-
-func (_c *MockPackageRevision_SetError_Call) Run(run func(ctx context.Context, err string)) *MockPackageRevision_SetError_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
-	})
-	return _c
-}
-
-func (_c *MockPackageRevision_SetError_Call) Return() *MockPackageRevision_SetError_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *MockPackageRevision_SetError_Call) RunAndReturn(run func(context.Context, string)) *MockPackageRevision_SetError_Call {
-	_c.Run(run)
 	return _c
 }
 

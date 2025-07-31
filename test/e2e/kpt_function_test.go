@@ -748,24 +748,21 @@ func (t *PorchSuite) TestCreateSetters() {
 			t.Cleanup(func() {
 				t.doCleanup(&pr, tc.image)
 			})
-
+			t.AsyncSleep(10)
 			var resources porchapi.PackageRevisionResources
 			t.GetF(client.ObjectKey{
 				Namespace: t.Namespace,
 				Name:      pr.Name,
 			}, &resources)
-
 			t.AddResourceToPackage(&resources, "testdata/resources-for-krm-functions/createsetters/setters.yaml", "setters.yaml")
 			t.AddResourceToPackage(&resources, "testdata/resources-for-krm-functions/createsetters/resources.yaml", "resources.yaml")
-
 			t.AddMutator(&resources, tc.image, WithConfigPath("setters.yaml"))
-
 			t.AddMutator(&resources, t.gcrPrefix+"/apply-setters:v0.2.0", WithConfigmap(map[string]string{
 				"nginx-replicas": "5",
 			}))
 
 			t.UpdateF(&resources)
-			t.AsyncSleep()
+			t.AsyncSleep(25)
 			t.GetF(client.ObjectKey{
 				Namespace: t.Namespace,
 				Name:      pr.Name,

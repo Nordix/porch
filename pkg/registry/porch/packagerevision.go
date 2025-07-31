@@ -112,6 +112,21 @@ func (r *packageRevisions) Get(ctx context.Context, name string, options *metav1
 
 	repoPkgRev, err := r.getRepoPkgRev(ctx, name, namespace)
 	if err != nil {
+		if asyncJobResult, err := r.getAsyncStatus(ctx, name, namespace); err == nil {
+			if asyncJobResult != "packageRevision deleted successfully" {
+				return &api.PackageRevision{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: namespace,
+						Name:      name,
+					},
+					Status: api.PackageRevisionStatus{
+						Result: asyncJobResult,
+					},
+				}, nil
+			}
+		} else {
+			klog.Error(err)
+		}
 		return nil, err
 	}
 
@@ -120,7 +135,24 @@ func (r *packageRevisions) Get(ctx context.Context, name string, options *metav1
 		return nil, err
 	}
 
+	if r.cad.GetCacheOpts().CacheType == "DB" {
+		if asyncJobResult, err := r.getAsyncStatus(ctx, name, namespace); err == nil {
+			apiPkgRev.Status.Result = asyncJobResult
+		}
+	}
 	return apiPkgRev, nil
+}
+
+func (r *packageRevisions) getAsyncStatus(ctx context.Context, name string, namespace string) (string, error) {
+	if r.cad.GetCacheOpts().CacheType == "DB" {
+		asyncHandler := async.GetDefaultAsyncHandler()
+		asyncJob, err := asyncHandler.GetPackageRevisionJob(ctx, r.cad.GetCacheOpts(), namespace, name)
+		if err != nil {
+			return "", err
+		}
+		return asyncJob.Status, nil
+	}
+	return "", nil
 }
 
 // Create implements the Creater interface.
@@ -168,7 +200,7 @@ func (r *packageRevisions) asyncCreatePackageRevision(repoName, namespace string
 
 	pkgRevK8sName := composePkgRevK8sName(newApiPkgRev)
 
-	r.savePkgRevJobInDB(goCtx, namespace, pkgRevK8sName, "Package revision create in progress")
+	r.savePkgRevJobInDB(goCtx, namespace, pkgRevK8sName, "packageRevision create in progress")
 
 	repositoryObj, err := r.packageCommon.getRepositoryObj(goCtx, types.NamespacedName{Name: repoName, Namespace: namespace})
 	if err != nil {
@@ -214,8 +246,7 @@ func (r *packageRevisions) asyncCreatePackageRevision(repoName, namespace string
 		r.savePkgRevJobInDB(goCtx, namespace, pkgRevK8sName, err.Error())
 		return
 	}
-	r.savePkgRevJobInDB(goCtx, namespace, pkgRevK8sName, "Package revision created successfully")
-	goCtx.Done()
+	r.savePkgRevJobInDB(goCtx, namespace, pkgRevK8sName, "packageRevision created successfully")
 }
 
 func (r *packageRevisions) savePkgRevJobInDB(ctx context.Context, namespace, pkgRevK8sName, status string) {
@@ -274,7 +305,7 @@ func (r *packageRevisions) asyncDeletePackageRevision(name, namespace string, de
 	goCtx, span := tracer.Start(goCtx, "[START-GOROUTINE]::packageRevisions::callDeletePackageRevision", trace.WithAttributes())
 	defer span.End()
 
-	r.savePkgRevJobInDB(goCtx, namespace, name, "Package revision delete in progress")
+	r.savePkgRevJobInDB(goCtx, namespace, name, "packageRevision delete in progress")
 
 	repoPkgRev, err := r.packageCommon.getRepoPkgRev(goCtx, name, namespace)
 	if err != nil {
@@ -286,7 +317,6 @@ func (r *packageRevisions) asyncDeletePackageRevision(name, namespace string, de
 	apiPkgRev, err := repoPkgRev.GetPackageRevision(goCtx)
 	if err != nil {
 		err := apierrors.NewInternalError(err)
-		repoPkgRev.SetError(goCtx, err.Error())
 		r.savePkgRevJobInDB(goCtx, namespace, name, err.Error())
 		klog.Error(err)
 		return
@@ -294,7 +324,6 @@ func (r *packageRevisions) asyncDeletePackageRevision(name, namespace string, de
 
 	repositoryObj, err := r.packageCommon.validateDelete(goCtx, deleteValidation, apiPkgRev, name, namespace)
 	if err != nil {
-		repoPkgRev.SetError(goCtx, err.Error())
 		r.savePkgRevJobInDB(goCtx, namespace, name, err.Error())
 		klog.Error(err)
 		return
@@ -306,20 +335,17 @@ func (r *packageRevisions) asyncDeletePackageRevision(name, namespace string, de
 	locked := pkgMutex.TryLock()
 	if !locked {
 		err := apierrors.NewConflict(api.Resource("packagerevisions"), name, fmt.Errorf(GenericConflictErrorMsg, "package revision", pkgMutexKey))
-		repoPkgRev.SetError(goCtx, err.Error())
 		klog.Error(err)
 		return
 	}
 	defer pkgMutex.Unlock()
 
 	if err := r.cad.DeletePackageRevision(goCtx, repositoryObj, repoPkgRev); err != nil {
-		repoPkgRev.SetError(goCtx, err.Error())
 		r.savePkgRevJobInDB(goCtx, namespace, name, err.Error())
 		klog.Errorf("Delete error for %s - %s", repoPkgRev.Key().PkgKey.Package, err)
 		return
 	}
-	r.savePkgRevJobInDB(goCtx, namespace, name, "Package revision deleted successfully")
-	goCtx.Done()
+	r.savePkgRevJobInDB(goCtx, namespace, name, "packageRevision deleted successfully")
 }
 
 func uncreatedPackageMutexKey(newApiPkgRev *api.PackageRevision) string {

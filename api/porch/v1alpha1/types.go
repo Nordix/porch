@@ -130,7 +130,8 @@ type PackageRevisionStatus struct {
 
 	// Update with error message if package revision update fails.
 	// Only in memory and it doesn't persist after pod restarts.
-	Err string `json:"err,omitempty"`
+
+	Result string `json:"result,omitempty"`
 }
 
 type TaskType string
