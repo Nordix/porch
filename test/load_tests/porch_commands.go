@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -16,13 +17,33 @@ var (
 	workspace = "1"
 )
 
-func runPorchctlCommand(args ...string) error {
-	cmd := exec.Command("porchctl", args...)
+type CommandResult struct {
+	Success  bool
+	Output   string
+	Error    error
+	Duration time.Duration
+	Command  string
+}
+
+func runPorchctlCommand(ctx context.Context, args ...string) CommandResult {
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, "porchctl", args...)
 	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("Error: %v, Output: %s\n", err, output)
+	duration := time.Since(start)
+
+	result := CommandResult{
+		Success:  err == nil,
+		Output:   string(output),
+		Error:    err,
+		Duration: duration,
+		Command:  "porchctl " + strings.Join(args, " "),
 	}
-	return err
+
+	// if err != nil {
+	// 	fmt.Printf("Command failed: %s\nError: %v\nOutput: %s\n", result.Command, err, output)
+	// }
+
+	return result
 }
 
 func editSampleFile(dir string) error {
@@ -31,18 +52,18 @@ func editSampleFile(dir string) error {
 
 	src, err := os.ReadFile(srcFile)
 	if err != nil {
-		return fmt.Errorf("failed to read deployment.yaml: %v", err)
+		return fmt.Errorf("failed to read deployment.yaml: %w", err)
 	}
 
 	err = os.WriteFile(dstFile, src, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write deployment.yaml to %s: %v", dir, err)
+		return fmt.Errorf("failed to write deployment.yaml to %s: %w", dir, err)
 	}
 
 	file := fmt.Sprintf("%s/Kptfile", dir)
 	f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open Kptfile: %w", err)
 	}
 	defer f.Close()
 
@@ -62,7 +83,16 @@ pipeline:
         - kind: Deployment
 `
 	_, err = f.WriteString(pipelineYAML)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to write pipeline YAML: %w", err)
+	}
+	return nil
+}
+
+type PackageLifecycleStep struct {
+	Description string
+	Command     []string
+	IsEdit      bool
 }
 
 func fullPackageLifecycle(n int, stats *Stats) CreatedPackage {
@@ -75,39 +105,48 @@ func fullPackageLifecycle(n int, stats *Stats) CreatedPackage {
 		return CreatedPackage{}
 	}
 
-	steps := []struct {
-		desc string
-		cmd  []string
-		edit bool
-	}{
-		{"init", []string{"rpkg", "init", pkgName, "--namespace=" + namespace, "--repository=" + repo, "--workspace=" + workspace}, false},
-		{"pull", []string{"rpkg", "pull", pkgRev, "--namespace=" + namespace, tmpDir}, false},
-		{"edit", nil, true},
-		{"push", []string{"rpkg", "push", pkgRev, "--namespace=" + namespace, tmpDir}, false},
-		{"propose", []string{"rpkg", "propose", pkgRev, "--namespace=" + namespace}, false},
-		{"approve", []string{"rpkg", "approve", pkgRev, "--namespace=" + namespace}, false},
+	steps := []PackageLifecycleStep{
+		{Description: "init", Command: []string{"rpkg", "init", pkgName, "--namespace=" + namespace, "--repository=" + repo, "--workspace=" + workspace}},
+		{Description: "pull", Command: []string{"rpkg", "pull", pkgRev, "--namespace=" + namespace, tmpDir}},
+		{Description: "edit", IsEdit: true},
+		{Description: "push", Command: []string{"rpkg", "push", pkgRev, "--namespace=" + namespace, tmpDir}},
+		{Description: "propose", Command: []string{"rpkg", "propose", pkgRev, "--namespace=" + namespace}},
+		{Description: "approve", Command: []string{"rpkg", "approve", pkgRev, "--namespace=" + namespace}},
 	}
 
+	ctx := context.Background()
 	for _, step := range steps {
-		start := time.Now()
 		var err error
-		if step.edit {
-			err = editSampleFile(tmpDir)
-		} else {
-			err = runPorchctlCommand(step.cmd...)
-		}
-		elapsed := time.Since(start)
+		var result CommandResult
 		timestamp := time.Now()
+
+		if step.IsEdit {
+			err = editSampleFile(tmpDir)
+			result = CommandResult{
+				Success:  err == nil,
+				Error:    err,
+				Duration: 0,
+				Command:  "edit " + tmpDir,
+			}
+		} else {
+			result = runPorchctlCommand(ctx, step.Command...)
+			err = result.Error
+		}
 
 		stats.Lock()
 		stats.Total++
-		stats.Latencies = append(stats.Latencies, LatencyDataPoint{Timestamp: timestamp, Latency: elapsed, Operation: step.desc})
+		stats.Latencies = append(stats.Latencies, LatencyDataPoint{
+			Timestamp: timestamp,
+			Latency:   result.Duration,
+			Operation: step.Description,
+			Error:     err,
+		})
 		if err == nil {
 			stats.Success++
-			fmt.Printf("[OK] %s (%s) (%.2fs)\n", pkgName, step.desc, elapsed.Seconds())
+			fmt.Printf("[OK] %-20s (%-7s)(%.2fs)\n", pkgName, step.Description, result.Duration.Seconds())
 		} else {
 			stats.Fail++
-			fmt.Printf("[FAIL] %s (%s) (%.2fs)\n", pkgName, step.desc, elapsed.Seconds())
+			fmt.Printf("[FAIL] %-20s (%-7s) (%.2fs)\n", pkgName, step.Description, result.Duration.Seconds())
 			stats.Unlock()
 			failedPkgsLock.Lock()
 			failedPkgs = append(failedPkgs, CreatedPackage{Namespace: namespace, Name: pkgName})
@@ -116,8 +155,12 @@ func fullPackageLifecycle(n int, stats *Stats) CreatedPackage {
 		}
 		stats.Unlock()
 	}
-
 	return CreatedPackage{Namespace: namespace, Name: pkgName}
+}
+
+type CleanupStep struct {
+	Description string
+	Command     []string
 }
 
 func cleanupPackage(pkg CreatedPackage, stats *Stats) {
@@ -125,62 +168,157 @@ func cleanupPackage(pkg CreatedPackage, stats *Stats) {
 	pkgRev := fmt.Sprintf("%s.%s.%s", repo, pkgName, workspace)
 	pkgRevMain := fmt.Sprintf("%s.%s.main", repo, pkgName)
 
-	cleanupSteps := []struct {
-		desc string
-		cmd  []string
-	}{
-		{"propose-delete", []string{"rpkg", "propose-delete", pkgRev, "--namespace=" + namespace}},
-		{"propose-delete-main", []string{"rpkg", "propose-delete", pkgRevMain, "--namespace=" + namespace}},
-		{"delete", []string{"rpkg", "delete", pkgRev, "--namespace=" + namespace}},
-		{"delete-main", []string{"rpkg", "delete", pkgRevMain, "--namespace=" + namespace}},
+	cleanupSteps := []CleanupStep{
+		{Description: "propose-delete", Command: []string{"rpkg", "propose-delete", pkgRev, "--namespace=" + namespace}},
+		{Description: "propose-delete-main", Command: []string{"rpkg", "propose-delete", pkgRevMain, "--namespace=" + namespace}},
+		{Description: "delete", Command: []string{"rpkg", "delete", pkgRev, "--namespace=" + namespace}},
+		{Description: "delete-main", Command: []string{"rpkg", "delete", pkgRevMain, "--namespace=" + namespace}},
 	}
 
+	ctx := context.Background()
 	for _, step := range cleanupSteps {
 		start := time.Now()
-		err := runPorchctlCommand(step.cmd...)
+		result := runPorchctlCommand(ctx, step.Command...)
 		elapsed := time.Since(start)
 		timestamp := time.Now()
+
 		stats.Lock()
 		stats.Total++
-		stats.Latencies = append(stats.Latencies, LatencyDataPoint{Timestamp: timestamp, Latency: elapsed, Operation: step.desc})
-		if err == nil {
+		stats.Latencies = append(stats.Latencies, LatencyDataPoint{
+			Timestamp: timestamp,
+			Latency:   elapsed,
+			Operation: step.Description,
+			Error:     result.Error,
+		})
+		if result.Error == nil {
 			stats.Success++
-			fmt.Printf("[OK] %s (%s) (%.2fs)\n", pkgName, step.desc, elapsed.Seconds())
+			fmt.Printf("[OK] %-20s (%-19s)(%.2fs)\n", pkgName, step.Description, elapsed.Seconds())
 		} else {
 			stats.Fail++
-			fmt.Printf("[FAIL] %s (%s) (%.2fs)\n", pkgName, step.desc, elapsed.Seconds())
+			fmt.Printf("[FAIL] %-20s (%-19s) (%.2fs)\n", pkgName, step.Description, elapsed.Seconds())
 		}
 		stats.Unlock()
 	}
 }
 
-func printSummaryStats(stats *Stats) {
+func isPackageReady(pkg CreatedPackage) bool {
+	pkgName := pkg.Name
+	pkgRev := fmt.Sprintf("%s.%s.main", repo, pkgName)
+
+	ctx := context.Background()
+	result := runPorchctlCommand(ctx, "rpkg", "get", pkgRev, "--namespace="+namespace, "-o", "jsonpath='{.spec.lifecycle}'")
+	if result.Error != nil {
+		return false
+	}
+
+	if strings.Contains(result.Output, "Published") {
+		return true
+	} else {
+		return false
+	}
+}
+
+func cleanupAllPackages(pkgs []CreatedPackage, stats *Stats) {
+	fmt.Printf("Waiting for packages to be ready\n")
+	startTime := time.Now()
+	const maxRetries = 10
+
+	for i := range pkgs {
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			if isPackageReady(pkgs[i]) {
+				break
+			}
+			if attempt == maxRetries {
+				fmt.Printf("Package %v failed to become ready after %d attempt\n", pkgs[i], maxRetries)
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+	}
+	fmt.Printf("All packages are ready in (%.2fs) seconds\n", time.Since(startTime).Seconds())
+	fmt.Printf("Cleaning up %d packages...\n", len(pkgs))
+	for _, pkg := range pkgs {
+		cleanupPackage(pkg, stats)
+	}
+	fmt.Println("Cleanup phase completed.")
+}
+
+func calculateMetrics(stats *Stats) LoadTestMetrics {
 	stats.Lock()
 	defer stats.Unlock()
 
-	fmt.Printf("\n--- Load Test Summary ---\nTotal:   %d\nSuccess: %d\nFail:    %d\nLoad:    %d%%\n",
-		stats.Total, stats.Success, stats.Fail, stats.Load)
+	if len(stats.Latencies) == 0 {
+		return LoadTestMetrics{}
+	}
+
+	var totalLatency time.Duration
+	minLatency := stats.Latencies[0].Latency
+	maxLatency := stats.Latencies[0].Latency
+
+	for _, latency := range stats.Latencies {
+		totalLatency += latency.Latency
+		if latency.Latency < minLatency {
+			minLatency = latency.Latency
+		}
+		if latency.Latency > maxLatency {
+			maxLatency = latency.Latency
+		}
+	}
+
+	avgLatency := totalLatency / time.Duration(len(stats.Latencies))
+
+	var throughput float64
+	if stats.EndTime.Sub(stats.StartTime) > 0 {
+		throughput = float64(stats.Total) / stats.EndTime.Sub(stats.StartTime).Seconds()
+	}
+
+	errorRate := 0.0
+	if stats.Total > 0 {
+		errorRate = float64(stats.Fail) / float64(stats.Total) * 100
+	}
+
+	return LoadTestMetrics{
+		TotalRequests:      stats.Total,
+		SuccessfulRequests: stats.Success,
+		FailedRequests:     stats.Fail,
+		AverageLatency:     avgLatency,
+		MinLatency:         minLatency,
+		MaxLatency:         maxLatency,
+		Throughput:         throughput,
+		ErrorRate:          errorRate,
+	}
+}
+
+func printSummaryStats(stats *Stats) {
+	metrics := calculateMetrics(stats)
+
+	fmt.Printf("\n=== Load Test Summary ===\n")
+	fmt.Printf("Total Requests:     %d\n", metrics.TotalRequests)
+	fmt.Printf("Successful:         %d\n", metrics.SuccessfulRequests)
+	fmt.Printf("Failed:             %d\n", metrics.FailedRequests)
+	fmt.Printf("Error Rate:         %.2f%%\n", metrics.ErrorRate)
+	fmt.Printf("Load:               %d%%\n", stats.Load)
+	fmt.Printf("Test Duration:      %s\n", stats.EndTime.Sub(stats.StartTime))
+	fmt.Printf("Throughput:         %.2f req/s\n", metrics.Throughput)
 
 	if len(stats.Latencies) > 0 {
-		durations := make([]time.Duration, len(stats.Latencies))
-		for i, ldp := range stats.Latencies {
-			durations[i] = ldp.Latency
-		}
-		min, max := slices.Min(durations), slices.Max(durations)
-		var sum time.Duration
-		for _, d := range durations {
-			sum += d
-		}
-		avg := sum / time.Duration(len(durations))
-		fmt.Printf("Overall Latency (s): min=%.2f avg=%.2f max=%.2f\n", min.Seconds(), avg.Seconds(), max.Seconds())
+		fmt.Printf("\n=== Overall Latency Statistics ===\n")
+		fmt.Printf("Min:\t%.2fs\n", metrics.MinLatency.Seconds())
+		fmt.Printf("Avg:\t%.2fs\n", metrics.AverageLatency.Seconds())
+		fmt.Printf("Max:\t%.2fs\n", metrics.MaxLatency.Seconds())
 
 		operationStats := make(map[string][]time.Duration)
+		operationErrors := make(map[string]int)
+
 		for _, ldp := range stats.Latencies {
 			operationStats[ldp.Operation] = append(operationStats[ldp.Operation], ldp.Latency)
+			if ldp.Error != nil {
+				operationErrors[ldp.Operation]++
+			}
 		}
 
-		fmt.Printf("\n--- Per-Operation Statistics ---\n")
-		fmt.Printf("%-15s %8s %8s %8s %8s %8s\n", "Operation", "Count", "Min(s)", "Avg(s)", "Max(s)", "StdDev(s)")
+		fmt.Printf("\n=== Per-Operation Statistics ===\n")
+		fmt.Printf("%-13s %8s %8s %8s %8s %8s %8s\n", "Operation", "Count", "Errors", "Min(s)", "Avg(s)", "Max(s)", "StdDev(s)")
 		fmt.Printf("%s\n", strings.Repeat("-", 70))
 
 		operations := make([]string, 0, len(operationStats))
@@ -192,6 +330,7 @@ func printSummaryStats(stats *Stats) {
 		for _, op := range operations {
 			durations := operationStats[op]
 			count := len(durations)
+			errors := operationErrors[op]
 			min := slices.Min(durations)
 			max := slices.Max(durations)
 
@@ -219,13 +358,34 @@ func printSummaryStats(stats *Stats) {
 				displayName = "del-main"
 			}
 
-			fmt.Printf("%-15s %8d %8.2f %8.2f %8.2f %8.2f\n",
-				displayName, count, min.Seconds(), avg.Seconds(), max.Seconds(), stdDev)
+			fmt.Printf("%-13s %8d %8d %8.2f %8.2f %8.2f %8.2f\n",
+				displayName, count, errors, min.Seconds(), avg.Seconds(), max.Seconds(), stdDev)
+		}
+
+		if metrics.FailedRequests > 0 {
+			fmt.Printf("\n=== Error Details ===\n")
+			errorTypes := make(map[string]int)
+			for _, ldp := range stats.Latencies {
+				if ldp.Error != nil {
+					errorTypes[ldp.Error.Error()]++
+				}
+			}
+
+			for errMsg, count := range errorTypes {
+				fmt.Printf("  %s: %d occurrences\n", errMsg, count)
+			}
 		}
 	}
 
-	createLineChart(stats)
-	fmt.Println("Line chart created: latency_chart.html")
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("Chart generation failed: %v\n", r)
+			}
+		}()
+		createLineChart(stats)
+	}()
+
 }
 
 func forceCleanupFailedPackages(pkgs []CreatedPackage) []CreatedPackage {

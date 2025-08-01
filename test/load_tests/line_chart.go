@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sort"
 
@@ -110,8 +111,15 @@ func createLineChart(stats *Stats) {
 
 	f, err := os.Create("latency_chart.html")
 	if err != nil {
-		fmt.Printf("Error creating chart file: %v\n", err)
+		log.Printf("Error creating chart file: %v", err)
 		return
 	}
-	_ = line.Render(f)
+	defer f.Close()
+
+	if err := line.Render(f); err != nil {
+		log.Printf("Error rendering chart: %v", err)
+		return
+	}
+
+	log.Println("Line chart created: latency_chart.html")
 }

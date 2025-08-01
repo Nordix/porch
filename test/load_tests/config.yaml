@@ -1,0 +1,19 @@
+loadTest:
+  numUsers: 10
+  rampUp: 60s
+  duration: 600s
+
+docker:
+  containerName: "porch-test-control-plane"
+  statsInterval: 1s
+  outputFile: "docker_stats.csv"
+
+porch:
+  namespace: "porch-demo"
+  repo: "porch-test"
+  workspace: "1"
+
+output:
+  chartsEnabled: true
+  logLevel: "info"
+  outputDir: "." 

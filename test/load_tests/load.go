@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"sync"
@@ -25,6 +27,8 @@ type LatencyDataPoint struct {
 	Timestamp time.Time
 	Latency   time.Duration
 	Operation string
+	Error     error
+	UserID    int
 }
 
 type Stats struct {
@@ -34,6 +38,8 @@ type Stats struct {
 	Total     int
 	Load      int
 	Latencies []LatencyDataPoint
+	StartTime time.Time
+	EndTime   time.Time
 }
 
 type CreatedPackage struct {
@@ -41,53 +47,99 @@ type CreatedPackage struct {
 	Name      string
 }
 
-func main() {
-	stopDockerStats := make(chan struct{})
-	go collectDockerStats(stopDockerStats, time.Second, "porch-test-control-plane", "docker_stats.csv")
+type LoadTestMetrics struct {
+	TotalRequests    int
+	SuccessfulRequests int
+	FailedRequests   int
+	AverageLatency   time.Duration
+	MinLatency       time.Duration
+	MaxLatency       time.Duration
+	Throughput       float64
+	ErrorRate        float64
+}
+
+func parseArgs() (*LoadTestConfig, error) {
+	config := &LoadTestConfig{
+		NumUsers: numUsers,
+		RampUp:   rampUp,
+		Duration: duration,
+	}
 
 	if len(os.Args) > 1 {
-		if n, err := strconv.Atoi(os.Args[1]); err == nil {
-			numUsers = n
+		if n, err := strconv.Atoi(os.Args[1]); err != nil {
+			return nil, fmt.Errorf("invalid number of users: %w", err)
+		} else {
+			config.NumUsers = n
 		}
 	}
 	if len(os.Args) > 2 {
-		if s, err := strconv.Atoi(os.Args[2]); err == nil {
-			rampUp = time.Duration(s) * time.Second
+		if s, err := strconv.Atoi(os.Args[2]); err != nil {
+			return nil, fmt.Errorf("invalid ramp-up time: %w", err)
+		} else {
+			config.RampUp = time.Duration(s) * time.Second
 		}
 	}
 	if len(os.Args) > 3 {
-		if s, err := strconv.Atoi(os.Args[3]); err == nil {
-			duration = time.Duration(s) * time.Second
+		if s, err := strconv.Atoi(os.Args[3]); err != nil {
+			return nil, fmt.Errorf("invalid duration: %w", err)
+		} else {
+			config.Duration = time.Duration(s) * time.Second
 		}
 	}
 
-	numUsersForChart = numUsers
-	rampUpForChart = rampUp
-	durationForChart = duration
+	return config, nil
+}
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.Println("Starting load test...")
+
+	config, err := parseArgs()
+	if err != nil {
+		log.Fatalf("Error parsing arguments: %v", err)
+	}
+
+	numUsersForChart = config.NumUsers
+	rampUpForChart = config.RampUp
+	durationForChart = config.Duration
+
+	ctx, cancel := context.WithTimeout(context.Background(), config.Duration)
+	defer cancel()
+
+	stopDockerStats := make(chan struct{})
+	go collectDockerStats(stopDockerStats, time.Second, "porch-test-control-plane", "docker_stats.csv")
 
 	var loadPercentage int
-	if rampUp.Seconds() > 0 {
-		loadPercentage = max(int(60.0*(float64(numUsers)/rampUp.Seconds())), 0)
+	if config.RampUp.Seconds() > 0 {
+		loadPercentage = max(int(60.0*(float64(config.NumUsers)/config.RampUp.Seconds())), 0)
 	}
-	fmt.Printf("Running with Users=%d, rampUp=%s, duration=%s\n", numUsers, rampUp, duration)
-	fmt.Printf("Load:    %d%%\n", loadPercentage)
+	
+	log.Printf("Configuration: Users=%d, RampUp=%s, Duration=%s, Load=%d%%", 
+		config.NumUsers, config.RampUp, config.Duration, loadPercentage)
 
 	var wg sync.WaitGroup
-	stopCh := time.After(duration)
-	userCh := make(chan int, numUsers)
+	userCh := make(chan int, config.NumUsers)
 
-	stats := &Stats{}
-	stats.Load = loadPercentage
+	stats := &Stats{
+		StartTime: time.Now(),
+		Load:      loadPercentage,
+	}
 
-	createdPkgsCh := make(chan CreatedPackage, numUsers)
+	createdPkgsCh := make(chan CreatedPackage, config.NumUsers)
 	var createdPkgs []CreatedPackage
 
 	go func() {
-		for i := range numUsers {
-			userCh <- i
-			time.Sleep(rampUp / time.Duration(numUsers))
+		defer close(userCh)
+		log.Printf("Starting user dispatch with %d users over %s", config.NumUsers, config.RampUp)
+		for i := range config.NumUsers {
+			select {
+			case userCh <- i:
+				time.Sleep(config.RampUp / time.Duration(config.NumUsers))
+			case <-ctx.Done():
+				log.Println("User dispatch cancelled due to context timeout")
+				return
+			}
 		}
-		close(userCh)
 	}()
 
 	runningTasks := 0
@@ -95,8 +147,8 @@ func main() {
 
 	for {
 		select {
-		case <-stopCh:
-			fmt.Println("\nTest duration complete. Waiting for running tasks to finish...")
+		case <-ctx.Done():
+			log.Println("Test duration complete. Waiting for running tasks to finish...")
 			wg.Wait()
 
 			close(createdPkgsCh)
@@ -104,10 +156,11 @@ func main() {
 				createdPkgs = append(createdPkgs, pkg)
 			}
 
-			fmt.Println("\n--- Starting cleanup packages phase ---")
+			log.Println("Starting cleanup packages phase...")
 			cleanupAllPackages(createdPkgs, stats)
 
 			cleanup()
+			stats.EndTime = time.Now()
 			printSummaryStats(stats)
 			close(stopDockerStats)
 			printDockerStatsSummary()
@@ -121,10 +174,10 @@ func main() {
 						createdPkgs = append(createdPkgs, pkg)
 					}
 
-					fmt.Println("\n--- Starting cleanup packages phase ---")
+					log.Println("Starting cleanup packages phase...")
 					cleanupAllPackages(createdPkgs, stats)
-
 					cleanup()
+					stats.EndTime = time.Now()
 					printSummaryStats(stats)
 					close(stopDockerStats)
 					printDockerStatsSummary()
@@ -141,33 +194,28 @@ func main() {
 				}()
 				createdPkg := fullPackageLifecycle(n, stats)
 				if createdPkg.Name != "" {
-					createdPkgsCh <- createdPkg
+					select {
+					case createdPkgsCh <- createdPkg:
+					case <-ctx.Done():
+					}
 				}
 			}(userNum)
 		}
 
 		if allUsersDispatched && runningTasks == 0 {
-			fmt.Println("\nAll tasks completed before test duration ended.")
+			log.Println("All tasks completed before test duration ended.")
 			close(createdPkgsCh)
 			for pkg := range createdPkgsCh {
 				createdPkgs = append(createdPkgs, pkg)
 			}
-			fmt.Println("\n--- Starting cleanup packages phase ---")
+			log.Println("Starting cleanup packages phase...")
 			cleanupAllPackages(createdPkgs, stats)
 			cleanup()
+			stats.EndTime = time.Now()
 			printSummaryStats(stats)
 			close(stopDockerStats)
 			printDockerStatsSummary()
 			return
 		}
 	}
-}
-
-func cleanupAllPackages(pkgs []CreatedPackage, stats *Stats) {
-	fmt.Printf("Cleaning up %d packages...\n", len(pkgs))
-	time.Sleep(5 * time.Second)
-	for _, pkg := range pkgs {
-		cleanupPackage(pkg, stats)
-	}
-	fmt.Println("Cleanup phase completed.")
 }
