@@ -54,18 +54,6 @@ func (c *cachedPackageRevision) UID() types.UID {
 	return util.GenerateUid("packagerevision:", c.KubeObjectNamespace(), c.KubeObjectName())
 }
 
-func (p *cachedPackageRevision) SetError(ctx context.Context, err string) {
-	_, span := tracer.Start(ctx, "cachedPackageRevision::SetError", trace.WithAttributes())
-	defer span.End()
-	p.PackageRevision.SetError(ctx, err)
-}
-
-func (c *cachedPackageRevision) GetError(ctx context.Context) string {
-	_, span := tracer.Start(ctx, "cachedPackageRevision::GetError", trace.WithAttributes())
-	defer span.End()
-	return c.PackageRevision.GetError(ctx)
-}
-
 func (c *cachedPackageRevision) GetPackageRevision(ctx context.Context) (*api.PackageRevision, error) {
 	ctx, span := tracer.Start(ctx, "cachedPackageRevision::GetPackageRevision", trace.WithAttributes())
 	defer span.End()
@@ -80,7 +68,6 @@ func (c *cachedPackageRevision) GetPackageRevision(ctx context.Context) (*api.Pa
 	apiPR.OwnerReferences = c.GetMeta().OwnerReferences
 	apiPR.DeletionTimestamp = c.GetMeta().DeletionTimestamp
 	apiPR.Labels = c.GetMeta().Labels
-	apiPR.Status.Err = c.GetError(ctx)
 	c.mutex.Lock()
 	latest := c.isLatestRevision
 	c.mutex.Unlock()
