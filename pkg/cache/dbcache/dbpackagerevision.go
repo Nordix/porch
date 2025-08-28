@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"k8s.io/apimachinery/pkg/watch"
 )
 
 var (
@@ -78,6 +79,9 @@ func (pr *dbPackageRevision) savePackageRevision(ctx context.Context, saveResour
 		pr.updatedBy = getCurrentUser()
 	}
 
+	sent := pr.repo.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Modified, pr)
+	klog.V(2).Infof("DB cache %+v: sent %d notifications for updated package revision %+v", pr.repo.Key(), sent, pr.Key())
+
 	_, err := pkgRevReadFromDB(ctx, pr.Key(), false)
 	if err == nil {
 		return pr, pkgRevUpdateDB(ctx, pr, saveResources)
@@ -85,7 +89,13 @@ func (pr *dbPackageRevision) savePackageRevision(ctx context.Context, saveResour
 		return pr, err
 	}
 
-	return pr, pkgRevWriteToDB(ctx, pr)
+	writeErr := pkgRevWriteToDB(ctx, pr)
+	if writeErr == nil {
+		sent := pr.repo.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Added, pr)
+		klog.V(2).Infof("DB cache %+v: sent %d notifications for added package revision %+v", pr.repo.Key(), sent, pr.Key())
+	}
+
+	return pr, writeErr
 }
 
 func (pr *dbPackageRevision) UpdatePackageRevision(ctx context.Context) error {
@@ -370,6 +380,9 @@ func (pr *dbPackageRevision) Delete(ctx context.Context, deleteExternal bool) er
 		klog.Warningf("dbPackage:DeletePackageRevision: deletion of %+v failed on database %q", pr.Key(), err)
 	}
 
+	sent := pr.repo.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Deleted, pr)
+	klog.V(2).Infof("DB cache %+v: sent %d notifications for deleted package revision %+v", pr.repo.Key(), sent, pr.Key())
+
 	return err
 }
 
@@ -418,14 +431,21 @@ func (pr *dbPackageRevision) publishPR(ctx context.Context, newLifecycle porchap
 		return pkgerrors.Wrapf(err, "dbPackageRevision:publishPR: push of package revision %+v to external repo failed", pr.Key())
 	}
 
+	sent := pr.repo.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Added, pr)
+	klog.V(2).Infof("DB cache %+v: sent %d notifications for added package revision %+v", pr.repo.Key(), sent, pr.Key())
+
 	if pr.pkgRevKey.Revision == 1 {
 		if err = pkgRevWriteToDB(ctx, pr.ToMainPackageRevision(ctx).(*dbPackageRevision)); err != nil {
 			return pkgerrors.Wrapf(err, "dbPackageRevision:UpdateLifecycle: could not write placeholder package revision for package revision %+v to DB", pr.Key())
 		}
+		sent = pr.repo.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Modified, pr)
+		klog.V(2).Infof("DB cache %+v: sent %d notifications for updated package revision %+v", pr.repo.Key(), sent, pr.Key())
 	} else if pr.pkgRevKey.Revision > 1 {
 		if err = pkgRevUpdateDB(ctx, pr.ToMainPackageRevision(ctx).(*dbPackageRevision), true); err != nil {
 			return pkgerrors.Wrapf(err, "dbPackageRevision:UpdateLifecycle: could not update placeholder package revision for package revision %+v to DB", pr.Key())
 		}
+		sent = pr.repo.repoPRChangeNotifier.NotifyPackageRevisionChange(watch.Modified, pr)
+		klog.V(2).Infof("DB cache %+v: sent %d notifications for updated package revision %+v", pr.repo.Key(), sent, pr.Key())
 	}
 
 	return nil

@@ -17,6 +17,7 @@ package porch
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/nephio-project/porch/pkg/engine"
@@ -204,6 +205,11 @@ func (w *watcher) listAndWatchInner(ctx context.Context, r packageReader, filter
 		}
 		obj, err := pr.GetPackageRevision(ctx)
 		if err != nil {
+			if eventType == watch.Deleted && strings.Contains(err.Error(), "sql: no rows in result set") {
+				w.done = true // no point watching a deleted object anymore
+				errorResult <- nil
+				return true
+			}
 			w.done = true
 			errorResult <- err
 			return false
