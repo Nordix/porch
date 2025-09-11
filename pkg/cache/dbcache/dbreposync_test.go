@@ -46,7 +46,7 @@ func TestDBRepoSync(t *testing.T) {
 	assert.Nil(t, err)
 
 	cacheOptions := cachetypes.CacheOptions{
-		RepoSyncFrequency: 1 * time.Second,
+		RepoCrSyncFrequency: 1 * time.Second,
 	}
 
 	testRepo.repositorySync = newRepositorySync(testRepo, cacheOptions)

@@ -23,6 +23,7 @@ import (
 //+kubebuilder:resource:path=repositories,singular=repository
 //+kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 //+kubebuilder:printcolumn:name="Content",type=string,JSONPath=`.spec.content`
+// +kubebuilder:printcolumn:name="Sync Cron",type=string,JSONPath=`.spec.sync.syncCron`
 //+kubebuilder:printcolumn:name="Deployment",type=boolean,JSONPath=`.spec.deployment`
 //+kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
 //+kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.spec['git','oci']['repo','registry']`
@@ -67,11 +68,22 @@ type RepositorySpec struct {
 	// +kubebuilder:validation:XValidation:message="The 'content' field is deprecated, its only valid value is 'Package'",rule="self == '' || self == 'Package'"
 	// +kubebuilder:default="Package"
 	Content *RepositoryContent `json:"content,omitempty"`
-
+	// Repository sync/reconcile details
+	// +kubebuilder:default={}
+	Sync RepositorySync `json:"sync"`
 	// Git repository details. Required if `type` is `git`. Ignored if `type` is not `git`.
 	Git *GitRepository `json:"git,omitempty"`
 	// OCI repository details. Required if `type` is `oci`. Ignored if `type` is not `oci`.
 	Oci *OciRepository `json:"oci,omitempty"`
+}
+
+type RepositorySync struct {
+	// Value in metav1.Time format to indicate when the repository should be synced once outside the periodic cron based reconcile loop.
+	SyncAt metav1.Time `json:"syncAt,omitempty"`
+	// Cron value to indicate when the repository should be synced periodically.
+	// +kubebuilder:default="*/1 * * * *"
+	// +kubebuilder:validation:MinLength=1
+	SyncCron string `json:"syncCron,omitempty"`
 }
 
 // GitRepository describes a Git repository.

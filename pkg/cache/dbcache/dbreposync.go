@@ -52,7 +52,7 @@ func newRepositorySync(repo *dbRepository, options cachetypes.CacheOptions) *rep
 		cancel: cancel,
 	}
 
-	go s.syncForever(ctx, options.RepoSyncFrequency)
+	go s.syncForever(ctx, options.RepoCrSyncFrequency)
 
 	return &s
 }
