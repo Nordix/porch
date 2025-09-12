@@ -19,7 +19,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
@@ -172,11 +171,7 @@ func TestDBRepositorySync(t *testing.T) {
 	err := testRepo.OpenRepository(ctx, externalrepotypes.ExternalRepoOptions{})
 	assert.Nil(t, err)
 
-	cacheOptions := cachetypes.CacheOptions{
-		RepoCrSyncFrequency: 2 * time.Second,
-	}
-
-	testRepo.repositorySync = newRepositorySync(testRepo, cacheOptions)
+	testRepo.repositorySync = newRepositorySync(testRepo)
 
 	err = testRepo.Refresh(ctx)
 	assert.True(t, err == nil || strings.Contains(err.Error(), "already in progress"))

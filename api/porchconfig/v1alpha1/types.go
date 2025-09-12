@@ -23,7 +23,7 @@ import (
 //+kubebuilder:resource:path=repositories,singular=repository
 //+kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 //+kubebuilder:printcolumn:name="Content",type=string,JSONPath=`.spec.content`
-// +kubebuilder:printcolumn:name="Sync Cron",type=string,JSONPath=`.spec.sync.syncCron`
+// +kubebuilder:printcolumn:name="Sync schedule",type=string,JSONPath=`.spec.sync.schedule`
 //+kubebuilder:printcolumn:name="Deployment",type=boolean,JSONPath=`.spec.deployment`
 //+kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
 //+kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.spec['git','oci']['repo','registry']`
@@ -79,11 +79,11 @@ type RepositorySpec struct {
 
 type RepositorySync struct {
 	// Value in metav1.Time format to indicate when the repository should be synced once outside the periodic cron based reconcile loop.
-	SyncAt metav1.Time `json:"syncAt,omitempty"`
+	RunOnceAt metav1.Time `json:"runOnceAt,omitempty"`
 	// Cron value to indicate when the repository should be synced periodically.
-	// +kubebuilder:default="*/1 * * * *"
+	// +kubebuilder:default="*/10 * * * *"
 	// +kubebuilder:validation:MinLength=1
-	SyncCron string `json:"syncCron,omitempty"`
+	Schedule string `json:"schedule,omitempty"`
 }
 
 // GitRepository describes a Git repository.

@@ -33,8 +33,8 @@ spec:
     - jsonPath: .spec.content
       name: Content
       type: string
-    - jsonPath: .spec.sync.syncCron
-      name: Sync Cron
+    - jsonPath: .spec.sync.schedule
+      name: Sync schedule
       type: string
     - jsonPath: .spec.deployment
       name: Deployment
@@ -161,14 +161,14 @@ spec:
                 default: {}
                 description: Repository sync/reconcile details
                 properties:
-                  syncAt:
+                  runOnceAt:
                     description: Value in metav1.Time format to indicate when the
                       repository should be synced once outside the periodic cron based
                       reconcile loop.
                     format: date-time
                     type: string
-                  syncCron:
-                    default: '*/1 * * * *'
+                  schedule:
+                    default: '*/10 * * * *'
                     description: Cron value to indicate when the repository should
                       be synced periodically.
                     minLength: 1

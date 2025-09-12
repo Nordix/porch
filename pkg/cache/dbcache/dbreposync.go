@@ -21,9 +21,9 @@ import (
 	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
-	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/repository"
 	pkgerrors "github.com/pkg/errors"
+	"github.com/robfig/cron/v3"
 	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 )
@@ -44,15 +44,14 @@ type repositorySyncStats struct {
 	both         int
 }
 
-func newRepositorySync(repo *dbRepository, options cachetypes.CacheOptions) *repositorySync {
+func newRepositorySync(repo *dbRepository) *repositorySync {
 	ctx, cancel := context.WithCancel(context.Background())
-
 	s := repositorySync{
 		repo:   repo,
 		cancel: cancel,
 	}
 
-	go s.syncForever(ctx, options.RepoCrSyncFrequency)
+	go s.syncForever(ctx)
 
 	return &s
 }
@@ -63,15 +62,35 @@ func (s *repositorySync) Stop() {
 	}
 }
 
-func (s *repositorySync) syncForever(ctx context.Context, repoSyncFrequency time.Duration) {
+func (s *repositorySync) syncForever(ctx context.Context) {
+	const fallbackDuration = 10 * time.Minute
 	for {
 		select {
 		case <-ctx.Done():
 			klog.V(2).Infof("repositorySync %+v: exiting repository sync, because context is done: %v", s.repo.Key(), ctx.Err())
 			return
 		default:
+			cronExpr := s.repo.spec.Spec.Sync.Schedule
+
+			var waitDuration time.Duration
+			schedule, err := cron.ParseStandard(cronExpr)
+			if err != nil {
+				klog.Warningf("repositorySync %+v: invalid cron expression '%s', falling back to default interval: %v", s.repo.Key(), cronExpr, fallbackDuration)
+				waitDuration = fallbackDuration
+			} else {
+				next := schedule.Next(time.Now())
+				waitDuration = time.Until(next)
+			}
+
 			s.lastSyncStats, s.lastSyncError = s.syncOnce(ctx)
-			time.Sleep(repoSyncFrequency)
+
+			select {
+			case <-ctx.Done():
+				klog.V(2).Infof("repositorySync %+v: exiting repository sync during wait, because context is done: %v", s.repo.Key(), ctx.Err())
+				return
+			case <-time.After(waitDuration):
+				s.lastSyncStats, s.lastSyncError = s.syncOnce(ctx)
+			}
 		}
 	}
 }

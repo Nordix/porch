@@ -83,7 +83,7 @@ func (c *dbCache) OpenRepository(ctx context.Context, repositorySpec *configapi.
 	c.repositories[repoKey] = dbRepo
 	c.mainLock.Unlock()
 
-	dbRepo.repositorySync = newRepositorySync(dbRepo, c.options)
+	dbRepo.repositorySync = newRepositorySync(dbRepo)
 
 	return dbRepo, nil
 }

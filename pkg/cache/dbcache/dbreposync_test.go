@@ -44,12 +44,7 @@ func TestDBRepoSync(t *testing.T) {
 
 	err := testRepo.OpenRepository(ctx, externalrepotypes.ExternalRepoOptions{})
 	assert.Nil(t, err)
-
-	cacheOptions := cachetypes.CacheOptions{
-		RepoCrSyncFrequency: 1 * time.Second,
-	}
-
-	testRepo.repositorySync = newRepositorySync(testRepo, cacheOptions)
+	testRepo.repositorySync = newRepositorySync(testRepo)
 
 	newPRDef := v1alpha1.PackageRevision{
 		Spec: v1alpha1.PackageRevisionSpec{
