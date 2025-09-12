@@ -90,4 +90,4 @@ commands:
       - --namespace=rpkg-init-deploy
     stdout: |
       NAME   TYPE   CONTENT   SYNC SCHEDULE   DEPLOYMENT   READY   ADDRESS
-      git    git    Package   */10 * * * *    true         True    http://gitea.gitea.svc.cluster.local:3000/nephio/rpkg-init-deploy
+      git    git    Package                   true         True    http://gitea.gitea.svc.cluster.local:3000/nephio/rpkg-init-deploy

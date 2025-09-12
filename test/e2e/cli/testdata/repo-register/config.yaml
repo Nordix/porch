@@ -35,7 +35,7 @@ commands:
       - --namespace=repo-register
     stdout: |
       NAME              TYPE   CONTENT   SYNC SCHEDULE   DEPLOYMENT   READY   ADDRESS
-      test-blueprints   git    Package   */10 * * * *                 True    http://gitea.gitea.svc.cluster.local:3000/nephio/test-blueprints.git
+      test-blueprints   git    Package                                True    http://gitea.gitea.svc.cluster.local:3000/nephio/test-blueprints.git
   - args:
       - porchctl
       - repo

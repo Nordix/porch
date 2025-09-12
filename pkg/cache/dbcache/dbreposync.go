@@ -21,6 +21,7 @@ import (
 	"time"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
+	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/repository"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/robfig/cron/v3"
@@ -44,15 +45,14 @@ type repositorySyncStats struct {
 	both         int
 }
 
-func newRepositorySync(repo *dbRepository) *repositorySync {
+func newRepositorySync(repo *dbRepository, options cachetypes.CacheOptions) *repositorySync {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := repositorySync{
 		repo:   repo,
 		cancel: cancel,
 	}
 
-	go s.syncForever(ctx)
-
+	go s.syncForever(ctx, options.RepoCrSyncFrequency)
 	return &s
 }
 
@@ -62,35 +62,33 @@ func (s *repositorySync) Stop() {
 	}
 }
 
-func (s *repositorySync) syncForever(ctx context.Context) {
-	const fallbackDuration = 10 * time.Minute
+func (s *repositorySync) syncForever(ctx context.Context, RepoCrSyncFrequency time.Duration) {
+
+	// Sync once at the start
+	s.lastSyncStats, s.lastSyncError = s.syncOnce(ctx)
 	for {
+		cronExpr := s.repo.spec.Spec.Sync.Schedule
+		var waitDuration time.Duration
+		if cronExpr == "" {
+			klog.V(2).Infof("repositorySync %+v: sync.schedule is empty, falling back to repository cr sync interval: %v", s.repo.Key(), RepoCrSyncFrequency)
+			waitDuration = RepoCrSyncFrequency
+		} else {
+			schedule, err := cron.ParseStandard(cronExpr)
+			if err != nil {
+				klog.Warningf("repositorySync %+v: invalid cron expression '%s', falling back to default interval: %v", s.repo.Key(), cronExpr, RepoCrSyncFrequency)
+				waitDuration = RepoCrSyncFrequency
+			} else {
+				next := schedule.Next(time.Now())
+				waitDuration = time.Until(next)
+				klog.Infof("repositorySync %+v: next scheduled time: %v", s.repo.Key(), next)
+			}
+		}
 		select {
 		case <-ctx.Done():
 			klog.V(2).Infof("repositorySync %+v: exiting repository sync, because context is done: %v", s.repo.Key(), ctx.Err())
 			return
-		default:
-			cronExpr := s.repo.spec.Spec.Sync.Schedule
-
-			var waitDuration time.Duration
-			schedule, err := cron.ParseStandard(cronExpr)
-			if err != nil {
-				klog.Warningf("repositorySync %+v: invalid cron expression '%s', falling back to default interval: %v", s.repo.Key(), cronExpr, fallbackDuration)
-				waitDuration = fallbackDuration
-			} else {
-				next := schedule.Next(time.Now())
-				waitDuration = time.Until(next)
-			}
-
+		case <-time.After(waitDuration):
 			s.lastSyncStats, s.lastSyncError = s.syncOnce(ctx)
-
-			select {
-			case <-ctx.Done():
-				klog.V(2).Infof("repositorySync %+v: exiting repository sync during wait, because context is done: %v", s.repo.Key(), ctx.Err())
-				return
-			case <-time.After(waitDuration):
-				s.lastSyncStats, s.lastSyncError = s.syncOnce(ctx)
-			}
 		}
 	}
 }

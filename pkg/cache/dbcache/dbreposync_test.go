@@ -44,7 +44,12 @@ func TestDBRepoSync(t *testing.T) {
 
 	err := testRepo.OpenRepository(ctx, externalrepotypes.ExternalRepoOptions{})
 	assert.Nil(t, err)
-	testRepo.repositorySync = newRepositorySync(testRepo)
+
+	cacheOptions := cachetypes.CacheOptions{
+		RepoCrSyncFrequency: 1 * time.Second,
+	}
+
+	testRepo.repositorySync = newRepositorySync(testRepo, cacheOptions)
 
 	newPRDef := v1alpha1.PackageRevision{
 		Spec: v1alpha1.PackageRevisionSpec{
@@ -74,7 +79,6 @@ func TestDBRepoSync(t *testing.T) {
 	dbPR, err = testRepo.ClosePackageRevisionDraft(ctx, dbPR.(repository.PackageRevisionDraft), 0)
 	assert.Nil(t, err)
 	assert.NotNil(t, dbPR)
-
 	time.Sleep(2 * time.Second)
 
 	prList, err := testRepo.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{})
@@ -93,7 +97,6 @@ func TestDBRepoSync(t *testing.T) {
 		},
 	}
 	fakeRepo.PackageRevisions = append(fakeRepo.PackageRevisions, &fakeExtPR)
-
 	time.Sleep(2 * time.Second)
 
 	prList, err = testRepo.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{})
@@ -101,7 +104,6 @@ func TestDBRepoSync(t *testing.T) {
 	assert.Equal(t, 0, len(prList)) // The version of the external repo has not changed
 
 	fakeRepo.CurrentVersion = "bar"
-
 	time.Sleep(2 * time.Second)
 
 	prList, err = testRepo.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{})

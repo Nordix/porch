@@ -80,9 +80,7 @@ type RepositorySpec struct {
 type RepositorySync struct {
 	// Value in metav1.Time format to indicate when the repository should be synced once outside the periodic cron based reconcile loop.
 	RunOnceAt metav1.Time `json:"runOnceAt,omitempty"`
-	// Cron value to indicate when the repository should be synced periodically.
-	// +kubebuilder:default="*/10 * * * *"
-	// +kubebuilder:validation:MinLength=1
+	// Cron value to indicate when the repository should be synced periodically. Example: `*/10 * * * *` to sync every 10 minutes.
 	Schedule string `json:"schedule,omitempty"`
 }
 

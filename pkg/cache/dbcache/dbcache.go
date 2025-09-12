@@ -28,7 +28,6 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
-	"k8s.io/klog/v2"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -56,9 +55,7 @@ func (c *dbCache) OpenRepository(ctx context.Context, repositorySpec *configapi.
 	if dbRepo, ok := c.repositories[repoKey]; ok {
 		c.mainLock.RUnlock()
 		if len(crModified) > 0 && crModified[0] {
-			if err := dbRepo.Refresh(ctx); err != nil {
-				klog.Errorf("Failed to refresh repository %q: %v", repoKey, err)
-			}
+			dbRepo.spec = repositorySpec
 		}
 		return dbRepo, nil
 	}
@@ -83,7 +80,7 @@ func (c *dbCache) OpenRepository(ctx context.Context, repositorySpec *configapi.
 	c.repositories[repoKey] = dbRepo
 	c.mainLock.Unlock()
 
-	dbRepo.repositorySync = newRepositorySync(dbRepo)
+	dbRepo.repositorySync = newRepositorySync(dbRepo, c.options)
 
 	return dbRepo, nil
 }

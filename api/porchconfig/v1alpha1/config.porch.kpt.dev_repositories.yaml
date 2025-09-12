@@ -168,10 +168,9 @@ spec:
                     format: date-time
                     type: string
                   schedule:
-                    default: '*/10 * * * *'
-                    description: Cron value to indicate when the repository should
-                      be synced periodically.
-                    minLength: 1
+                    description: 'Cron value to indicate when the repository should
+                      be synced periodically. Example: `*/10 * * * *` to sync every
+                      10 minutes.'
                     type: string
                 type: object
               type:

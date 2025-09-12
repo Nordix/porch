@@ -21,7 +21,6 @@ import (
 
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
-	"github.com/nephio-project/porch/pkg/repository"
 	"github.com/nephio-project/porch/pkg/util"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -194,12 +193,9 @@ func (b *background) handleRepositoryEvent(ctx context.Context, repo *configapi.
 	switch eventType {
 	case watch.Deleted:
 		err = b.cache.CloseRepository(listCtx, repo, repoList.Items)
-	case watch.Modified:
-		_, err = b.cacheRepository(listCtx, repo, true)
 	default:
-		_, err = b.cacheRepository(listCtx, repo)
+		err = b.cacheRepository(listCtx, repo)
 	}
-
 	if err == nil {
 		klog.Infof("%s, handling completed in %s", msgPreamble, time.Since(start))
 		return nil
@@ -218,7 +214,7 @@ func (b *background) runOnce(ctx context.Context) error {
 	for i := range repositories.Items {
 		repo := &repositories.Items[i]
 
-		if _, err := b.cacheRepository(ctx, repo); err != nil {
+		if err := b.cacheRepository(ctx, repo); err != nil {
 			klog.Errorf("Failed to cache repository: %v", err)
 		}
 	}
@@ -226,14 +222,11 @@ func (b *background) runOnce(ctx context.Context) error {
 	return nil
 }
 
-func (b *background) cacheRepository(ctx context.Context, repo *configapi.Repository, crModified ...bool) (repository.Repository, error) {
+func (b *background) cacheRepository(ctx context.Context, repo *configapi.Repository) error {
 	start := time.Now()
 	defer func() { klog.V(4).Infof("background::cacheRepository (%s) took %s", repo.Name, time.Since(start)) }()
 	var condition v1.Condition
-	if crModified == nil {
-		crModified = []bool{false}
-	}
-	cachedRepo, err := b.cache.OpenRepository(ctx, repo, crModified[0])
+	_, err := b.cache.OpenRepository(ctx, repo, true)
 	if err == nil {
 		condition = v1.Condition{
 			Type:               configapi.RepositoryReady,
@@ -256,9 +249,9 @@ func (b *background) cacheRepository(ctx context.Context, repo *configapi.Reposi
 
 	meta.SetStatusCondition(&repo.Status.Conditions, condition)
 	if err := b.coreClient.Status().Update(ctx, repo); err != nil {
-		return nil, fmt.Errorf("error updating repository status: %w", err)
+		return fmt.Errorf("error updating repository status: %w", err)
 	}
-	return cachedRepo, nil
+	return nil
 }
 
 type backoffTimer struct {
