@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/GoogleContainerTools/kpt/pkg/oci"
+	"github.com/kptdev/kpt/pkg/oci"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/nephio-project/porch/api/porch/v1alpha1"
 	"github.com/nephio-project/porch/pkg/repository"

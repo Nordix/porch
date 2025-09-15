@@ -22,7 +22,7 @@ import (
 
 	v1 "github.com/nephio-project/porch/pkg/kpt/api/kptfile/v1"
 	"github.com/nephio-project/porch/pkg/kpt/fn"
-	fnsdk "github.com/nephio-project/porch/third_party/GoogleContainerTools/kpt-functions-sdk/go/fn"
+	fnsdk "github.com/nephio-project/porch/third_party/kptdev/krm-functions-sdk/go/fn"
 )
 
 const gcrImagePrefix = ""

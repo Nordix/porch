@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GoogleContainerTools/kpt/pkg/oci"
+	"github.com/kptdev/kpt/pkg/oci"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/google"
 	"github.com/nephio-project/porch/api/porch/v1alpha1"

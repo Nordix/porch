@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/GoogleContainerTools/kpt/pkg/oci"
+	"github.com/kptdev/kpt/pkg/oci"
 	"github.com/google/go-containerregistry/pkg/gcrane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"

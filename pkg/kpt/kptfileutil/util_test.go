@@ -115,7 +115,7 @@ metadata:
 upstream:
   type: git
   git:
-    repo: github.com/GoogleContainerTools/kpt
+    repo: github.com/kptdev/kpt
     directory: /
     ref: v1
 `,
@@ -127,7 +127,7 @@ metadata:
 upstream:
   type: git
   git:
-    repo: github.com/GoogleContainerTools/kpt
+    repo: github.com/kptdev/kpt
     directory: /
     ref: v2
 `,
@@ -155,7 +155,7 @@ metadata:
 upstream:
   type: git
   git:
-    repo: github.com/GoogleContainerTools/kpt
+    repo: github.com/kptdev/kpt
     directory: /
     ref: v1
 `,
@@ -167,13 +167,13 @@ metadata:
 upstream:
   type: git
   git:
-    repo: github.com/GoogleContainerTools/kpt
+    repo: github.com/kptdev/kpt
     directory: /
     ref: v2
 upstreamLock:
   type: git
   git:
-    repo: github.com/GoogleContainerTools/kpt
+    repo: github.com/kptdev/kpt
     directory: /
     ref: v2
     commit: abc123
@@ -193,13 +193,13 @@ metadata:
 upstream:
   type: git
   git:
-    repo: github.com/GoogleContainerTools/kpt
+    repo: github.com/kptdev/kpt
     directory: /
     ref: v2
 upstreamLock:
   type: git
   git:
-    repo: github.com/GoogleContainerTools/kpt
+    repo: github.com/kptdev/kpt
     directory: /
     ref: v2
     commit: abc123

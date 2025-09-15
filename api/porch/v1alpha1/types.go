@@ -320,7 +320,7 @@ type Selector struct {
 
 // The following types (UpstreamLock, OriginType, and GitLock) are duplicates from the kpt library.
 // We are repeating them here to avoid cyclic dependencies, but these duplicate type should be removed when
-// https://github.com/GoogleContainerTools/kpt/issues/3297 is resolved.
+// https://github.com/kptdev/kpt/issues/3297 is resolved.
 
 type OriginType string
 
