@@ -167,9 +167,16 @@ func (_c *MockCache_GetRepository_Call) RunAndReturn(run func(repository.Reposit
 	return _c
 }
 
-// OpenRepository provides a mock function with given fields: ctx, repositorySpec
-func (_m *MockCache) OpenRepository(ctx context.Context, repositorySpec *v1alpha1.Repository) (repository.Repository, error) {
-	ret := _m.Called(ctx, repositorySpec)
+// OpenRepository provides a mock function with given fields: ctx, repositorySpec, crModified
+func (_m *MockCache) OpenRepository(ctx context.Context, repositorySpec *v1alpha1.Repository, crModified ...bool) (repository.Repository, error) {
+	_va := make([]interface{}, len(crModified))
+	for _i := range crModified {
+		_va[_i] = crModified[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, repositorySpec)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenRepository")
@@ -177,19 +184,19 @@ func (_m *MockCache) OpenRepository(ctx context.Context, repositorySpec *v1alpha
 
 	var r0 repository.Repository
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.Repository) (repository.Repository, error)); ok {
-		return rf(ctx, repositorySpec)
+	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.Repository, ...bool) (repository.Repository, error)); ok {
+		return rf(ctx, repositorySpec, crModified...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.Repository) repository.Repository); ok {
-		r0 = rf(ctx, repositorySpec)
+	if rf, ok := ret.Get(0).(func(context.Context, *v1alpha1.Repository, ...bool) repository.Repository); ok {
+		r0 = rf(ctx, repositorySpec, crModified...)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(repository.Repository)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *v1alpha1.Repository) error); ok {
-		r1 = rf(ctx, repositorySpec)
+	if rf, ok := ret.Get(1).(func(context.Context, *v1alpha1.Repository, ...bool) error); ok {
+		r1 = rf(ctx, repositorySpec, crModified...)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -205,13 +212,21 @@ type MockCache_OpenRepository_Call struct {
 // OpenRepository is a helper method to define mock.On call
 //   - ctx context.Context
 //   - repositorySpec *v1alpha1.Repository
-func (_e *MockCache_Expecter) OpenRepository(ctx interface{}, repositorySpec interface{}) *MockCache_OpenRepository_Call {
-	return &MockCache_OpenRepository_Call{Call: _e.mock.On("OpenRepository", ctx, repositorySpec)}
+//   - crModified ...bool
+func (_e *MockCache_Expecter) OpenRepository(ctx interface{}, repositorySpec interface{}, crModified ...interface{}) *MockCache_OpenRepository_Call {
+	return &MockCache_OpenRepository_Call{Call: _e.mock.On("OpenRepository",
+		append([]interface{}{ctx, repositorySpec}, crModified...)...)}
 }
 
-func (_c *MockCache_OpenRepository_Call) Run(run func(ctx context.Context, repositorySpec *v1alpha1.Repository)) *MockCache_OpenRepository_Call {
+func (_c *MockCache_OpenRepository_Call) Run(run func(ctx context.Context, repositorySpec *v1alpha1.Repository, crModified ...bool)) *MockCache_OpenRepository_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*v1alpha1.Repository))
+		variadicArgs := make([]bool, len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(bool)
+			}
+		}
+		run(args[0].(context.Context), args[1].(*v1alpha1.Repository), variadicArgs...)
 	})
 	return _c
 }
@@ -221,7 +236,7 @@ func (_c *MockCache_OpenRepository_Call) Return(_a0 repository.Repository, _a1 e
 	return _c
 }
 
-func (_c *MockCache_OpenRepository_Call) RunAndReturn(run func(context.Context, *v1alpha1.Repository) (repository.Repository, error)) *MockCache_OpenRepository_Call {
+func (_c *MockCache_OpenRepository_Call) RunAndReturn(run func(context.Context, *v1alpha1.Repository, ...bool) (repository.Repository, error)) *MockCache_OpenRepository_Call {
 	_c.Call.Return(run)
 	return _c
 }
