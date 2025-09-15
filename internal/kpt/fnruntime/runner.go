@@ -43,7 +43,7 @@ import (
 
 const (
 	FuncGenPkgContext = "builtins/gen-pkg-context"
-	GCRImagePrefix    = "gcr.io/kpt-fn/"
+	GHCRImagePrefix   = "ghcr.io/kptdev/krm-functions-catalog/"
 )
 
 type RunnerOptions struct {

@@ -209,7 +209,7 @@ metadata:
     config.kubernetes.io/local-config: "true"
 pipeline:
   mutators:
-    - image: gcr.io/kpt-fn/set-labels:unstable
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:unstable
       configPath: fn-config.yaml
 `)
 	item := []byte(`
@@ -950,7 +950,7 @@ metadata:
     config.kubernetes.io/local-config: "true"
 pipeline:
   mutators:
-    - image: gcr.io/kpt-fn/set-labels:unstable
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:unstable
       configPath: fn-config.yaml
 ---
 apiVersion: v1

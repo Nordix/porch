@@ -73,7 +73,7 @@ functionConfig:
 func TestBuiltinRuntimeNotFound(t *testing.T) {
 	br := newBuiltinRuntime(gcrImagePrefix)
 	funct := &v1.Function{
-		Image: "gcr.io/kpt-fn/not-exist:unstable",
+		Image: "ghcr.io/kptdev/krm-functions-catalog/not-exist:latest",
 	}
 	_, err := br.GetRunner(context.Background(), funct)
 	var fnNotFoundErr *fn.NotFoundError

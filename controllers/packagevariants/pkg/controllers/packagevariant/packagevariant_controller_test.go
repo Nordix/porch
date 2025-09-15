@@ -1187,15 +1187,15 @@ spec:
 		"add one mutator with existing mutators": {
 			initialPipeline: `
         mutators:
-          - image: gcr.io/kpt-fn/set-labels:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
             name: set-labels
             configMap:
               app: foo
-          - image: gcr.io/kpt-fn/set-annotations:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
             name: set-annotations`[1:],
 			pvPipeline: `
     mutators:
-      - image: gcr.io/kpt-fn/set-namespace:v0.1
+      - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
         name: set-namespace
         configMap:
           namespace: my-ns`[1:],
@@ -1204,49 +1204,49 @@ spec:
       pipeline:
         mutators:
         - name: PackageVariant.my-pv.set-namespace.0
-          image: gcr.io/kpt-fn/set-namespace:v0.1
+          image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
           configMap:
             namespace: my-ns
-        - image: gcr.io/kpt-fn/set-labels:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
           name: set-labels
           configMap:
             app: foo
-        - image: gcr.io/kpt-fn/set-annotations:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
           name: set-annotations
 `[1:],
 		},
 		"add two mutators with existing": {
 			initialPipeline: `
         mutators:
-          - image: gcr.io/kpt-fn/set-labels:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
             name: set-labels
             configMap:
               app: foo
-          - image: gcr.io/kpt-fn/set-annotations:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
             name: set-annotations`[1:],
 			pvPipeline: `
     mutators:
-      - image: gcr.io/kpt-fn/set-namespace:v0.1
+      - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
         name: set-namespace
         configMap:
           namespace: my-ns
-      - image: gcr.io/kpt-fn/format:unstable
+      - image: ghcr.io/kptdev/krm-functions-catalog/format:latest
         name: format`[1:],
 			expectedErr: "",
 			expectedPrr: prrBase + `
       pipeline:
         mutators:
         - name: PackageVariant.my-pv.set-namespace.0
-          image: gcr.io/kpt-fn/set-namespace:v0.1
+          image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
           configMap:
             namespace: my-ns
         - name: PackageVariant.my-pv.format.1
-          image: gcr.io/kpt-fn/format:unstable
-        - image: gcr.io/kpt-fn/set-labels:v0.1
+          image: ghcr.io/kptdev/krm-functions-catalog/format:latest
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
           name: set-labels
           configMap:
             app: foo
-        - image: gcr.io/kpt-fn/set-annotations:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
           name: set-annotations
 `[1:],
 		},
@@ -1254,7 +1254,7 @@ spec:
 			initialPipeline: "",
 			pvPipeline: `
     mutators:
-      - image: gcr.io/kpt-fn/set-namespace:v0.1
+      - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
         name: set-namespace
         configMap:
           namespace: my-ns`[1:],
@@ -1263,7 +1263,7 @@ spec:
       pipeline:
         mutators:
         - name: PackageVariant.my-pv.set-namespace.0
-          image: gcr.io/kpt-fn/set-namespace:v0.1
+          image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
           configMap:
             namespace: my-ns
 `[1:],
@@ -1271,38 +1271,38 @@ spec:
 		"add none with existing mutators": {
 			initialPipeline: `
         mutators:
-          - image: gcr.io/kpt-fn/set-labels:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
             name: set-labels
             configMap:
               app: foo
-          - image: gcr.io/kpt-fn/set-annotations:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
             name: set-annotations`[1:],
 			pvPipeline:  "",
 			expectedErr: "",
 			expectedPrr: prrBase + `
       pipeline:
         mutators:
-        - image: gcr.io/kpt-fn/set-labels:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
           name: set-labels
           configMap:
             app: foo
-        - image: gcr.io/kpt-fn/set-annotations:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
           name: set-annotations
 `[1:],
 		},
 		"add one mutator with existing with comments": {
 			initialPipeline: `
         mutators:
-          - image: gcr.io/kpt-fn/set-labels:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
             # this is a comment
             name: set-labels
             configMap:
               app: foo
-          - image: gcr.io/kpt-fn/set-annotations:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
             name: set-annotations`[1:],
 			pvPipeline: `
     mutators:
-      - image: gcr.io/kpt-fn/set-namespace:v0.1
+      - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
         name: set-namespace
         configMap:
           namespace: my-ns`[1:],
@@ -1311,67 +1311,67 @@ spec:
       pipeline:
         mutators:
         - name: PackageVariant.my-pv.set-namespace.0
-          image: gcr.io/kpt-fn/set-namespace:v0.1
+          image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
           configMap:
             namespace: my-ns
-        - image: gcr.io/kpt-fn/set-labels:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
           # this is a comment
           name: set-labels
           configMap:
             app: foo
-        - image: gcr.io/kpt-fn/set-annotations:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
           name: set-annotations
 `[1:],
 		},
 		"add one validator with existing validators": {
 			initialPipeline: `
         validators:
-          - image: gcr.io/kpt-fn/gatekeeper-validate:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:latest
             name: gatekeeper-validate`[1:],
 			pvPipeline: `
     validators:
-      - image: gcr.io/kpt-fn/validate-name:undefined
+      - image: ghcr.io/kptdev/krm-functions-catalog/validate-name:latest
         name: validate-name `[1:],
 			expectedErr: "",
 			expectedPrr: prrBase + `
       pipeline:
         validators:
         - name: PackageVariant.my-pv.validate-name.0
-          image: gcr.io/kpt-fn/validate-name:undefined
-        - image: gcr.io/kpt-fn/gatekeeper-validate:v0.1
+          image: ghcr.io/kptdev/krm-functions-catalog/validate-name:latest
+        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:latest
           name: gatekeeper-validate
 `[1:],
 		},
 		"add two validators with existing validators": {
 			initialPipeline: `
         validators:
-          - image: gcr.io/kpt-fn/gatekeeper-validate:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:latest
             name: gatekeeper-validate`[1:],
 			pvPipeline: `
     validators:
-      - image: gcr.io/kpt-fn/validate-name:undefined
+      - image: ghcr.io/kptdev/krm-functions-catalog/validate-name:latest
         name: validate-name `[1:],
 			expectedErr: "",
 			expectedPrr: prrBase + `
       pipeline:
         validators:
         - name: PackageVariant.my-pv.validate-name.0
-          image: gcr.io/kpt-fn/validate-name:undefined
-        - image: gcr.io/kpt-fn/gatekeeper-validate:v0.1
+          image: ghcr.io/kptdev/krm-functions-catalog/validate-name:latest
+        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:latest
           name: gatekeeper-validate
 `[1:],
 		},
 		"add none with existing validator": {
 			initialPipeline: `
         validators:
-          - image: gcr.io/kpt-fn/gatekeeper-validate:v0.1
+          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:latest
             name: gatekeeper-validate`[1:],
 			pvPipeline:  "",
 			expectedErr: "",
 			expectedPrr: prrBase + `
       pipeline:
         validators:
-        - image: gcr.io/kpt-fn/gatekeeper-validate:v0.1
+        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:latest
           name: gatekeeper-validate
 `[1:],
 		},
