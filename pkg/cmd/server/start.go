@@ -42,6 +42,7 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	basecompatibility "k8s.io/component-base/compatibility"
 	"k8s.io/klog/v2"
 	netutils "k8s.io/utils/net"
 )
@@ -308,7 +309,7 @@ func (o PorchServerOptions) RunPorchServer(ctx context.Context) error {
 		return err
 	}
 
-	config.GenericConfig.EffectiveVersion = basecompatibility.NewEffectiveVersionFromString("1", "0", "0")
+	config.GenericConfig.EffectiveVersion = basecompatibility.NewEffectiveVersionFromString("0.0.1", "0.0.1", "0.0.1")
 
 	server, err := config.Complete().New(ctx)
 	if err != nil {

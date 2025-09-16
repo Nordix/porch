@@ -134,7 +134,7 @@ spec:
     data:
       name: test
 `,
-			expectedErr: "spec.packageContext.data: Invalid value: map[string]string{\"name\":\"test\"}: must not contain the key \"name\"",
+			expectedErr: "spec.packageContext.data: Invalid value: {\"name\":\"test\"}: must not contain the key \"name\"",
 		},
 
 		"name in package context removeKeys": {
@@ -151,7 +151,7 @@ spec:
     removeKeys:
     - name
 `,
-			expectedErr: "spec.packageContext.removeKeys: Invalid value: []string{\"name\"}: must not contain the key \"name\"",
+			expectedErr: "spec.packageContext.removeKeys: Invalid value: [\"name\"]: must not contain the key \"name\"",
 		},
 
 		"package-path in package context data": {
@@ -168,7 +168,7 @@ spec:
     data:
       package-path: test
 `,
-			expectedErr: "spec.packageContext.data: Invalid value: map[string]string{\"package-path\":\"test\"}: must not contain the key \"package-path\"",
+			expectedErr: "spec.packageContext.data: Invalid value: {\"package-path\":\"test\"}: must not contain the key \"package-path\"",
 		},
 		"package-path in package context removeKeys": {
 			packageVariant: packageVariantHeader + `
@@ -184,7 +184,7 @@ spec:
     removeKeys:
     - package-path
 `,
-			expectedErr: "spec.packageContext.removeKeys: Invalid value: []string{\"package-path\"}: must not contain the key \"package-path\"",
+			expectedErr: "spec.packageContext.removeKeys: Invalid value: [\"package-path\"]: must not contain the key \"package-path\"",
 		},
 		"valid injectors": {
 			packageVariant: packageVariantHeader + `
