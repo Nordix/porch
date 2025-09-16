@@ -105,7 +105,6 @@ data:
     ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest: 30m
     ghcr.io/kptdev/krm-functions-catalog/starlark:latest: 30m
     ghcr.io/kptdev/krm-functions-catalog/upsert-resource:latest: 30m
-    ghcr.io/kptdev/krm-functions-catalog/enable-gcp-services:latest: 30m
     ghcr.io/kptdev/krm-functions-catalog/export-terraform::latest: 30m
     ghcr.io/kptdev/krm-functions-catalog/generate-folders:latest.1: 30m
     ghcr.io/kptdev/krm-functions-catalog/remove-local-config-resources:latest: 30m

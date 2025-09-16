@@ -199,7 +199,9 @@ func TestReconcile(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		stopReason := myController.Run(testContext)
-		require.ErrorIs(t, stopReason, context.Canceled)
+		if !errors.Is(stopReason, context.Canceled) {
+			t.Errorf("expected error to be context.Canceled, but got: %v", stopReason)
+		}
 	}()
 
 	// The controller is blocked because the reconcile function sends on an
@@ -255,7 +257,9 @@ func TestShutdown(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		stopReason := myController.Run(testContext)
-		require.ErrorIs(t, stopReason, context.Canceled)
+		if !errors.Is(stopReason, context.Canceled) {
+			t.Errorf("expected error to be context.Canceled, but got: %v", stopReason)
+		}
 	}()
 
 	// Wait for controller and informer to start up
@@ -287,7 +291,9 @@ func TestInformerNeverStarts(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		stopReason := myController.Run(testContext)
-		require.ErrorIs(t, stopReason, context.DeadlineExceeded)
+		if !errors.Is(stopReason, context.DeadlineExceeded) {
+			t.Errorf("expected error to be context.Canceled, but got: %v", stopReason)
+		}
 	}()
 
 	// Wait for deadline to pass without syncing the cache
@@ -335,7 +341,9 @@ func TestIgnoredUpdate(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		stopReason := myController.Run(testContext)
-		require.ErrorIs(t, stopReason, context.Canceled)
+		if !errors.Is(stopReason, context.Canceled) {
+			t.Errorf("expected error to be context.Canceled, but got: %v", stopReason)
+		}
 	}()
 
 	// The controller is blocked because the reconcile function sends on an
@@ -392,7 +400,9 @@ func TestReconcileRetry(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		stopReason := myController.Run(testContext)
-		require.ErrorIs(t, stopReason, context.Canceled)
+		if !errors.Is(stopReason, context.Canceled) {
+			t.Errorf("expected error to be context.Canceled, but got: %v", stopReason)
+		}
 	}()
 
 	// Add object to informer
@@ -496,7 +506,7 @@ func TestInformerList(t *testing.T) {
 	require.NoError(t, tracker.Add(object1))
 	require.NoError(t, tracker.Add(object2))
 
-	require.NoError(t, wait.PollWithContext(testContext, 100*time.Millisecond, 500*time.Millisecond, func(ctx context.Context) (done bool, err error) {
+	require.NoError(t, wait.PollUntilContextTimeout(testContext, 100*time.Millisecond, 500*time.Millisecond, false, func(ctx context.Context) (done bool, err error) {
 		return myController.Informer().LastSyncResourceVersion() == object2.GetResourceVersion(), nil
 	}))
 
@@ -508,7 +518,7 @@ func TestInformerList(t *testing.T) {
 	require.NoError(t, tracker.Delete(fakeGVR, object2.GetNamespace(), object2.GetName()))
 	require.NoError(t, tracker.Add(object3))
 
-	require.NoError(t, wait.PollWithContext(testContext, 100*time.Millisecond, 500*time.Millisecond, func(ctx context.Context) (done bool, err error) {
+	require.NoError(t, wait.PollUntilContextTimeout(testContext, 100*time.Millisecond, 500*time.Millisecond, false, func(ctx context.Context) (done bool, err error) {
 		return myController.Informer().LastSyncResourceVersion() == object3.GetResourceVersion(), nil
 	}))
 
@@ -519,7 +529,7 @@ func TestInformerList(t *testing.T) {
 	require.NoError(t, tracker.Add(namespacedObject1))
 	require.NoError(t, tracker.Add(namespacedObject2))
 
-	require.NoError(t, wait.PollWithContext(testContext, 100*time.Millisecond, 500*time.Millisecond, func(ctx context.Context) (done bool, err error) {
+	require.NoError(t, wait.PollUntilContextTimeout(testContext, 100*time.Millisecond, 500*time.Millisecond, false, func(ctx context.Context) (done bool, err error) {
 		return myController.Informer().LastSyncResourceVersion() == namespacedObject2.GetResourceVersion(), nil
 	}))
 	values, err = myController.Informer().Namespaced(namespacedObject1.GetNamespace()).List(labels.Everything())

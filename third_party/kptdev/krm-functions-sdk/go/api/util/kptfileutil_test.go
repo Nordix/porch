@@ -39,7 +39,7 @@ metadata:
   name: test
 pipeline:
   mutators:
-    - image: gcr.io/kpt-fn/starlark:unstable
+    - image: ghcr.io/kptdev/krm-functions-catalog/starlark:latest
       configPath: fn-config.yaml
 `,
 			expected: &kptfilev1.KptFile{
@@ -57,7 +57,7 @@ pipeline:
 				Pipeline: &kptfilev1.Pipeline{
 					Mutators: []kptfilev1.Function{
 						{
-							Image:      "gcr.io/kpt-fn/starlark:unstable",
+							Image:      "ghcr.io/kptdev/krm-functions-catalog/starlark:latest",
 							ConfigPath: "fn-config.yaml",
 						},
 					},

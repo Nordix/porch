@@ -1233,8 +1233,8 @@ func (g GitSuite) TestNestedDirectories(t *testing.T) {
 			packages:  []string{},
 		},
 		{
-			repoName:  "catalog/gcp",
-			directory: "catalog/gcp",
+			repoName:  "catalog/kpt",
+			directory: "catalog/kpt",
 			packages: []string{
 				"cloud-sql/v1",
 				"spanner/v1",

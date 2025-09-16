@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
@@ -288,10 +287,6 @@ func TestCacheWatcherStoppedOnDestroy(t *testing.T) {
 }
 
 func TestResourceVersionAfterInitEvents(t *testing.T) {
-	getAttrsFunc := func(obj runtime.Object) (labels.Set, fields.Set, error) {
-		return nil, nil, nil
-	}
-
 	const numObjects = 10
 	store := cache.NewIndexer(storeElementKey, storeElementIndexers(nil))
 
@@ -300,7 +295,7 @@ func TestResourceVersionAfterInitEvents(t *testing.T) {
 		store.Add(elem)
 	}
 
-	wci, err := newCacheIntervalFromStore(numObjects, store, getAttrsFunc)
+	wci, err := newCacheIntervalFromStore(numObjects, store, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,10 +494,22 @@ func TestCacheWatcherDrainingNoBookmarkAfterResourceVersionReceived(t *testing.T
 	w = newCacheWatcher(0, filter, forget, storage.APIObjectVersioner{}, time.Now(), true, schema.GroupResource{Resource: "pods"}, "")
 	w.setBookmarkAfterResourceVersion(10)
 	go w.processInterval(context.Background(), intervalFromEvents(initEvents), 0)
-	if w.add(&watchCacheEvent{Object: &v1.Pod{}}, time.NewTimer(1*time.Second)) {
+
+	// get an event so that
+	// we know the w.processInterval
+	// has been scheduled, and
+	// it will be blocked on
+	// sending the other event
+	// to the result chan
+	<-w.ResultChan()
+
+	// now, once we know, the processInterval
+	// is waiting add another event that will time out
+	// and start the cleanup process
+	if w.add(&watchCacheEvent{Object: &v1.Pod{}}, time.NewTimer(10*time.Millisecond)) {
 		t.Fatal("expected the add method to fail")
 	}
-	if err := wait.PollImmediate(1*time.Second, 5*time.Second, func() (bool, error) {
+	if err := wait.PollUntilContextTimeout(context.Background(), 100*time.Millisecond, 5*time.Second, true, func(_ context.Context) (bool, error) {
 		lock.RLock()
 		defer lock.RUnlock()
 		return count == 2, nil
@@ -579,7 +586,7 @@ func TestCacheWatcherDrainingNoBookmarkAfterResourceVersionSent(t *testing.T) {
 		{Type: watch.Bookmark, Object: &v1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				ResourceVersion: "10",
-				Annotations:     map[string]string{"k8s.io/initial-events-end": "true"},
+				Annotations:     map[string]string{metav1.InitialEventsAnnotationKey: "true"},
 			},
 		}},
 		{Type: watch.Added, Object: makePod(15)},

@@ -45,6 +45,8 @@ import (
 	auditinternal "k8s.io/apiserver/pkg/apis/audit"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/warning"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 )
 
 var (
@@ -71,7 +73,7 @@ var (
 				APIVersion: paramsGVK.GroupVersion().String(),
 				Kind:       paramsGVK.Kind,
 			},
-			FailurePolicy: ptrTo(admissionregistrationv1.Fail),
+			FailurePolicy: ptr.To(admissionregistrationv1.Fail),
 			Validations: []admissionregistrationv1.Validation{
 				{
 					Expression: "messageId for deny policy",
@@ -104,7 +106,7 @@ var (
 				Name:      fakeParams.GetName(),
 				Namespace: fakeParams.GetNamespace(),
 				// fake object tracker does not populate defaults
-				ParameterNotFoundAction: ptrTo(admissionregistrationv1.DenyAction),
+				ParameterNotFoundAction: ptr.To(admissionregistrationv1.DenyAction),
 			},
 			ValidationActions: []admissionregistrationv1.ValidationAction{admissionregistrationv1.Deny},
 		},
@@ -359,12 +361,13 @@ func setupTestCommon(
 	shouldStartInformers bool,
 ) *generic.PolicyTestContext[*validating.Policy, *validating.PolicyBinding, validating.Validator] {
 	testContext, testContextCancel, err := generic.NewPolicyTestContext(
+		t,
 		validating.NewValidatingAdmissionPolicyAccessor,
 		validating.NewValidatingAdmissionPolicyBindingAccessor,
 		func(p *validating.Policy) validating.Validator {
 			return compiler.CompilePolicy(p)
 		},
-		func(a authorizer.Authorizer, m *matching.Matcher) generic.Dispatcher[validating.PolicyHook] {
+		func(a authorizer.Authorizer, m *matching.Matcher, client kubernetes.Interface) generic.Dispatcher[validating.PolicyHook] {
 			coolMatcher := matcher
 			if coolMatcher == nil {
 				coolMatcher = generic.NewPolicyMatcher(m)
@@ -434,10 +437,6 @@ func attributeRecord(
 			nil,
 		),
 	}
-}
-
-func ptrTo[T any](obj T) *T {
-	return &obj
 }
 
 // //////////////////////////////////////////////////////////////////////////////
@@ -516,7 +515,7 @@ func TestBasicPolicyDefinitionFailure(t *testing.T) {
 	require.Equal(t, 0, warningRecorder.len())
 
 	annotations := attr.GetAnnotations(auditinternal.LevelMetadata)
-	require.Equal(t, 0, len(annotations))
+	require.Empty(t, annotations)
 
 	require.ErrorContains(t, err, `Denied`)
 }
@@ -602,7 +601,7 @@ func TestDefinitionDoesntMatch(t *testing.T) {
 				nil, matchingParams,
 				admission.Create), &admission.RuntimeObjectInterfaces{}),
 		`Denied`)
-	require.Equal(t, numCompiles, 1)
+	require.Equal(t, 1, numCompiles)
 }
 
 func TestReconfigureBinding(t *testing.T) {
@@ -654,7 +653,7 @@ func TestReconfigureBinding(t *testing.T) {
 			ParamRef: &admissionregistrationv1.ParamRef{
 				Name:                    fakeParams2.GetName(),
 				Namespace:               fakeParams2.GetNamespace(),
-				ParameterNotFoundAction: ptrTo(admissionregistrationv1.DenyAction),
+				ParameterNotFoundAction: ptr.To(admissionregistrationv1.DenyAction),
 			},
 			ValidationActions: []admissionregistrationv1.ValidationAction{admissionregistrationv1.Deny},
 		},
@@ -824,7 +823,7 @@ func TestInvalidParamSourceGVK(t *testing.T) {
 		`failed to configure policy: failed to find resource referenced by paramKind: 'example.com/v1, Kind=BadParamKind'`)
 
 	close(passedParams)
-	require.Len(t, passedParams, 0)
+	require.Empty(t, passedParams)
 }
 
 // Shows that an error is surfaced if a param specified in a binding does not
@@ -868,7 +867,7 @@ func TestInvalidParamSourceInstanceName(t *testing.T) {
 	// is not existing
 	require.ErrorContains(t, err,
 		"no params found for policy binding with `Deny` parameterNotFoundAction")
-	require.Len(t, passedParams, 0)
+	require.Empty(t, passedParams)
 }
 
 // Show that policy still gets evaluated with `nil` param if paramRef & namespaceParamRef
@@ -990,7 +989,7 @@ func TestMultiplePoliciesSharedParamType(t *testing.T) {
 			APIVersion: paramsGVK.GroupVersion().String(),
 			Kind:       paramsGVK.Kind,
 		},
-		FailurePolicy: ptrTo(admissionregistrationv1.Fail),
+		FailurePolicy: ptr.To(admissionregistrationv1.Fail),
 		Validations: []admissionregistrationv1.Validation{
 			{
 				Expression: "policy1",
@@ -1005,7 +1004,7 @@ func TestMultiplePoliciesSharedParamType(t *testing.T) {
 			APIVersion: paramsGVK.GroupVersion().String(),
 			Kind:       paramsGVK.Kind,
 		},
-		FailurePolicy: ptrTo(admissionregistrationv1.Fail),
+		FailurePolicy: ptr.To(admissionregistrationv1.Fail),
 		Validations: []admissionregistrationv1.Validation{
 			{
 				Expression: "policy2",
@@ -1199,7 +1198,7 @@ func TestAuditValidationAction(t *testing.T) {
 	require.Equal(t, 0, warningRecorder.len())
 
 	annotations := attr.GetAnnotations(auditinternal.LevelMetadata)
-	require.Equal(t, 1, len(annotations))
+	require.Len(t, annotations, 1)
 	valueJson, ok := annotations["validation.policy.admission.k8s.io/validation_failure"]
 	require.True(t, ok)
 	var value []validating.ValidationFailureValue
@@ -1254,7 +1253,7 @@ func TestWarnValidationAction(t *testing.T) {
 	require.True(t, warningRecorder.hasWarning("Validation failed for ValidatingAdmissionPolicy 'denypolicy.example.com' with binding 'denybinding.example.com': I'm sorry Dave"))
 
 	annotations := attr.GetAnnotations(auditinternal.LevelMetadata)
-	require.Equal(t, 0, len(annotations))
+	require.Empty(t, annotations)
 
 	require.NoError(t, err)
 }
@@ -1296,7 +1295,7 @@ func TestAllValidationActions(t *testing.T) {
 	require.True(t, warningRecorder.hasWarning("Validation failed for ValidatingAdmissionPolicy 'denypolicy.example.com' with binding 'denybinding.example.com': I'm sorry Dave"))
 
 	annotations := attr.GetAnnotations(auditinternal.LevelMetadata)
-	require.Equal(t, 1, len(annotations))
+	require.Len(t, annotations, 1)
 	valueJson, ok := annotations["validation.policy.admission.k8s.io/validation_failure"]
 	require.True(t, ok)
 	var value []validating.ValidationFailureValue
@@ -1509,6 +1508,7 @@ func TestParamRef(t *testing.T) {
 						}
 
 						t.Run(name, func(t *testing.T) {
+							t.Parallel()
 							// Test creating a policy with a cluster or namesapce-scoped param
 							// and binding with the provided configuration. Test will ensure
 							// that the provided configuration is capable of matching
@@ -1581,9 +1581,9 @@ func testParamRefCase(t *testing.T, paramIsClusterScoped, nameIsSet, namespaceIs
 	}
 
 	if denyNotFound {
-		paramRef.ParameterNotFoundAction = ptrTo(admissionregistrationv1.DenyAction)
+		paramRef.ParameterNotFoundAction = ptr.To(admissionregistrationv1.DenyAction)
 	} else {
-		paramRef.ParameterNotFoundAction = ptrTo(admissionregistrationv1.AllowAction)
+		paramRef.ParameterNotFoundAction = ptr.To(admissionregistrationv1.AllowAction)
 	}
 
 	compiler := &fakeCompiler{}
@@ -1925,10 +1925,10 @@ func TestAuditAnnotations(t *testing.T) {
 	)
 
 	annotations := attr.GetAnnotations(auditinternal.LevelMetadata)
-	require.Equal(t, 1, len(annotations))
+	require.Len(t, annotations, 1)
 	value := annotations[policy.Name+"/example-key"]
 	parts := strings.Split(value, ", ")
-	require.Equal(t, 2, len(parts))
+	require.Len(t, parts, 2)
 	require.Contains(t, parts, "normal-value", "special-value")
 
 	require.ErrorContains(t, err, "example error")

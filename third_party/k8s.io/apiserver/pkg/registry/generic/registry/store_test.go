@@ -29,7 +29,7 @@ import (
 	"testing"
 	"time"
 
-	fuzz "github.com/google/gofuzz"
+	"sigs.k8s.io/randfill"
 
 	"k8s.io/apimachinery/pkg/api/apitesting"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -45,6 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/apis/example"
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
@@ -399,7 +400,6 @@ func (m *sequentialNameGenerator) GenerateName(base string) string {
 }
 
 func TestStoreCreateWithRetryNameGenerate(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RetryGenerateName, true)()
 
 	namedObj := func(id int) *example.Pod {
 		return &example.Pod{
@@ -448,6 +448,9 @@ func TestStoreCreateWithRetryNameGenerate(t *testing.T) {
 }
 
 func TestStoreCreateWithRetryNameGenerateFeatureDisabled(t *testing.T) {
+	// Preserve testing of disabled RetryGenerateName feature gate since it can still be disabled when emulation version is set.
+	featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.31"))
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RetryGenerateName, false)
 	namedObj := func(id int) *example.Pod {
 		return &example.Pod{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("prefix-%d", id), Namespace: "test"},
@@ -477,13 +480,13 @@ func TestStoreCreateWithRetryNameGenerateFeatureDisabled(t *testing.T) {
 }
 
 func TestNewCreateOptionsFromUpdateOptions(t *testing.T) {
-	f := fuzz.New().NilChance(0.0).NumElements(1, 1)
+	f := randfill.New().NilChance(0.0).NumElements(1, 1)
 
 	// The goal here is to trigger when any changes are made to either
 	// CreateOptions or UpdateOptions types, so we can update the converter.
 	for i := 0; i < 20; i++ {
 		in := &metav1.UpdateOptions{}
-		f.Fuzz(in)
+		f.Fill(in)
 		in.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
 
 		out := newCreateOptionsFromUpdateOptions(in)
@@ -529,13 +532,13 @@ func TestNewCreateOptionsFromUpdateOptions(t *testing.T) {
 }
 
 func TestNewDeleteOptionsFromUpdateOptions(t *testing.T) {
-	f := fuzz.New().NilChance(0.0).NumElements(1, 1)
+	f := randfill.New().NilChance(0.0).NumElements(1, 1)
 
 	// The goal here is to trigger when any changes are made to either
 	// DeleteOptions or UpdateOptions types, so we can update the converter.
 	for i := 0; i < 20; i++ {
 		in := &metav1.UpdateOptions{}
-		f.Fuzz(in)
+		f.Fill(in)
 		in.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("DeleteOptions"))
 
 		out := newDeleteOptionsFromUpdateOptions(in)
@@ -770,6 +773,10 @@ func TestStoreUpdate(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "test", ResourceVersion: "7"},
 		Spec:       example.PodSpec{NodeName: "machine"},
 	}
+	podAWithResourceAndUID := &example.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "test", ResourceVersion: "7", UID: "A"},
+		Spec:       example.PodSpec{NodeName: "machine"},
+	}
 
 	testContext := genericapirequest.WithNamespace(genericapirequest.NewContext(), "test")
 	destroyFunc, registry := NewTestGenericStoreRegistry(t)
@@ -783,6 +790,12 @@ func TestStoreUpdate(t *testing.T) {
 
 	// try to update a non-existing node
 	_, _, err = registry.Update(testContext, podA.Name, rest.DefaultUpdatedObjectInfo(podA), rest.ValidateAllObjectFunc, rest.ValidateAllObjectUpdateFunc, false, &metav1.UpdateOptions{})
+	if !errors.IsNotFound(err) {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	// try to update a non-existing node that was created previously
+	_, _, err = registry.Update(testContext, podA.Name, rest.DefaultUpdatedObjectInfo(podAWithResourceAndUID), rest.ValidateAllObjectFunc, rest.ValidateAllObjectUpdateFunc, false, &metav1.UpdateOptions{})
 	if !errors.IsNotFound(err) {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -2432,23 +2445,34 @@ func newTestGenericStoreRegistry(t *testing.T, scheme *runtime.Scheme, hasCacheE
 	}
 	if hasCacheEnabled {
 		config := cacherstorage.Config{
-			Storage:        s,
-			Versioner:      storage.APIObjectVersioner{},
-			GroupResource:  schema.GroupResource{Resource: "pods"},
-			ResourcePrefix: podPrefix,
-			KeyFunc:        func(obj runtime.Object) (string, error) { return storage.NoNamespaceKeyFunc(podPrefix, obj) },
-			GetAttrsFunc:   getPodAttrs,
-			NewFunc:        newFunc,
-			NewListFunc:    newListFunc,
-			Codec:          sc.Codec,
+			Storage:             s,
+			Versioner:           storage.APIObjectVersioner{},
+			GroupResource:       schema.GroupResource{Resource: "pods"},
+			EventsHistoryWindow: cacherstorage.DefaultEventFreshDuration,
+			ResourcePrefix:      podPrefix,
+			KeyFunc:             func(obj runtime.Object) (string, error) { return storage.NoNamespaceKeyFunc(podPrefix, obj) },
+			GetAttrsFunc:        getPodAttrs,
+			NewFunc:             newFunc,
+			NewListFunc:         newListFunc,
+			Codec:               sc.Codec,
 		}
 		cacher, err := cacherstorage.NewCacherFromConfig(config)
 		if err != nil {
 			t.Fatalf("Couldn't create cacher: %v", err)
 		}
+		if utilfeature.DefaultFeatureGate.Enabled(features.ResilientWatchCacheInitialization) {
+			// The tests assume that Get/GetList/Watch calls shouldn't fail.
+			// However, 429 error can now be returned if watchcache is under initialization.
+			// To avoid rewriting all tests, we wait for watchcache to initialize.
+			if err := cacher.Wait(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
 		d := destroyFunc
-		s = cacher
+		delegator := cacherstorage.NewCacheDelegator(cacher, s)
+		s = delegator
 		destroyFunc = func() {
+			delegator.Stop()
 			cacher.Stop()
 			d()
 		}
@@ -2973,6 +2997,10 @@ func (p *predictableNameGenerator) GenerateName(base string) string {
 }
 
 func TestStoreCreateGenerateNameConflict(t *testing.T) {
+	// Preserve testing of disabled RetryGenerateName feature gate since it can still be disabled when emulation version is set.
+	featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.31"))
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RetryGenerateName, false)
+
 	// podA will be stored with name foo12345
 	podA := &example.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "foo1", Namespace: "test"},

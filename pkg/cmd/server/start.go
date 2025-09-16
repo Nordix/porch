@@ -308,6 +308,8 @@ func (o PorchServerOptions) RunPorchServer(ctx context.Context) error {
 		return err
 	}
 
+	config.GenericConfig.EffectiveVersion = basecompatibility.NewEffectiveVersionFromString("1", "0", "0")
+
 	server, err := config.Complete().New(ctx)
 	if err != nil {
 		return err
@@ -315,8 +317,8 @@ func (o PorchServerOptions) RunPorchServer(ctx context.Context) error {
 
 	if config.GenericConfig.SharedInformerFactory != nil {
 		server.GenericAPIServer.AddPostStartHookOrDie("start-sample-server-informers", func(context genericapiserver.PostStartHookContext) error {
-			config.GenericConfig.SharedInformerFactory.Start(context.StopCh)
-			o.SharedInformerFactory.Start(context.StopCh)
+			config.GenericConfig.SharedInformerFactory.Start(context.Done())
+			o.SharedInformerFactory.Start(context.Done())
 			return nil
 		})
 	}

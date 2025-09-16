@@ -263,7 +263,7 @@ func TestParseWatchCacheSizes(t *testing.T) {
 }
 
 func TestKMSHealthzEndpoint(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)
 
 	testCases := []struct {
 		name                 string
@@ -375,11 +375,12 @@ func TestKMSHealthzEndpoint(t *testing.T) {
 
 func TestReadinessCheck(t *testing.T) {
 	testCases := []struct {
-		name              string
-		wantReadyzChecks  []string
-		wantHealthzChecks []string
-		wantLivezChecks   []string
-		skipHealth        bool
+		name                 string
+		wantReadyzChecks     []string
+		wantHealthzChecks    []string
+		wantLivezChecks      []string
+		skipHealth           bool
+		etcdServersOverrides []string
 	}{
 		{
 			name:              "Readyz should have etcd-readiness check",
@@ -394,6 +395,37 @@ func TestReadinessCheck(t *testing.T) {
 			wantLivezChecks:   nil,
 			skipHealth:        true,
 		},
+		{
+			name:                 "Health checks should not have duplicated servers from etcd-servers-overrides",
+			wantReadyzChecks:     []string{"etcd", "etcd-readiness", "etcd-override-0", "etcd-override-readiness-0"},
+			wantHealthzChecks:    []string{"etcd", "etcd-override-0"},
+			wantLivezChecks:      []string{"etcd", "etcd-override-0"},
+			etcdServersOverrides: []string{"/r1#s1.com;s2.com", "/r2#s1.com;s2.com"},
+		},
+		{
+			name: "Health checks should not have duplicated servers from etcd-servers-overrides " +
+				"if servers are provided in different orders",
+			wantReadyzChecks:     []string{"etcd", "etcd-readiness", "etcd-override-0", "etcd-override-readiness-0"},
+			wantHealthzChecks:    []string{"etcd", "etcd-override-0"},
+			wantLivezChecks:      []string{"etcd", "etcd-override-0"},
+			etcdServersOverrides: []string{"/r1#s1.com;s2.com", "/r2#s2.com;s1.com"},
+		},
+		{
+			name: "Health checks should allow multiple overrides in etcd-servers-overrides",
+			wantReadyzChecks: []string{"etcd", "etcd-readiness", "etcd-override-0", "etcd-override-readiness-0",
+				"etcd-override-1", "etcd-override-readiness-1"},
+			wantHealthzChecks:    []string{"etcd", "etcd-override-0", "etcd-override-1"},
+			wantLivezChecks:      []string{"etcd", "etcd-override-0", "etcd-override-1"},
+			etcdServersOverrides: []string{"/r1#s1.com;s2.com", "/r2#s3.com;s4.com"},
+		},
+		{
+			name: "Health checks should allow multiple overrides in etcd-servers-overrides if servers overlap between overrides",
+			wantReadyzChecks: []string{"etcd", "etcd-readiness", "etcd-override-0", "etcd-override-readiness-0",
+				"etcd-override-1", "etcd-override-readiness-1"},
+			wantHealthzChecks:    []string{"etcd", "etcd-override-0", "etcd-override-1"},
+			wantLivezChecks:      []string{"etcd", "etcd-override-0", "etcd-override-1"},
+			etcdServersOverrides: []string{"/r1#s1.com;s2.com", "/r2#s2.com;s3.com"},
+		},
 	}
 
 	scheme := runtime.NewScheme()
@@ -402,7 +434,7 @@ func TestReadinessCheck(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			serverConfig := server.NewConfig(codecs)
-			etcdOptions := &EtcdOptions{SkipHealthEndpoints: tc.skipHealth}
+			etcdOptions := &EtcdOptions{SkipHealthEndpoints: tc.skipHealth, EtcdServersOverrides: tc.etcdServersOverrides}
 			if err := etcdOptions.ApplyTo(serverConfig); err != nil {
 				t.Fatalf("Failed to add healthz error: %v", err)
 			}
@@ -428,5 +460,20 @@ func healthChecksAreEqual(t *testing.T, want []string, healthChecks []healthz.He
 
 	if !wantSet.Equal(gotSet) {
 		t.Errorf("%s checks are not equal, missing=%q, extra=%q", checkerType, wantSet.Difference(gotSet).List(), gotSet.Difference(wantSet).List())
+	}
+}
+
+func TestRestOptionsStorageObjectCountTracker(t *testing.T) {
+	serverConfig := server.NewConfig(codecs)
+	etcdOptions := &EtcdOptions{}
+	if err := etcdOptions.ApplyTo(serverConfig); err != nil {
+		t.Fatalf("Failed to apply etcd options error: %v", err)
+	}
+	restOptions, err := serverConfig.RESTOptionsGetter.GetRESTOptions(schema.GroupResource{Group: "", Resource: ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restOptions.StorageConfig.StorageObjectCountTracker != serverConfig.StorageObjectCountTracker {
+		t.Errorf("There are different StorageObjectCountTracker in restOptions and serverConfig")
 	}
 }

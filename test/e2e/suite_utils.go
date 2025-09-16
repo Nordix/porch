@@ -53,19 +53,19 @@ const (
 
 	// Optional environment variables which can be set to replace defaults when running e2e tests behind a proxy or firewall.
 	// Environment variables can be loaded from a .env file - refer to .env.template
-	testBlueprintsRepoUrlEnv      = "PORCH_TEST_BLUEPRINTS_REPO_URL"
+	testBlueprintsRepoURLEnv      = "PORCH_TEST_BLUEPRINTS_REPO_URL"
 	testBlueprintsRepoUserEnv     = "PORCH_TEST_BLUEPRINTS_REPO_USER"
 	testBlueprintsRepoPasswordEnv = "PORCH_TEST_BLUEPRINTS_REPO_PASSWORD"
 
-	gcpBlueprintsRepoUrlEnv      = "PORCH_GCP_BLUEPRINTS_REPO_URL"
-	gcpBlueprintsRepoUserEnv     = "PORCH_GCP_BLUEPRINTS_REPO_USER"
-	gcpBlueprintsRepoPasswordEnv = "PORCH_GCP_BLUEPRINTS_REPO_PASSWORD"
-	gcpBucketRefEnv              = "PORCH_GCP_BUCKET_REF"
-	gcpRedisBucketRefEnv         = "PORCH_GCP_REDIS_BUCKET_REF"
-	gcpHierarchyRefEnv           = "PORCH_GCP_HIERARCHY_REF"
-	kptFunctionRefEnv            = "PORCH_KPT_FUNCTION_REF"
+	blueprintsRepoURLEnv      = "PORCH_BLUEPRINTS_REPO_URL"
+	blueprintsRepoUserEnv     = "PORCH_BLUEPRINTS_REPO_USER"
+	blueprintsRepoPasswordEnv = "PORCH_BLUEPRINTS_REPO_PASSWORD"
+	bucketRefEnv              = "PORCH_BUCKET_REF"
+	redisBucketRefEnv         = "PORCH_REDIS_BUCKET_REF"
+	hierarchyRefEnv           = "PORCH_HIERARCHY_REF"
+	kptFunctionRefEnv         = "PORCH_KPT_FUNCTION_REF"
 
-	kptRepoUrlEnv      = "PORCH_KPT_REPO_URL"
+	kptRepoURLEnv      = "PORCH_KPT_REPO_URL"
 	kptRepoUserEnv     = "PORCH_KPT_REPO_USER"
 	kptRepoPasswordEnv = "PORCH_KPT_REPO_PASSWORD"
 
@@ -90,28 +90,28 @@ func (t *TestSuiteWithGit) SetupEnvvars() {
 	}
 
 	t.testBlueprintsRepo = defaultTestBlueprintsRepo
-	t.gcpBlueprintsRepo = defaultGCPBlueprintsRepo
-	t.gcpBucketRef = defaultGCPBucketRef
-	t.gcpRedisBucketRef = defaultGCPRedisBucketRef
-	t.gcpHierarchyRef = defaultGCPHierarchyRef
+	t.blueprintsRepo = defaultGCPBlueprintsRepo
+	t.bucketRef = defaultGCPBucketRef
+	t.redisBucketRef = defaultGCPRedisBucketRef
+	t.hierarchyRef = defaultGCPHierarchyRef
 	t.kptRepo = defaultKPTRepo
 	t.gcrPrefix = defaultGCRPrefix
 	t.kptFunctionRef = defaultKptFunctionRef
 
-	if e := os.Getenv(testBlueprintsRepoUrlEnv); e != "" {
+	if e := os.Getenv(testBlueprintsRepoURLEnv); e != "" {
 		t.testBlueprintsRepo = e
 	}
-	if e := os.Getenv(gcpBlueprintsRepoUrlEnv); e != "" {
-		t.gcpBlueprintsRepo = e
+	if e := os.Getenv(blueprintsRepoURLEnv); e != "" {
+		t.blueprintsRepo = e
 	}
-	if e := os.Getenv(gcpBucketRefEnv); e != "" {
-		t.gcpBucketRef = e
+	if e := os.Getenv(bucketRefEnv); e != "" {
+		t.bucketRef = e
 	}
-	if e := os.Getenv(gcpRedisBucketRefEnv); e != "" {
-		t.gcpRedisBucketRef = e
+	if e := os.Getenv(redisBucketRefEnv); e != "" {
+		t.redisBucketRef = e
 	}
-	if e := os.Getenv(gcpHierarchyRefEnv); e != "" {
-		t.gcpHierarchyRef = e
+	if e := os.Getenv(hierarchyRefEnv); e != "" {
+		t.hierarchyRef = e
 	}
 	if e := os.Getenv(kptFunctionRefEnv); e != "" {
 		t.kptFunctionRef = e
@@ -119,7 +119,7 @@ func (t *TestSuiteWithGit) SetupEnvvars() {
 	if e := os.Getenv(gcrPrefixEnv); e != "" {
 		t.gcrPrefix = e
 	}
-	if e := os.Getenv(kptRepoUrlEnv); e != "" {
+	if e := os.Getenv(kptRepoURLEnv); e != "" {
 		t.kptRepo = e
 	}
 
@@ -271,8 +271,8 @@ func (t *TestSuite) RegisterTestBlueprintRepository(name, directory string, opts
 }
 
 func (t *TestSuite) CreateGcpPackageRevisionSecret(name string, opts ...RepositoryOptions) string {
-	username := os.Getenv(gcpBlueprintsRepoUserEnv)
-	password := Password(os.Getenv(gcpBlueprintsRepoPasswordEnv))
+	username := os.Getenv(blueprintsRepoUserEnv)
+	password := Password(os.Getenv(blueprintsRepoPasswordEnv))
 	return t.CreateOrUpdateSecret(name, username, password, opts...)
 }
 

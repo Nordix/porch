@@ -49,7 +49,7 @@ func (t *PorchSuite) CreateEmptyPackageRevision(repo string) porchapi.PackageRev
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
+								Repo:      t.blueprintsRepo,
 								Ref:       t.kptFunctionRef,
 								Directory: "catalog/empty",
 								SecretRef: porchapi.SecretRef{

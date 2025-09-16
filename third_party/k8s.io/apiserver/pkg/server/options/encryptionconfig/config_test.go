@@ -47,7 +47,7 @@ import (
 	"k8s.io/component-base/metrics/testutil"
 	"k8s.io/klog/v2"
 	kmsservice "k8s.io/kms/pkg/service"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -187,7 +187,7 @@ func TestLegacyConfig(t *testing.T) {
 }
 
 func TestEncryptionProviderConfigCorrect(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)
 
 	// Set factory for mock envelope service
 	factory := envelopeServiceFactory
@@ -230,6 +230,12 @@ func TestEncryptionProviderConfigCorrect(t *testing.T) {
 	_, err = LoadEncryptionConfig(ctx, invalidConfigWithAesGcm, false, "")
 	if !strings.Contains(errString(err), "error while parsing file") {
 		t.Fatalf("should result in error while parsing configuration file: %s.\nThe file was:\n%s", err, invalidConfigWithAesGcm)
+	}
+
+	invalidConfigWithTypo := "testdata/invalid-configs/invalid-typo.yaml"
+	_, err = LoadEncryptionConfig(ctx, invalidConfigWithTypo, false, "")
+	if got, wantSubString := errString(err), `strict decoding error: unknown field "resources[0].providers[3].kms.pandas"`; !strings.Contains(got, wantSubString) {
+		t.Fatalf("should result in strict decode error while parsing configuration file %q:\ngot: %q\nwant substring: %q", invalidConfigWithTypo, got, wantSubString)
 	}
 
 	// Math for GracePeriod is explained at - https://github.com/kubernetes/kubernetes/blob/c9ed04762f94a319d7b1fb718dc345491a32bea6/staging/src/k8s.io/apiserver/pkg/server/options/encryptionconfig/config.go#L159-L163
@@ -340,7 +346,7 @@ func TestKMSv1Deprecation(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, testCase.kmsv1Enabled)()
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, testCase.kmsv1Enabled)
 
 			kmsv1Config := "testdata/valid-configs/kms/multiple-providers.yaml"
 			_, err := LoadEncryptionConfig(testContext(t), kmsv1Config, false, "")
@@ -385,15 +391,13 @@ func TestKMSvsEnablement(t *testing.T) {
 	}
 	tts := []struct {
 		name            string
-		kmsv2Enabled    bool
 		expectedErr     string
 		expectedTimeout time.Duration
 		config          apiserver.EncryptionConfiguration
 		wantV2Used      bool
 	}{
 		{
-			name:         "with kmsv1 and kmsv2, KMSv2=true",
-			kmsv2Enabled: true,
+			name: "with kmsv1 and kmsv2, KMSv2=true",
 			config: apiserver.EncryptionConfiguration{
 				Resources: []apiserver.ResourceConfiguration{
 					{
@@ -407,7 +411,7 @@ func TestKMSvsEnablement(t *testing.T) {
 										Duration: 1 * time.Second,
 									},
 									Endpoint:  "unix:///tmp/testprovider.sock",
-									CacheSize: pointer.Int32(1000),
+									CacheSize: ptr.To[int32](1000),
 								},
 							},
 							{
@@ -418,7 +422,7 @@ func TestKMSvsEnablement(t *testing.T) {
 										Duration: 1 * time.Second,
 									},
 									Endpoint:  "unix:///tmp/anothertestprovider.sock",
-									CacheSize: pointer.Int32(1000),
+									CacheSize: ptr.To[int32](1000),
 								},
 							},
 						},
@@ -433,9 +437,7 @@ func TestKMSvsEnablement(t *testing.T) {
 	for _, tt := range tts {
 		t.Run(tt.name, func(t *testing.T) {
 			// Just testing KMSv2 feature flag
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)()
-
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv2, tt.kmsv2Enabled)()
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel() // cancel this upfront so the kms v2 checks do not block
@@ -455,7 +457,7 @@ func TestKMSvsEnablement(t *testing.T) {
 }
 
 func TestKMSMaxTimeout(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)
 
 	testCases := []struct {
 		name            string
@@ -703,7 +705,7 @@ func TestKMSMaxTimeout(t *testing.T) {
 }
 
 func TestKMSPluginHealthz(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)
 
 	kmsv2Probe := &kmsv2PluginProbe{
 		name:        "foo",
@@ -711,7 +713,7 @@ func TestKMSPluginHealthz(t *testing.T) {
 		apiServerID: "",
 	}
 	keyID := "1"
-	kmsv2Probe.state.Store(&envelopekmsv2.State{EncryptedObject: kmstypes.EncryptedObject{KeyID: keyID}})
+	kmsv2Probe.state.Store(&envelopekmsv2.State{EncryptedObjectKeyID: keyID})
 
 	testCases := []struct {
 		desc    string
@@ -854,7 +856,7 @@ func TestKMSPluginHealthz(t *testing.T) {
 
 // tests for masking rules
 func TestWildcardMasking(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)
 
 	testCases := []struct {
 		desc          string
@@ -878,7 +880,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -902,7 +904,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -918,7 +920,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -942,7 +944,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -958,7 +960,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -982,7 +984,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -998,7 +1000,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1022,7 +1024,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1039,7 +1041,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/another-testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1065,7 +1067,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1089,7 +1091,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1106,7 +1108,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/another-testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1132,7 +1134,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1157,7 +1159,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1173,7 +1175,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/another-testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1199,7 +1201,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1223,7 +1225,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1239,7 +1241,7 @@ func TestWildcardMasking(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/another-testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1263,7 +1265,7 @@ func TestWildcardMasking(t *testing.T) {
 }
 
 func TestWildcardStructure(t *testing.T) {
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)()
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.KMSv1, true)
 	testCases := []struct {
 		desc                         string
 		expectedResourceTransformers map[string]string
@@ -1298,7 +1300,7 @@ func TestWildcardStructure(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1314,7 +1316,7 @@ func TestWildcardStructure(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 							{
@@ -1333,7 +1335,7 @@ func TestWildcardStructure(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1349,7 +1351,7 @@ func TestWildcardStructure(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1374,7 +1376,7 @@ func TestWildcardStructure(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 						},
@@ -1391,7 +1393,7 @@ func TestWildcardStructure(t *testing.T) {
 									APIVersion: "v1",
 									Timeout:    &metav1.Duration{Duration: 3 * time.Second},
 									Endpoint:   "unix:///tmp/testprovider.sock",
-									CacheSize:  pointer.Int32(10),
+									CacheSize:  ptr.To[int32](10),
 								},
 							},
 							{
@@ -1422,7 +1424,15 @@ func TestWildcardStructure(t *testing.T) {
 			for resource, expectedTransformerName := range tc.expectedResourceTransformers {
 				transformer := transformerFromOverrides(transformers, schema.ParseGroupResource(resource))
 				transformerName := string(
-					reflect.ValueOf(transformer).Elem().FieldByName("transformers").Index(0).FieldByName("Prefix").Bytes(),
+					reflect.ValueOf(transformer).
+						Elem().
+						FieldByName("delegate").
+						Elem().
+						Elem().
+						FieldByName("transformers").
+						Index(0).
+						FieldByName("Prefix").
+						Bytes(),
 				)
 
 				if transformerName != expectedTransformerName {
@@ -1833,7 +1843,7 @@ func errString(err error) string {
 
 func TestComputeEncryptionConfigHash(t *testing.T) {
 	// hash the empty string to be sure that sha256 is being used
-	expect := "k8s:enc:unstable:1:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	expect := "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	sum := computeEncryptionConfigHash([]byte(""))
 	if expect != sum {
 		t.Errorf("expected hash %q but got %q", expect, sum)
@@ -1841,7 +1851,7 @@ func TestComputeEncryptionConfigHash(t *testing.T) {
 }
 
 func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
-	defaultUseSeed := GetKDF()
+	defaultUseSeed := GetKDF("")
 
 	origNowFunc := envelopekmsv2.NowFunc
 	now := origNowFunc() // freeze time
@@ -1878,8 +1888,8 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			state:       envelopekmsv2.State{},
 			statusKeyID: "1",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "1"},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID: "1",
+				ExpirationTimestamp:  now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 1,
 			wantLogs: []string{
@@ -1895,8 +1905,8 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			state:       validState(t, "2", now, false),
 			statusKeyID: "2",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "2"},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID: "2",
+				ExpirationTimestamp:  now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 0,
 			wantLogs:         nil,
@@ -1909,8 +1919,9 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			useSeed:     true,
 			statusKeyID: "2",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "2", EncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID:                  "2",
+				EncryptedObjectEncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED,
+				ExpirationTimestamp:                   now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 1,
 			wantLogs: []string{
@@ -1926,8 +1937,8 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			state:       validState(t, "2", now, true),
 			statusKeyID: "2",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "2"},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID: "2",
+				ExpirationTimestamp:  now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 1,
 			wantLogs: []string{
@@ -1944,8 +1955,9 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			useSeed:     true,
 			statusKeyID: "2",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "2", EncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID:                  "2",
+				EncryptedObjectEncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED,
+				ExpirationTimestamp:                   now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 0,
 			wantLogs:         nil,
@@ -1958,8 +1970,9 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			useSeed:     defaultUseSeed,
 			statusKeyID: "2",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "2", EncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID:                  "2",
+				EncryptedObjectEncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED,
+				ExpirationTimestamp:                   now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 1,
 			wantLogs: []string{
@@ -1976,8 +1989,9 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			useSeed:     defaultUseSeed,
 			statusKeyID: "2",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "2", EncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID:                  "2",
+				EncryptedObjectEncryptedDEKSourceType: kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED,
+				ExpirationTimestamp:                   now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 0,
 			wantLogs:         nil,
@@ -1989,8 +2003,8 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			state:       validState(t, "3", now.Add(-time.Hour), false),
 			statusKeyID: "3",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "3"},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID: "3",
+				ExpirationTimestamp:  now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 0,
 			wantLogs:         nil,
@@ -2002,8 +2016,8 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			state:       validState(t, "3", now.Add(-time.Hour), false),
 			statusKeyID: "4",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "4"},
-				ExpirationTimestamp: now.Add(3 * time.Minute),
+				EncryptedObjectKeyID: "4",
+				ExpirationTimestamp:  now.Add(3 * time.Minute),
 			},
 			wantEncryptCalls: 1,
 			wantLogs: []string{
@@ -2019,8 +2033,8 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			state:       validState(t, "4", now.Add(7*time.Minute), false),
 			statusKeyID: "5",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "4"},
-				ExpirationTimestamp: now.Add(7 * time.Minute),
+				EncryptedObjectKeyID: "4",
+				ExpirationTimestamp:  now.Add(7 * time.Minute),
 			},
 			wantEncryptCalls: 1,
 			wantLogs: []string{
@@ -2051,8 +2065,8 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			state:       validState(t, "2", now, false),
 			statusKeyID: "3",
 			wantState: envelopekmsv2.State{
-				EncryptedObject:     kmstypes.EncryptedObject{KeyID: "2"},
-				ExpirationTimestamp: now,
+				EncryptedObjectKeyID: "2",
+				ExpirationTimestamp:  now,
 			},
 			wantEncryptCalls: 1,
 			wantLogs: []string{
@@ -2064,9 +2078,10 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 				`encryptKeyIDHash="", stateKeyIDHash="sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35", expirationTimestamp=` + now.Format(time.RFC3339),
 		},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer SetKDFForTests(tt.useSeed)()
+			kmsName := fmt.Sprintf("panda-%d", i)
+			defer SetKDFForTests(kmsName, tt.useSeed)()
 
 			var buf bytes.Buffer
 			klog.SetOutput(&buf)
@@ -2074,7 +2089,7 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			ctx := testContext(t)
 
 			h := &kmsv2PluginProbe{
-				name:    "panda",
+				name:    kmsName,
 				service: tt.service,
 			}
 			h.state.Store(&tt.state)
@@ -2088,7 +2103,7 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 				t.Errorf("log mismatch (-want +got):\n%s", diff)
 			}
 
-			ignoredFields := sets.NewString("Transformer", "EncryptedObject.EncryptedDEKSource", "UID", "CacheKey")
+			ignoredFields := sets.NewString("Transformer", "EncryptedObjectEncryptedDEKSource", "UID", "CacheKey")
 
 			gotState := *h.state.Load()
 
@@ -2099,15 +2114,15 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			}
 
 			if len(cmp.Diff(tt.wantState, gotState)) > 0 { // we only need to run this check when the state changes
-				validCiphertext := len(gotState.EncryptedObject.EncryptedDEKSource) > 0
+				validCiphertext := len(gotState.EncryptedObjectEncryptedDEKSource) > 0
 				if tt.useSeed {
-					validCiphertext = validCiphertext && gotState.EncryptedObject.EncryptedDEKSourceType == kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED
+					validCiphertext = validCiphertext && gotState.EncryptedObjectEncryptedDEKSourceType == kmstypes.EncryptedDEKSourceType_HKDF_SHA256_XNONCE_AES_GCM_SEED
 				} else {
-					validCiphertext = validCiphertext && gotState.EncryptedObject.EncryptedDEKSourceType == kmstypes.EncryptedDEKSourceType_AES_GCM_KEY
+					validCiphertext = validCiphertext && gotState.EncryptedObjectEncryptedDEKSourceType == kmstypes.EncryptedDEKSourceType_AES_GCM_KEY
 				}
 				if !validCiphertext {
 					t.Errorf("invalid ciphertext with useSeed=%v, encryptedDEKSourceLen=%d, encryptedDEKSourceType=%d", tt.useSeed,
-						len(gotState.EncryptedObject.EncryptedDEKSource), gotState.EncryptedObject.EncryptedDEKSourceType)
+						len(gotState.EncryptedObjectEncryptedDEKSource), gotState.EncryptedObjectEncryptedDEKSourceType)
 				}
 			}
 
@@ -2123,7 +2138,7 @@ func Test_kmsv2PluginProbe_rotateDEKOnKeyIDChange(t *testing.T) {
 			if _, stateErr := h.getCurrentState(); stateErr == nil || err == nil {
 				transformer := envelopekmsv2.NewEnvelopeTransformer(
 					&testKMSv2EnvelopeService{err: fmt.Errorf("broken")}, // not called
-					"panda",
+					kmsName,
 					h.getCurrentState,
 					"",
 				)
@@ -2159,10 +2174,13 @@ func validState(t *testing.T, keyID string, exp time.Time, useSeed bool) envelop
 		t.Fatal(err)
 	}
 	return envelopekmsv2.State{
-		Transformer:         transformer,
-		EncryptedObject:     *encObject,
-		ExpirationTimestamp: exp,
-		CacheKey:            cacheKey,
+		Transformer:                           transformer,
+		EncryptedObjectKeyID:                  encObject.KeyID,
+		EncryptedObjectEncryptedDEKSource:     encObject.EncryptedDEKSource,
+		EncryptedObjectAnnotations:            encObject.Annotations,
+		EncryptedObjectEncryptedDEKSourceType: encObject.EncryptedDEKSourceType,
+		ExpirationTimestamp:                   exp,
+		CacheKey:                              cacheKey,
 	}
 }
 
@@ -2202,7 +2220,7 @@ func TestGetEncryptionConfigHash(t *testing.T) {
 		{
 			name:     "valid file",
 			filepath: "testdata/valid-configs/secret-box-first.yaml",
-			wantHash: "k8s:enc:unstable:1:c638c0327dbc3276dd1fcf3e67895d19ebca16b91ae0d19af24ef0759b8e0f66",
+			wantHash: "sha256:c638c0327dbc3276dd1fcf3e67895d19ebca16b91ae0d19af24ef0759b8e0f66",
 			wantErr:  ``,
 		},
 	}

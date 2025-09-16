@@ -23,7 +23,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -121,7 +121,7 @@ func TestTimeout(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Errorf("got res.StatusCode %d; expected %d", res.StatusCode, http.StatusOK)
 	}
-	body, _ := ioutil.ReadAll(res.Body)
+	body, _ := io.ReadAll(res.Body)
 	if string(body) != resp {
 		t.Errorf("got body %q; expected %q", string(body), resp)
 	}
@@ -143,7 +143,7 @@ func TestTimeout(t *testing.T) {
 	if res.StatusCode != http.StatusGatewayTimeout {
 		t.Errorf("got res.StatusCode %d; expected %d", res.StatusCode, http.StatusGatewayTimeout)
 	}
-	body, _ = ioutil.ReadAll(res.Body)
+	body, _ = io.ReadAll(res.Body)
 	status := &metav1.Status{}
 	if err := json.Unmarshal(body, status); err != nil {
 		t.Fatal(err)
@@ -408,7 +408,9 @@ func TestErrConnKilled(t *testing.T) {
 	if isStackTraceLoggedByRuntime(capturedOutput) {
 		t.Errorf("unexpected stack trace in log, actual = %v", capturedOutput)
 	}
-	if !strings.Contains(capturedOutput, `timeout or abort while handling: method=GET URI="/" audit-ID=""`) {
+	// For the sake of simplicity and clarity this matches the full log line.
+	// This is not part of the Kubernetes API and could change.
+	if !strings.Contains(capturedOutput, `"Timeout or abort while handling" logger="UnhandledError" method="GET" URI="/" auditID=""`) {
 		t.Errorf("unexpected output captured actual = %v", capturedOutput)
 	}
 }
@@ -501,7 +503,9 @@ func TestErrConnKilledHTTP2(t *testing.T) {
 	if isStackTraceLoggedByRuntime(capturedOutput) {
 		t.Errorf("unexpected stack trace in log, actual = %v", capturedOutput)
 	}
-	if !strings.Contains(capturedOutput, `timeout or abort while handling: method=GET URI="/" audit-ID=""`) {
+	// For the sake of simplicity and clarity this matches the full log line.
+	// This is not part of the Kubernetes API and could change.
+	if !strings.Contains(capturedOutput, `"Timeout or abort while handling" logger="UnhandledError" method="GET" URI="/" auditID=""`) {
 		t.Errorf("unexpected output captured actual = %v", capturedOutput)
 	}
 

@@ -93,10 +93,10 @@ type TestSuite struct {
 	TestRunnerIsLocal bool   // Tests running against local dev porch
 
 	testBlueprintsRepo string
-	gcpBlueprintsRepo  string
-	gcpBucketRef       string
-	gcpRedisBucketRef  string
-	gcpHierarchyRef    string
+	blueprintsRepo     string
+	bucketRef          string
+	redisBucketRef     string
+	hierarchyRef       string
 	kptFunctionRef     string
 	kptRepo            string
 	gcrPrefix          string

@@ -20,12 +20,11 @@ FROM ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest AS set-annotati
 FROM ghcr.io/kptdev/krm-functions-catalog/set-image:latest AS set-image
 FROM ghcr.io/kptdev/krm-functions-catalog/set-labels:latest AS set-labels
 FROM ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest AS set-namespace
-FROM ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest AS set-namespace-v3
 FROM ghcr.io/kptdev/krm-functions-catalog/set-project-id:latest AS set-project-id
 FROM ghcr.io/kptdev/krm-functions-catalog/starlark:latest AS starlark
 FROM ghcr.io/kptdev/krm-functions-catalog/upsert-resource:latest AS upsert-resource
 
-FROM golang:1.24.3-alpine3.21 AS builder
+FROM golang:1.25.1-alpine3.21 AS builder
 WORKDIR /go/src
 
 RUN go install github.com/grpc-ecosystem/grpc-health-probe@v0.4.11
@@ -45,9 +44,8 @@ COPY --from=set-annotations        /usr/local/bin/function /functions/set-annota
 COPY --from=set-image              /usr/local/bin/function /functions/set-image
 COPY --from=set-labels             /usr/local/bin/function /functions/set-labels
 COPY --from=set-namespace          /usr/local/bin/function /functions/set-namespace
-COPY --from=set-namespace-v3       /usr/local/bin/function /functions/set-namespace-v3
 COPY --from=set-project-id         /usr/local/bin/function /functions/set-project-id
-COPY --from=starlark               /usr/local/bin/star     /functions/starlark
+COPY --from=starlark               /usr/local/bin/function /functions/starlark
 COPY --from=upsert-resource        /usr/local/bin/function /functions/upsert-resource
 COPY --from=builder                /server /grpc-health-probe /config.yaml /
 

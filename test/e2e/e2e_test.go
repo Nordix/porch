@@ -85,8 +85,8 @@ func (t *PorchSuite) TestGitRepository() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpBucketRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.bucketRef,
 								Directory: "catalog/bucket",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-bucket"),
@@ -1801,8 +1801,8 @@ func (t *PorchSuite) TestBuiltinFunctionEvaluator() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpBucketRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.bucketRef,
 								Directory: "catalog/bucket",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-builtin-fn-bucket"),
@@ -1869,8 +1869,8 @@ func (t *PorchSuite) TestExecFunctionEvaluator() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpBucketRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.bucketRef,
 								Directory: "catalog/bucket",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-fn-bucket"),
@@ -1942,8 +1942,8 @@ func (t *PorchSuite) TestPodFunctionEvaluatorWithDistrolessImage() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpRedisBucketRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.redisBucketRef,
 								Directory: "catalog/redis-bucket",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-fn-redis-bucket"),
@@ -2015,8 +2015,8 @@ func (t *PorchSuite) TestPodEvaluator() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpHierarchyRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.hierarchyRef,
 								Directory: "catalog/hierarchy/simple",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-fn-pod-hierarchy-workspace-1"),
@@ -2101,8 +2101,8 @@ func (t *PorchSuite) TestPodEvaluator() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpRedisBucketRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.redisBucketRef,
 								Directory: "catalog/hierarchy/simple",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-fn-pod-hierarchy-workspace-2"),
@@ -2169,8 +2169,8 @@ func (t *PorchSuite) TestPodEvaluatorWithFailure() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpBucketRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.bucketRef,
 								Directory: "catalog/bucket",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-fn-pod-bucket"),
@@ -2226,8 +2226,8 @@ func (t *PorchSuite) TestFailedPodEvictionAndRecovery() {
 						Upstream: porchapi.UpstreamPackage{
 							Type: "git",
 							Git: &porchapi.GitPackage{
-								Repo:      t.gcpBlueprintsRepo,
-								Ref:       t.gcpBucketRef,
+								Repo:      t.blueprintsRepo,
+								Ref:       t.bucketRef,
 								Directory: "catalog/bucket",
 								SecretRef: porchapi.SecretRef{
 									Name: t.CreateGcpPackageRevisionSecret("test-fn-pod-bucket"),

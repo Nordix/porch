@@ -15,34 +15,34 @@
 functions:
   - function: set-image
     images:
-      - ghcr.io/kpt-fn/set-image:latest
+      - ghcr.io/kptdev/krm-functions-catalog/set-image:latest
   - function: set-namespace
     images:
-      - ghcr.io/kpt-fn/set-namespace:latest
+      - ghcr.io/kptdev/krm-functions-catalog/set-namespace:latest
   - function: upsert-resource
     images:
-      - ghcr.io/kpt-fn/upsert-resource:latest
+      - ghcr.io/kptdev/krm-functions-catalog/upsert-resource:latest
   - function: set-project-id
     images:
-      - ghcr.io/kpt-fn/set-project-id:latest
+      - ghcr.io/kptdev/krm-functions-catalog/set-project-id:latest
   - function: apply-setters
     images:
-      - ghcr.io/kpt-fn/apply-setters:latest
+      - ghcr.io/kptdev/krm-functions-catalog/apply-setters:latest
   - function: apply-setters-v1
     images:
-      - ghcr.io/kpt-fn/apply-setters:latest
+      - ghcr.io/kptdev/krm-functions-catalog/apply-setters:latest
   - function: search-replace
     images:
-      - ghcr.io/kpt-fn/search-replace:latest
+      - ghcr.io/kptdev/krm-functions-catalog/search-replace:latest
   - function: ensure-name-substring
     images:
-      - ghcr.io/kpt-fn/ensure-name-substring:latest
+      - ghcr.io/kptdev/krm-functions-catalog/ensure-name-substring:latest
   - function: set-annotations
     images:
-      - ghcr.io/kpt-fn/set-annotations:latest
+      - ghcr.io/kptdev/krm-functions-catalog/set-annotations:latest
   - function: set-labels
     images:
-      - ghcr.io/kpt-fn/set-labels:latest
+      - ghcr.io/kptdev/krm-functions-catalog/set-labels:latest
   - function: starlark
     images:
-      - ghcr.io/kpt-fn/starlark:latest
+      - ghcr.io/kptdev/krm-functions-catalog/starlark:latest

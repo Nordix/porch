@@ -1375,25 +1375,25 @@ spec:
 		"add validator and mutator with existing": {
 			initialPipeline: `
         validators:
-          - image: gcr.io/val1
+          - image: ghcr.io/val1
             name: val1
-          - image: gcr.io/val2
+          - image: ghcr.io/val2
             name: val2
         mutators:
-          - image: gcr.io/mut1
+          - image: ghcr.io/mut1
             name: mut1
-          - image: gcr.io/mut2
+          - image: ghcr.io/mut2
             name: mut2`[1:],
 			pvPipeline: `
     validators:
-    - image: gcr.io/val3
+    - image: ghcr.io/val3
       name: val3
-    - image: gcr.io/val4
+    - image: ghcr.io/val4
       name: val4
     mutators:
-    - image: gcr.io/mut3
+    - image: ghcr.io/mut3
       name: mut3
-    - image: gcr.io/mut4
+    - image: ghcr.io/mut4
       name: mut4
 `[1:],
 			expectedErr: "",
@@ -1401,28 +1401,28 @@ spec:
       pipeline:
         validators:
         - name: PackageVariant.my-pv.val3.0
-          image: gcr.io/val3
+          image: ghcr.io/val3
         - name: PackageVariant.my-pv.val4.1
-          image: gcr.io/val4
-        - image: gcr.io/val1
+          image: ghcr.io/val4
+        - image: ghcr.io/val1
           name: val1
-        - image: gcr.io/val2
+        - image: ghcr.io/val2
           name: val2
         mutators:
         - name: PackageVariant.my-pv.mut3.0
-          image: gcr.io/mut3
+          image: ghcr.io/mut3
         - name: PackageVariant.my-pv.mut4.1
-          image: gcr.io/mut4
-        - image: gcr.io/mut1
+          image: ghcr.io/mut4
+        - image: ghcr.io/mut1
           name: mut1
-        - image: gcr.io/mut2
+        - image: ghcr.io/mut2
           name: mut2
 `[1:],
 		},
 		"remove pv mutator": {
 			initialPipeline: `
         mutators:
-        - image: gcr.io/mut:v1
+        - image: ghcr.io/mut:v1
           name: PackageVariant.my-pv.mut.0`[1:],
 			pvPipeline:  "",
 			expectedErr: "",
@@ -1431,7 +1431,7 @@ spec:
 		"remove pv validator": {
 			initialPipeline: `
         validators:
-        - image: gcr.io/val:v1
+        - image: ghcr.io/val:v1
           name: PackageVariant.my-pv.val.0`[1:],
 			pvPipeline:  "",
 			expectedErr: "",
@@ -1440,16 +1440,16 @@ spec:
 		"remove pv validator, keep prr one": {
 			initialPipeline: `
         validators:
-        - image: gcr.io/val:v1
+        - image: ghcr.io/val:v1
           name: PackageVariant.my-pv.val.0
-        - image: gcr.io/val:v1
+        - image: ghcr.io/val:v1
           name: non-pv-val`[1:],
 			pvPipeline:  "",
 			expectedErr: "",
 			expectedPrr: prrBase + `
       pipeline:
         validators:
-        - image: gcr.io/val:v1
+        - image: ghcr.io/val:v1
           name: non-pv-val
 `[1:],
 		},
