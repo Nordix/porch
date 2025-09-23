@@ -22,7 +22,9 @@ import (
 	"strings"
 
 	api "github.com/nephio-project/porch/api/porch/v1alpha1"
+	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/internal/kpt/fnruntime"
+	kptfilev1 "github.com/nephio-project/porch/pkg/kpt/api/kptfile/v1"
 	"github.com/nephio-project/porch/pkg/kpt"
 	fnresult "github.com/nephio-project/porch/pkg/kpt/api/fnresult/v1"
 	"github.com/nephio-project/porch/pkg/kpt/fn"
@@ -30,11 +32,22 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
+	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 type renderPackageMutation struct {
 	runtime       fn.FunctionRuntime
 	runnerOptions fnruntime.RunnerOptions
+	// For hierarchical rendering across subpackages
+	repoOpener        repository.RepositoryOpener
+	referenceResolver repository.ReferenceResolver
+	// Context of the package being rendered
+    namespace   string
+    repoName    string
+    packageName string
+    workspaceName string
+	// Optional: when available, the current package revision to anchor discovery
+	current repository.PackageRevision
 }
 
 var _ mutation = &renderPackageMutation{}
@@ -47,7 +60,10 @@ func (m *renderPackageMutation) apply(ctx context.Context, resources repository.
 	taskResult := &api.TaskResult{
 		RenderStatus: &api.RenderStatus{},
 	}
-	pkgPath, err := writeResources(fs, resources)
+
+	//pkgPath, err := writeResources(fs, resources)
+	// Try hierarchical composite FS if repo context is available; otherwise fallback to single package render
+	pkgPath, err := m.writeCompositeOrSingle(ctx, fs, resources)
 	if err != nil {
 		return repository.PackageResources{}, nil, err
 	}
@@ -76,7 +92,8 @@ func (m *renderPackageMutation) apply(ctx context.Context, resources repository.
 		}
 	}
 
-	renderedResources, err := readResources(fs)
+	// If we used a composite FS, restrict output to the current package subtree
+	renderedResources, err := m.readFilteredResources(fs)
 	if err != nil {
 		return repository.PackageResources{}, taskResult, err
 	}
@@ -146,4 +163,228 @@ func readResources(fs filesys.FileSystem) (repository.PackageResources, error) {
 	return repository.PackageResources{
 		Contents: contents,
 	}, nil
+}
+
+// --- Composite FS helpers ---
+
+// writeCompositeOrSingle writes either a composite tree (root + subpackages) or falls back to single-package.
+// It returns the root path to pass to the renderer.
+func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs filesys.FileSystem, resources repository.PackageResources) (string, error) {
+	// Only attempt composite rendering when we have a current revision and repo context,
+	// and the Kptfile explicitly opts in via annotation porch.kpt.dev/subpackage: "true".
+	if !hasSubpackageOptIn(resources) {
+		klog.Infof("composite-render: skip - no Kptfile opt-in porch.kpt.dev/subpackage=true")
+		return writeResources(fs, resources)
+	}
+
+    // Resolve repository object
+	var repo repository.Repository
+	if m.repoName == "" {
+        if m.current != nil {
+            m.repoName = m.current.Key().RKey().Name
+        }
+	}
+	klog.Infof("composite-render: repoName=%q namespace=%q", m.repoName, m.namespace)
+
+	if m.repoName != "" {
+		repoSpec := &configapi.Repository{}
+		if err := m.referenceResolver.ResolveReference(ctx, m.namespace, m.repoName, repoSpec); err != nil {
+			klog.Infof("composite-render: reference resolve failed: %v (fallback single)", err)
+			return writeResources(fs, resources)
+		}
+        var err error
+        repo, err = m.repoOpener.OpenRepository(ctx, repoSpec)
+        if err != nil {
+            klog.Infof("composite-render: open repository failed: %v (fallback single)", err)
+            return writeResources(fs, resources)
+        }
+
+		klog.Infof("composite-render: opened repo %s/%s", repo.Key().Namespace, repo.Key().Name)
+	} else {
+		klog.Infof("composite-render: empty repoName (fallback single)")
+		return writeResources(fs, resources)
+	}
+
+	// Determine anchor and workspace
+    var anchorKey repository.PackageRevisionKey
+    var anchorFullPath string
+    var workspaceName string
+    if m.current != nil {
+        anchorKey = m.current.Key()
+        anchorFullPath = anchorKey.PKey().ToFullPathname()
+        workspaceName = anchorKey.WorkspaceName
+        klog.Infof("composite-render: anchor=%q workspace=%q (from current)", anchorFullPath, workspaceName)
+    } else if m.packageName != "" && m.workspaceName != "" {
+        anchorFullPath = m.packageName
+        workspaceName = m.workspaceName
+        klog.Infof("composite-render: anchor=%q workspace=%q (from apply params)", anchorFullPath, workspaceName)
+    } else {
+        klog.Infof("composite-render: insufficient anchor context (fallback single)")
+        return writeResources(fs, resources)
+    }
+
+	// List all package revisions in repository and filter by same workspace
+	prList, err := repo.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{})
+	if err != nil {
+		klog.Infof("composite-render: list package revisions failed: %v (fallback single)", err)
+		return writeResources(fs, resources)
+	}
+	klog.Infof("composite-render: listed %d package revisions", len(prList))
+
+	// Determine root: shortest full path that is prefix of anchor
+	rootFullPath := anchorFullPath
+	for _, pr := range prList {
+		if pr.Key().WorkspaceName != workspaceName {
+			continue
+		}
+		candidate := pr.Key().PKey().ToFullPathname()
+		if strings.HasPrefix(anchorFullPath+"/", candidate+"/") {
+			if len(candidate) < len(rootFullPath) {
+				rootFullPath = candidate
+			}
+		}
+	}
+	klog.Infof("composite-render: computed rootFullPath=%q", rootFullPath)
+
+	// Build composite set: all revisions under rootFullPath in same workspace
+	type prWithRes struct {
+		pr  repository.PackageRevision
+		res *api.PackageRevisionResources
+	}
+	var tree []prWithRes
+	for _, pr := range prList {
+		if pr.Key().WorkspaceName != workspaceName {
+			continue
+		}
+		full := pr.Key().PKey().ToFullPathname()
+		if strings.HasPrefix(full+"/", rootFullPath+"/") {
+			prRes, err := pr.GetResources(ctx)
+			if err != nil {
+				klog.Infof("composite-render: get resources failed for %v: %v (fallback single)", pr.Key(), err)
+				return writeResources(fs, resources)
+			}
+			tree = append(tree, prWithRes{pr: pr, res: prRes})
+		}
+	}
+	klog.Infof("composite-render: tree size=%d", len(tree))
+
+	// Write composite: mount root at "/", subpackages at their relative subdir
+	for _, node := range tree {
+		full := node.pr.Key().PKey().ToFullPathname()
+		relBase := strings.TrimPrefix(full, rootFullPath)
+		relBase = strings.TrimPrefix(relBase, "/")
+		for k, v := range node.res.Spec.Resources {
+			var outPath string
+			if relBase == "" {
+				outPath = k
+			} else {
+				outPath = path.Join(relBase, k)
+			}
+			dir := path.Dir(outPath)
+			if dir == "." {
+				dir = "/"
+			}
+			if err := fs.MkdirAll(dir); err != nil {
+				return "", err
+			}
+			if err := fs.WriteFile(path.Join(dir, path.Base(outPath)), []byte(v)); err != nil {
+				return "", err
+			}
+		}
+	}
+	klog.Infof("composite-render: wrote composite resources for %d packages under root %q", len(tree), rootFullPath)
+
+	// Ensure at least the current package contents exist even if repository listing missed it
+	// (e.g., during creation). Merge provided resources at the correct subpath.
+	currRelBase := strings.TrimPrefix(anchorFullPath, rootFullPath)
+	currRelBase = strings.TrimPrefix(currRelBase, "/")
+	klog.Infof("composite-render: merging provided resources at currRelBase=%q", currRelBase)
+	for k, v := range resources.Contents {
+		outPath := k
+		if currRelBase != "" {
+			outPath = path.Join(currRelBase, k)
+		}
+		dir := path.Dir(outPath)
+		if dir == "." {
+			dir = "/"
+		}
+		if err := fs.MkdirAll(dir); err != nil {
+			return "", err
+		}
+		if err := fs.WriteFile(path.Join(dir, path.Base(outPath)), []byte(v)); err != nil {
+			return "", err
+		}
+	}
+
+	// Root path is "/" (topmost package directory)
+	return "/", nil
+}
+
+// hasSubpackageOptIn returns true if Kptfile contains annotation porch.kpt.dev/subpackage: "true"
+func hasSubpackageOptIn(resources repository.PackageResources) bool {
+    kptBytes, ok := resources.Contents["Kptfile"]
+    if !ok || kptBytes == "" {
+        return false
+    }
+    var kf kptfilev1.KptFile
+    if err := yaml.Unmarshal([]byte(kptBytes), &kf); err != nil {
+        return false
+    }
+    if kf.Annotations == nil {
+        return false
+    }
+    v, ok := kf.Annotations["porch.kpt.dev/subpackage"]
+    return ok && v == "true"
+}
+
+// readFilteredResources reads the rendered filesystem and trims it to the current package subtree
+func (m *renderPackageMutation) readFilteredResources(fs filesys.FileSystem) (repository.PackageResources, error) {
+	// If no current context, return all
+	if m.current == nil {
+		return readResources(fs)
+	}
+	// Compute subdir prefix
+	anchorFullPath := m.current.Key().PKey().ToFullPathname()
+	// We need the same root used earlier; recompute using repository listing may be heavy.
+	// Instead, accept that files under any path are included, and we filter by first path element(s)
+	// equal to the relative base of anchor under root. We approximate prefix by the package relative directory name.
+	// Since we mounted current at relBase derived from (anchor - root), we can detect by scanning for Kptfile at "/".
+
+	// Fallback to filtering by the deepest directory that contains the package's Kptfile after render.
+	// Determine prefix as anything under the directory that contains the current package's Kptfile.
+	// We search for "/Kptfile" at root to get root, then compute rel base.
+
+	// Compute relBase by looking for a file unique to current package: we use package directory name.
+	relBase := path.Base(anchorFullPath)
+
+	contents := map[string]string{}
+	if err := fs.Walk("/", func(p string, info iofs.FileInfo, err error) error {
+		if info.Mode().IsRegular() {
+			trimmed := strings.TrimPrefix(p, "/")
+			// Match either top-level (if current is root) or under relBase/
+			if strings.HasPrefix(trimmed, relBase+"/") || relBase == trimmed[:len(trimmed)] && !strings.Contains(trimmed, "/") {
+				data, err := fs.ReadFile(p)
+				if err != nil {
+					return err
+				}
+				// Strip relBase/ prefix if present
+				key := trimmed
+				if strings.HasPrefix(key, relBase+"/") {
+					key = strings.TrimPrefix(key, relBase+"/")
+				} else if key == relBase { // single file unlikely; keep as-is
+					key = path.Base(key)
+				}
+				contents[key] = string(data)
+			}
+		}
+		return nil
+	}); err != nil {
+		return repository.PackageResources{}, err
+	}
+
+	// If nothing matched (e.g., current is root), return all
+	if len(contents) == 0 {
+		return readResources(fs)
+	}
+	return repository.PackageResources{Contents: contents}, nil
 }
