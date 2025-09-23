@@ -84,14 +84,17 @@ func (th *genericTaskHandler) ApplyTask(ctx context.Context, draft repository.Pa
 		return err
 	}
 
-	resources, taskResult, err := mut.apply(ctx, repository.PackageResources{})
+    resources, taskResult, err := mut.apply(ctx, repository.PackageResources{})
 	if err != nil {
 		return err
 	}
 
-	// Render package after creation.
-	draftMeta := draft.GetMeta()
-	resources, _, err = th.renderMutation(draftMeta.GetNamespace()).apply(ctx, resources)
+    // Render package after creation.
+    draftMeta := draft.GetMeta()
+    rm := th.renderMutation(draftMeta.GetNamespace())
+    rm.repoName = obj.Spec.RepositoryName
+    rm.packageName = obj.Spec.PackageName
+    resources, _, err = rm.apply(ctx, resources)
 	if err != nil {
 		return err
 	}
@@ -139,7 +142,10 @@ func (th *genericTaskHandler) DoPRMutations(
 
 		// render
 		draftMeta := draft.GetMeta()
-		resources, _, err = th.renderMutation(draftMeta.GetNamespace()).apply(ctx, resources)
+        rm := th.renderMutation(draftMeta.GetNamespace())
+        rm.repoName = newObj.Spec.RepositoryName
+        rm.packageName = newObj.Spec.PackageName
+        resources, _, err = rm.apply(ctx, resources)
 		if err != nil {
 			klog.Error(err)
 			return renderError(err)
@@ -194,7 +200,12 @@ func (th *genericTaskHandler) DoPRResourceMutations(
 		renderStatus *api.RenderStatus
 		renderResult *api.TaskResult
 	)
-	appliedResources, renderResult, err = th.renderMutation(oldRes.GetNamespace()).apply(ctx, appliedResources)
+    rm2 := th.renderMutation(oldRes.GetNamespace())
+    rm2.repoName = pr2Update.Key().RKey().Name
+    rm2.packageName = pr2Update.Key().PKey().ToPkgPathname()
+    rm2.workspaceName = pr2Update.Key().WorkspaceName
+    rm2.current = pr2Update
+    appliedResources, renderResult, err = rm2.apply(ctx, appliedResources)
 	// keep last render result on empty patch
 	if renderResult != nil &&
 		renderResult.RenderStatus != nil &&
@@ -216,10 +227,13 @@ func (th *genericTaskHandler) DoPRResourceMutations(
 	return renderStatus, draft.UpdateResources(ctx, prr, &api.Task{Type: api.TaskTypeRender})
 }
 
-func (th *genericTaskHandler) renderMutation(namespace string) mutation {
-	return &renderPackageMutation{
+func (th *genericTaskHandler) renderMutation(namespace string) *renderPackageMutation {
+    return &renderPackageMutation{
 		runnerOptions: th.runnerOptionsResolver(namespace),
 		runtime:       th.runtime,
+        repoOpener:        th.repoOpener,
+        referenceResolver: th.referenceResolver,
+        namespace:         namespace,
 	}
 }
 
