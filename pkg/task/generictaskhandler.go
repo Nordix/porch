@@ -84,17 +84,35 @@ func (th *genericTaskHandler) ApplyTask(ctx context.Context, draft repository.Pa
 		return err
 	}
 
-    resources, taskResult, err := mut.apply(ctx, repository.PackageResources{})
+	resources, taskResult, err := mut.apply(ctx, repository.PackageResources{})
 	if err != nil {
 		return err
 	}
 
-    // Render package after creation.
-    draftMeta := draft.GetMeta()
-    rm := th.renderMutation(draftMeta.GetNamespace())
-    rm.repoName = obj.Spec.RepositoryName
-    rm.packageName = obj.Spec.PackageName
-    resources, _, err = rm.apply(ctx, resources)
+	// Render package after creation.
+	draftMeta := draft.GetMeta()
+	rm := th.renderMutation(draftMeta.GetNamespace())
+	rm.repoName = obj.Spec.RepositoryName
+	rm.packageName = obj.Spec.PackageName
+	if len(obj.Spec.Tasks) == 1 && obj.Spec.Tasks[0].Upgrade != nil && obj.Spec.Tasks[0].Upgrade.LocalPackageRevisionRef.Name != "" {
+		if prKey, err := repository.PkgRevK8sName2Key(obj.Namespace, obj.Spec.Tasks[0].Upgrade.LocalPackageRevisionRef.Name); err == nil {
+			klog.V(5).Infof("Subpackage:ApplyTask: overriding workspace for composite render from %q to original %q", obj.Spec.WorkspaceName, prKey.WorkspaceName)
+			rm.workspaceName = prKey.WorkspaceName
+			// Also set current to the original local package to let renderer trim to subtree
+			fetcher := &repository.PackageFetcher{RepoOpener: th.repoOpener, ReferenceResolver: th.referenceResolver}
+			if origPR, err := fetcher.FetchRevision(ctx, &obj.Spec.Tasks[0].Upgrade.LocalPackageRevisionRef, obj.Namespace); err == nil {
+				rm.current = origPR
+			} else {
+				klog.V(5).Infof("Subpackage:ApplyTask: failed to fetch original local package %q: %v", obj.Spec.Tasks[0].Upgrade.LocalPackageRevisionRef.Name, err)
+			}
+		} else {
+			klog.V(5).Infof("Subpackage:ApplyTask: failed to parse local package ref %q: %v; falling back to new workspace %q", obj.Spec.Tasks[0].Upgrade.LocalPackageRevisionRef.Name, err, obj.Spec.WorkspaceName)
+			rm.workspaceName = obj.Spec.WorkspaceName
+		}
+	} else {
+		rm.workspaceName = obj.Spec.WorkspaceName
+	}
+	resources, _, err = rm.apply(ctx, resources)
 	if err != nil {
 		return err
 	}
@@ -142,10 +160,12 @@ func (th *genericTaskHandler) DoPRMutations(
 
 		// render
 		draftMeta := draft.GetMeta()
-        rm := th.renderMutation(draftMeta.GetNamespace())
-        rm.repoName = newObj.Spec.RepositoryName
-        rm.packageName = newObj.Spec.PackageName
-        resources, _, err = rm.apply(ctx, resources)
+		rm := th.renderMutation(draftMeta.GetNamespace())
+		rm.repoName = newObj.Spec.RepositoryName
+		rm.packageName = newObj.Spec.PackageName
+		rm.workspaceName = apiResources.Spec.WorkspaceName
+		rm.current = repoPR
+		resources, _, err = rm.apply(ctx, resources)
 		if err != nil {
 			klog.Error(err)
 			return renderError(err)
@@ -200,12 +220,12 @@ func (th *genericTaskHandler) DoPRResourceMutations(
 		renderStatus *api.RenderStatus
 		renderResult *api.TaskResult
 	)
-    rm2 := th.renderMutation(oldRes.GetNamespace())
-    rm2.repoName = pr2Update.Key().RKey().Name
-    rm2.packageName = pr2Update.Key().PKey().ToPkgPathname()
-    rm2.workspaceName = pr2Update.Key().WorkspaceName
-    rm2.current = pr2Update
-    appliedResources, renderResult, err = rm2.apply(ctx, appliedResources)
+	rm2 := th.renderMutation(oldRes.GetNamespace())
+	rm2.repoName = pr2Update.Key().RKey().Name
+	rm2.packageName = pr2Update.Key().PKey().ToPkgPathname()
+	rm2.workspaceName = pr2Update.Key().WorkspaceName
+	rm2.current = pr2Update
+	appliedResources, renderResult, err = rm2.apply(ctx, appliedResources)
 	// keep last render result on empty patch
 	if renderResult != nil &&
 		renderResult.RenderStatus != nil &&
@@ -228,12 +248,12 @@ func (th *genericTaskHandler) DoPRResourceMutations(
 }
 
 func (th *genericTaskHandler) renderMutation(namespace string) *renderPackageMutation {
-    return &renderPackageMutation{
-		runnerOptions: th.runnerOptionsResolver(namespace),
-		runtime:       th.runtime,
-        repoOpener:        th.repoOpener,
-        referenceResolver: th.referenceResolver,
-        namespace:         namespace,
+	return &renderPackageMutation{
+		runnerOptions:     th.runnerOptionsResolver(namespace),
+		runtime:           th.runtime,
+		repoOpener:        th.repoOpener,
+		referenceResolver: th.referenceResolver,
+		namespace:         namespace,
 	}
 }
 
