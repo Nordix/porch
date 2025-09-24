@@ -90,7 +90,7 @@ func (m *renderPackageMutation) apply(ctx context.Context, resources repository.
 		}
 	}
 
-	renderedResources, err := m.readFilteredResources(fs)
+	renderedResources, err := m.readFilteredResources(fs) // return only current package subtree, OR all if no current
 	if err != nil {
 		return repository.PackageResources{}, taskResult, err
 	}
@@ -165,10 +165,8 @@ func readResources(fs filesys.FileSystem) (repository.PackageResources, error) {
 // writeCompositeOrSingle writes either a composite tree (root + subpackages) or falls back to single-package (default).
 // It returns the root path to pass to the renderer.
 func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs filesys.FileSystem, resources repository.PackageResources) (string, error) {
-	// Only attempt composite rendering when we have a current revision and repo context,
-	// and the Kptfile explicitly opts in via annotation porch.kpt.dev/subpackage: "true".
+	// Only attempt composite rendering when the Kptfile explicitly opts in via annotation porch.kpt.dev/subpackage: "true".
 	if !hasSubpackageOptIn(resources) {
-		klog.Infof("composite-render: skip - no Kptfile opt-in porch.kpt.dev/subpackage=true")
 		return writeResources(fs, resources)
 	}
 
@@ -178,24 +176,24 @@ func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs f
 			m.repoName = m.current.Key().RKey().Name
 		}
 	}
-	klog.Infof("composite-render: repoName=%q namespace=%q", m.repoName, m.namespace)
+	klog.V(5).Infof("Subpackage:Composite-render: repoName=%q namespace=%q, package-name=%q", m.repoName, m.namespace, m.packageName)
 
 	if m.repoName != "" {
 		repoSpec := &configapi.Repository{}
 		if err := m.referenceResolver.ResolveReference(ctx, m.namespace, m.repoName, repoSpec); err != nil {
-			klog.Infof("composite-render: reference resolve failed: %v (fallback single)", err)
+			klog.V(5).Infof("Subpackage:Composite-render: reference resolve failed: %v (fallback single)", err)
 			return writeResources(fs, resources)
 		}
 		var err error
 		repo, err = m.repoOpener.OpenRepository(ctx, repoSpec)
 		if err != nil {
-			klog.Infof("composite-render: open repository failed: %v (fallback single)", err)
+			klog.V(5).Infof("Subpackage:Composite-render: open repository failed: %v (fallback single)", err)
 			return writeResources(fs, resources)
 		}
 
-		klog.Infof("composite-render: opened repo %s/%s", repo.Key().Namespace, repo.Key().Name)
+		klog.V(5).Infof("Subpackage:Composite-render: opened repo %s/%s", repo.Key().Namespace, repo.Key().Name)
 	} else {
-		klog.Infof("composite-render: empty repoName (fallback single)")
+		klog.V(5).Infof("Subpackage:Composite-render: empty repoName (fallback single)")
 		return writeResources(fs, resources)
 	}
 
@@ -207,23 +205,23 @@ func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs f
 		anchorKey = m.current.Key()
 		anchorFullPath = anchorKey.PKey().ToFullPathname()
 		workspaceName = anchorKey.WorkspaceName
-		klog.Infof("composite-render: anchor=%q workspace=%q (from current)", anchorFullPath, workspaceName)
+		klog.V(5).Infof("Subpackage:Composite-render: anchor=%q workspace=%q (from current)", anchorFullPath, workspaceName)
 	} else if m.packageName != "" && m.workspaceName != "" {
 		anchorFullPath = m.packageName
 		workspaceName = m.workspaceName
-		klog.Infof("composite-render: anchor=%q workspace=%q (from apply params)", anchorFullPath, workspaceName)
+		klog.V(5).Infof("Subpackage:Composite-render: anchor=%q workspace=%q (from apply params)", anchorFullPath, workspaceName)
 	} else {
-		klog.Infof("composite-render: insufficient anchor context (fallback single)")
+		klog.V(5).Infof("Subpackage:Composite-render: insufficient anchor context (fallback single)")
 		return writeResources(fs, resources)
 	}
 
 	// List all package revisions in repository and filter by same workspace
 	prList, err := repo.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{})
 	if err != nil {
-		klog.Infof("composite-render: list package revisions failed: %v (fallback single)", err)
+		klog.V(5).Infof("Subpackage:Composite-render: list package revisions failed: %v (fallback single)", err)
 		return writeResources(fs, resources)
 	}
-	klog.Infof("composite-render: listed %d package revisions", len(prList))
+	klog.V(5).Infof("Subpackage:Composite-render: listed %d package revisions", len(prList))
 
 	// Determine root: shortest full path that is prefix of anchor
 	rootFullPath := anchorFullPath
@@ -238,7 +236,7 @@ func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs f
 			}
 		}
 	}
-	klog.Infof("composite-render: computed rootFullPath=%q", rootFullPath)
+	klog.V(5).Infof("Subpackage:Composite-render: computed rootFullPath=%q", rootFullPath)
 
 	// Build composite set: all revisions under rootFullPath in same workspace
 	type prWithRes struct {
@@ -254,13 +252,13 @@ func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs f
 		if strings.HasPrefix(full+"/", rootFullPath+"/") {
 			prRes, err := pr.GetResources(ctx)
 			if err != nil {
-				klog.Infof("composite-render: get resources failed for %v: %v (fallback single)", pr.Key(), err)
+				klog.V(5).Infof("Subpackage:Composite-render: get resources failed for %v: %v (fallback single)", pr.Key(), err)
 				return writeResources(fs, resources)
 			}
 			tree = append(tree, prWithRes{pr: pr, res: prRes})
 		}
 	}
-	klog.Infof("composite-render: tree size=%d", len(tree))
+	klog.V(5).Infof("Subpackage:Composite-render: tree size=%d", len(tree))
 
 	// Write composite: mount root at "/", subpackages at their relative subdir
 	for _, node := range tree {
@@ -286,12 +284,13 @@ func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs f
 			}
 		}
 	}
-	klog.Infof("composite-render: wrote composite resources for %d packages under root %q", len(tree), rootFullPath)
+	klog.V(5).Infof("Subpackage:Composite-render: wrote composite resources for %d packages under root %q", len(tree), rootFullPath)
 
 	// Finally, overlay the provided resources at the anchor path
 	currRelBase := strings.TrimPrefix(anchorFullPath, rootFullPath)
 	currRelBase = strings.TrimPrefix(currRelBase, "/")
-	klog.Infof("composite-render: merging provided resources at currRelBase=%q", currRelBase)
+
+	klog.V(5).Infof("Subpackage:Composite-render: merging provided resources at currRelBase=%q", currRelBase)
 	for k, v := range resources.Contents {
 		outPath := k
 		if currRelBase != "" {
@@ -336,17 +335,13 @@ func (m *renderPackageMutation) readFilteredResources(fs filesys.FileSystem) (re
 	if m.current == nil {
 		return readResources(fs)
 	}
-	// Compute subdir prefix
+
 	anchorFullPath := m.current.Key().PKey().ToFullPathname()
-
-	// Compute relBase by looking for a file unique to current package: we use package directory name.
 	relBase := path.Base(anchorFullPath)
-
 	contents := map[string]string{}
 	if err := fs.Walk("/", func(p string, info iofs.FileInfo, err error) error {
 		if info.Mode().IsRegular() {
 			trimmed := strings.TrimPrefix(p, "/")
-			// Match either top-level (if current is root) or under relBase/
 			if strings.HasPrefix(trimmed, relBase+"/") || relBase == trimmed && !strings.Contains(trimmed, "/") {
 				data, err := fs.ReadFile(p)
 				if err != nil {
