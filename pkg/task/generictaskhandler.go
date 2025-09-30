@@ -98,7 +98,6 @@ func (th *genericTaskHandler) ApplyTask(ctx context.Context, draft repository.Pa
 		if prKey, err := repository.PkgRevK8sName2Key(obj.Namespace, obj.Spec.Tasks[0].Upgrade.LocalPackageRevisionRef.Name); err == nil {
 			klog.V(5).Infof("Subpackage:ApplyTask: overriding workspace for composite render from %q to original %q", obj.Spec.WorkspaceName, prKey.WorkspaceName)
 			rm.workspaceName = prKey.WorkspaceName
-			// Also set current to the original local package to let renderer trim to subtree
 			fetcher := &repository.PackageFetcher{RepoOpener: th.repoOpener, ReferenceResolver: th.referenceResolver}
 			if origPR, err := fetcher.FetchRevision(ctx, &obj.Spec.Tasks[0].Upgrade.LocalPackageRevisionRef, obj.Namespace); err == nil {
 				rm.current = origPR

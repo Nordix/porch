@@ -165,7 +165,7 @@ func readResources(fs filesys.FileSystem) (repository.PackageResources, error) {
 // writeCompositeOrSingle writes either a composite tree (root + subpackages) or falls back to single-package (default).
 // It returns the root path to pass to the renderer.
 func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs filesys.FileSystem, resources repository.PackageResources) (string, error) {
-	// Only attempt composite rendering when the Kptfile explicitly opts in via annotation porch.kpt.dev/subpackage: "true".
+	// Only attempt composite rendering when the Kptfile explicitly opts in via annotation kpt.dev/subpackage: "true".
 	if !hasSubpackageOptIn(resources) {
 		return writeResources(fs, resources)
 	}
@@ -312,7 +312,7 @@ func (m *renderPackageMutation) writeCompositeOrSingle(ctx context.Context, fs f
 	return "/", nil
 }
 
-// hasSubpackageOptIn returns true if Kptfile contains annotation porch.kpt.dev/subpackage: "true"
+// hasSubpackageOptIn returns true if Kptfile contains annotation kpt.dev/subpackage: "true"
 func hasSubpackageOptIn(resources repository.PackageResources) bool {
 	kptBytes, ok := resources.Contents["Kptfile"]
 	if !ok || kptBytes == "" {
@@ -325,7 +325,7 @@ func hasSubpackageOptIn(resources repository.PackageResources) bool {
 	if kf.Annotations == nil {
 		return false
 	}
-	v, ok := kf.Annotations["porch.kpt.dev/subpackage"]
+	v, ok := kf.Annotations[kptfilev1.SubpackageAnnotation]
 	return ok && v == "true"
 }
 

@@ -409,3 +409,9 @@ const (
 const (
 	BFSRenderAnnotation = "kpt.dev/bfs-rendering"
 )
+
+// SubpackageAnnotation is an annotation that can be used to indicate that a package
+// should be hydrated alongside its parent package.
+const (
+	SubpackageAnnotation = "kpt.dev/subpackage"
+)

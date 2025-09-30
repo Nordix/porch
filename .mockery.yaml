@@ -40,6 +40,8 @@ packages:
       Repository: {}
       PackageRevision: {}
       PackageRevisionDraft: {}
+      RepositoryOpener: {}
+      ReferenceResolver: {}
 
   github.com/nephio-project/porch/pkg/engine:
     interfaces:
