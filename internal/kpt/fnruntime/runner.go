@@ -454,7 +454,7 @@ func printFnResult(ctx context.Context, fnResult *fnresult.Result, opt *printer.
 			Lines:          lines,
 			TruncateOutput: printer.TruncateOutput,
 		}
-		pr.OptPrintf(opt, "%s", ri.String())
+		pr.OptPrintf(opt, "%q", ri.String())
 	}
 }
 
@@ -476,7 +476,7 @@ func printFnStderr(ctx context.Context, stdErr string) {
 			UseQuote:       true,
 			TruncateOutput: printer.TruncateOutput,
 		}
-		pr.Printf("%s", errLines.String())
+		pr.Printf("%q", errLines.String())
 	}
 }
 
