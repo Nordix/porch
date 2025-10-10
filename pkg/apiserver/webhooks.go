@@ -764,14 +764,14 @@ func isConflict(existing, attempted *configapi.Repository) bool {
 	}
 
 	// Rule 2: Root directory conflicts with any other directory under same URL
-	if existingURL == attemptedURL && existing.Namespace == attempted.Namespace {
+	if existingURL == attemptedURL {
 		if (existingDir == "" && attemptedDir != "") || (existingDir != "" && attemptedDir == "") {
 			return true
 		}
 	}
 
-	// Rule 3: Nested directory conflicts with its base directory — only if namespace matches
-	if existingURL == attemptedURL && existing.Namespace == attempted.Namespace {
+	// Rule 3: Nested directory conflicts with its base directory
+	if existingURL == attemptedURL {
 		if isNestedConflict(existingDir, attemptedDir) {
 			return true
 		}
