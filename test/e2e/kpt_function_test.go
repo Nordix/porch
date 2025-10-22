@@ -21,7 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
-	"github.com/nephio-project/porch/third_party/GoogleContainerTools/kpt-functions-sdk/go/fn"
+	"github.com/nephio-project/porch/third_party/kptdev/krm-functions-sdk/go/fn"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -566,7 +566,7 @@ func (t *PorchSuite) TestSetImage() {
 			t.AddResourceToPackage(&resources, "testdata/resources-for-krm-functions/daemonset.yaml", "daemonset.yaml")
 
 			t.AddMutator(&resources, tc.image, WithConfigmap(map[string]string{
-				"name":    "gcr.io/cloud-sql-connectors/cloud-sql-proxy",
+				"name":    "ghcr.io/cloud-sql-connectors/cloud-sql-proxy",
 				"newName": "bitnami/nginx-updated",
 				"newTag":  "1.22.0",
 			}))

@@ -31,10 +31,7 @@ func TestExecErrorString(t *testing.T) {
 		{
 			name:        "no truncate - empty stderr",
 			fnExecError: ExecError{},
-			expected: `  Stderr:
-    ""
-  Exit Code: 0
-`,
+			expected:    "[Stderr]:   Exit Code: 0\n",
 		},
 		{
 			name: "no truncate - normal failure",
@@ -43,11 +40,7 @@ func TestExecErrorString(t *testing.T) {
 error message2`,
 				ExitCode: 1,
 			},
-			expected: `  Stderr:
-    "error message1"
-    "error message2"
-  Exit Code: 1
-`,
+			expected: "[Stderr]: error message1, error message2  Exit Code: 1\n",
 		},
 		{
 			name: "no truncate - long stderr",
@@ -59,14 +52,7 @@ error message
 error message`,
 				ExitCode: 1,
 			},
-			expected: `  Stderr:
-    "error message"
-    "error message"
-    "error message"
-    "error message"
-    "error message"
-  Exit Code: 1
-`,
+			expected: "[Stderr]: error message, error message, error message, error message, error message  Exit Code: 1\n",
 		},
 		{
 			name: "truncate - normal failure",
@@ -78,13 +64,7 @@ error message`,
 				ExitCode: 1,
 			},
 			truncate: true,
-			expected: `  Stderr:
-    "error message"
-    "error message"
-    "error message"
-    "error message"
-  Exit Code: 1
-`,
+			expected: "[Stderr]: error message, error message, error message, error message  Exit Code: 1\n",
 		},
 		{
 			name: "truncate - long stderr 1",
@@ -148,8 +128,8 @@ func TestDockerCLIOutputFilter(t *testing.T) {
 	}{
 		{
 			name: "should filter docker CLI output successfully",
-			input: `Unable to find image 'gcr.io/kpt-fn/starlark:v0.3' locally
-v0.3: Pulling from kpt-fn/starlark
+			input: `Unable to find image 'ghcr.io/kptdev/krm-functions-catalog/starlark:latest' locally
+v0.3: Pulling from ghcr.io/kptdev/krm-functions-catalog/starlark
 4e9f2cdf4387: Already exists
 aafbf7df3ddf: Pulling fs layer
 aafbf7df3ddf: Verifying Checksum
@@ -157,14 +137,14 @@ aafbf7df3ddf: Download complete
 aafbf7df3ddf: Pull complete
 6b759ab96cb2: Waiting
 Digest: sha256:c347e28606fa1a608e8e02e03541a5a46e4a0152005df4a11e44f6c4ab1edd9a
-Status: Downloaded newer image for gcr.io/kpt-fn/starlark:v0.3
+Status: Downloaded newer image for ghcr.io/kptdev/krm-functions-catalog/starlark:latest
 `,
 			expected: "",
 		},
 		{
 			name: "should filter docker messages and shouldn't truncate trailing lines",
-			input: `Unable to find image 'gcr.io/kpt-fn/starlark:v0.3' locally
-v0.3: Pulling from kpt-fn/starlark
+			input: `Unable to find image 'ghcr.io/kptdev/krm-functions-catalog/starlark:latest' locally
+v0.3: Pulling from ghcr.io/kptdev/krm-functions-catalog/starlark
 4e9f2cdf4387: Already exists
 aafbf7df3ddf: Pulling fs layer
 aafbf7df3ddf: Verifying Checksum
@@ -172,7 +152,7 @@ aafbf7df3ddf: Download complete
 aafbf7df3ddf: Pull complete
 6b759ab96cb2: Waiting
 Digest: sha256:c347e28606fa1a608e8e02e03541a5a46e4a0152005df4a11e44f6c4ab1edd9a
-Status: Downloaded newer image for gcr.io/kpt-fn/starlark:v0.3
+Status: Downloaded newer image for ghcr.io/kptdev/krm-functions-catalog/starlark:latest
 line before last line
 lastline
 
@@ -184,8 +164,8 @@ lastline
 		{
 			name: "should filter interleaved docker messages",
 			input: `firstline
-Unable to find image 'gcr.io/kpt-fn/starlark:v0.3' locally
-v0.3: Pulling from kpt-fn/starlark
+Unable to find image 'ghcr.io/kptdev/krm-functions-catalog/starlark:latest' locally
+v0.3: Pulling from ghcr.io/kptdev/krm-functions-catalog/starlark
 4e9f2cdf4387: Already exists
 aafbf7df3ddf: Pulling fs layer
 aafbf7df3ddf: Verifying Checksum
@@ -194,7 +174,7 @@ aafbf7df3ddf: Download complete
 aafbf7df3ddf: Pull complete
 6b759ab96cb2: Waiting
 Digest: sha256:c347e28606fa1a608e8e02e03541a5a46e4a0152005df4a11e44f6c4ab1edd9a
-Status: Downloaded newer image for gcr.io/kpt-fn/starlark:v0.3
+Status: Downloaded newer image for ghcr.io/kptdev/krm-functions-catalog/starlark:latest
 lastline
 `,
 			expected: `firstline

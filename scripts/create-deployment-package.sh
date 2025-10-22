@@ -42,9 +42,9 @@ kubectl get packagerevision -n default deployment:helloserver:v1 -oyaml
 kubectl get packagerevisionresources -n default deployment:helloserver:v1 -oyaml
 
 # Update the package in-place
-GCP_PROJECT_ID=$(gcloud config get-value project)
+PROJECT_ID=$(gcloud config get-value project)
 kubectl get packagerevisionresources -n default deployment:helloserver:v1 -oyaml | \
-  sed -e s/example-google-project-id/${GCP_PROJECT_ID}/g | \
+  sed -e s/example-google-project-id/${PROJECT_ID}/g | \
   kubectl replace -f -
 
 kubectl get packagerevisionresources -n default deployment:helloserver:v1 -oyaml

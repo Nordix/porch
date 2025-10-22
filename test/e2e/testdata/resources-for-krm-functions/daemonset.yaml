@@ -20,7 +20,7 @@ spec:
       serviceAccountName: cloud-sql-proxy-sa # kpt-set: ${service-account-name}
       containers:
       - name: gce-proxy
-        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.0.0
+        image: ghcr.io/cloud-sql-connectors/cloud-sql-proxy:2.0.0
         args: ["$(CONNECTION_NAME)", '--address=0.0.0.0', "--private-ip", "--structured-logs"]
         env:
         - name: CONNECTION_NAME

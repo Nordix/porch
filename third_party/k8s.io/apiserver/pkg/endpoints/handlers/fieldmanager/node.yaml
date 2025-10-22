@@ -145,8 +145,8 @@ status:
     - influxdb:1.2.2
     sizeBytes: 223948571
   - names:
-    - gcr.io/stackdriver-agents/stackdriver-logging-agent@sha256:f8d5231b67b9c53f60068b535a11811d29d1b3efd53d2b79f2a2591ea338e4f2
-    - gcr.io/stackdriver-agents/stackdriver-logging-agent:0.6-1.6.0-1
+    - ghcr.io/stackdriver-agents/stackdriver-logging-agent@sha256:f8d5231b67b9c53f60068b535a11811d29d1b3efd53d2b79f2a2591ea338e4f2
+    - ghcr.io/stackdriver-agents/stackdriver-logging-agent:0.6-1.6.0-1
     sizeBytes: 223242132
   - names:
     - nginx@sha256:35779791c05d119df4fe476db8f47c0bee5943c83eba5656a15fc046db48178b
@@ -165,7 +165,7 @@ status:
     - registry.k8s.io/kubernetes-dashboard-amd64:v1.8.3
     sizeBytes: 102319441
   - names:
-    - gcr.io/google_containers/kube-proxy:v1.11.10-gke.5
+    - ghcr.io/google_containers/kube-proxy:v1.11.10-gke.5
     - registry.k8s.io/kube-proxy:v1.11.10-gke.5
     sizeBytes: 102279340
   - names:

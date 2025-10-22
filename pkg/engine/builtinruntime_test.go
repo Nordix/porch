@@ -22,13 +22,13 @@ import (
 
 	v1 "github.com/nephio-project/porch/pkg/kpt/api/kptfile/v1"
 	"github.com/nephio-project/porch/pkg/kpt/fn"
-	fnsdk "github.com/nephio-project/porch/third_party/GoogleContainerTools/kpt-functions-sdk/go/fn"
+	fnsdk "github.com/nephio-project/porch/third_party/kptdev/krm-functions-sdk/go/fn"
 )
 
-const gcrImagePrefix = ""
+const krmFnImagePrefix = ""
 
 func TestBuiltinRuntime(t *testing.T) {
-	br := newBuiltinRuntime(gcrImagePrefix)
+	br := newBuiltinRuntime(krmFnImagePrefix)
 	fn := &v1.Function{
 		Image: setNamespaceImageAliases[0],
 	}
@@ -71,9 +71,9 @@ functionConfig:
 }
 
 func TestBuiltinRuntimeNotFound(t *testing.T) {
-	br := newBuiltinRuntime(gcrImagePrefix)
+	br := newBuiltinRuntime(krmFnImagePrefix)
 	funct := &v1.Function{
-		Image: "gcr.io/kpt-fn/not-exist:unstable",
+		Image: "ghcr.io/kptdev/krm-functions-catalog/not-exist:latest",
 	}
 	_, err := br.GetRunner(context.Background(), funct)
 	var fnNotFoundErr *fn.NotFoundError

@@ -221,14 +221,14 @@ apply-dev-config:
 	gcloud artifacts repositories describe  --location=us-west1 packages --format="value(name)" || gcloud artifacts repositories create  --location=us-west1 --repository-format=docker packages
 
 	# TODO: Replace with kpt function
-	cat config/samples/oci-repository.yaml | sed -e s/example-google-project-id/${GCP_PROJECT_ID}/g | kubectl apply -f -
+	cat config/samples/oci-repository.yaml | sed -e s/example-project-id/${PROJECT_ID}/g | kubectl apply -f -
 
 	# TODO: Replace with KCC (or self-host a registry?)
 	gcloud services enable artifactregistry.googleapis.com
 	gcloud artifacts repositories describe  --location=us-west1 deployment --format="value(name)" || gcloud artifacts repositories create  --location=us-west1 --repository-format=docker deployment
 
 	# TODO: Replace with kpt function
-	cat config/samples/deployment-repository.yaml | sed -e s/example-google-project-id/${GCP_PROJECT_ID}/g | kubectl apply -f -
+	cat config/samples/deployment-repository.yaml | sed -e s/example-project-id/${PROJECT_ID}/g | kubectl apply -f -
 
 ##@ Build and deploy porch for development and testing
 
@@ -299,7 +299,7 @@ deployment-config: ## Generate a porch deployment kpt package into $(DEPLOYPORCH
 	  --function-image "$(IMAGE_REPO)/$(PORCH_FUNCTION_RUNNER_IMAGE):$(IMAGE_TAG)" \
 	  --wrapper-server-image "$(IMAGE_REPO)/$(PORCH_WRAPPER_SERVER_IMAGE):$(IMAGE_TAG)" \
 	  --enabled-reconcilers "$(ENABLED_RECONCILERS)" \
-	  $(if $(PORCH_GCR_PREFIX_URL),--gcr-image-prefix "$(PORCH_GCR_PREFIX_URL)")
+	  $(if $(PORCH_PREFIX_URL),--krm-fn-image-prefix "$(PORCH_PREFIX_URL)")
 
 .PHONY: deployment-config-no-server
 deployment-config-no-server: deployment-config ## Generate a deployment kpt package that contains all of porch except the porch-server into $(DEPLOYPORCHCONFIGDIR)

@@ -448,12 +448,12 @@ func TestDiscoverUpdates(t *testing.T) {
 
 func TestPreRunStrategyValidation(t *testing.T) {
 	ns := "ns"
-	dummyApiServer := "http://localhost:999999" // expect no valid Kubernetes server will be running on this port
+	dummyAPIServer := "http://dummyAPIServer:59999" // expect no valid Kubernetes server will be running on this port
 	fakeClient := fake.NewClientBuilder().Build()
 	cfg := &genericclioptions.ConfigFlags{
 		// set the API server in case a development cluster is already running
 		// deliberately ensure ECONNREFUSED errors if we get as far as the List() call
-		APIServer: &dummyApiServer,
+		APIServer: &dummyAPIServer,
 		Namespace: &ns,
 	}
 	ctx := context.Background()
@@ -467,14 +467,14 @@ func TestPreRunStrategyValidation(t *testing.T) {
 		{
 			name:          "Valid strategy: copy-merge",
 			strategy:      string(porchapi.CopyMerge),
-			expectErr:     false,
-			expectedError: "cmdrpkgupgrade", // this means the strategy is valid and it fails elsewhere
+			expectErr:     true,
+			expectedError: dummyAPIServer, // this means the strategy is valid and it fails elsewhere
 		},
 		{
 			name:          "Empty strategy is valid (uses default resource-merge)",
 			strategy:      "",
-			expectErr:     false,
-			expectedError: "cmdrpkgupgrade",
+			expectErr:     true,
+			expectedError: dummyAPIServer,
 		},
 		{
 			name:          "Invalid strategy",

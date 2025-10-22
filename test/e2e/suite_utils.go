@@ -49,7 +49,7 @@ const (
 	defaultGCPHierarchyRef    = "783380ce4e6c3f21e9e90055b3a88bada0410154"
 	defaultKptFunctionRef     = "spanner-blueprint-v0.3.2"
 	defaultKPTRepo            = "https://github.com/kptdev/kpt.git"
-	defaultGCRPrefix          = "gcr.io/kpt-fn"
+	defaultKrmFnPrefix        = "ghcr.io/kptdev/krm-functions-catalog"
 
 	// Optional environment variables which can be set to replace defaults when running e2e tests behind a proxy or firewall.
 	// Environment variables can be loaded from a .env file - refer to .env.template
@@ -57,19 +57,19 @@ const (
 	testBlueprintsRepoUserEnv     = "PORCH_TEST_BLUEPRINTS_REPO_USER"
 	testBlueprintsRepoPasswordEnv = "PORCH_TEST_BLUEPRINTS_REPO_PASSWORD"
 
-	gcpBlueprintsRepoUrlEnv      = "PORCH_GCP_BLUEPRINTS_REPO_URL"
-	gcpBlueprintsRepoUserEnv     = "PORCH_GCP_BLUEPRINTS_REPO_USER"
-	gcpBlueprintsRepoPasswordEnv = "PORCH_GCP_BLUEPRINTS_REPO_PASSWORD"
-	gcpBucketRefEnv              = "PORCH_GCP_BUCKET_REF"
-	gcpRedisBucketRefEnv         = "PORCH_GCP_REDIS_BUCKET_REF"
-	gcpHierarchyRefEnv           = "PORCH_GCP_HIERARCHY_REF"
+	gcpBlueprintsRepoUrlEnv      = "PORCH_BLUEPRINTS_REPO_URL"
+	gcpBlueprintsRepoUserEnv     = "PORCH_BLUEPRINTS_REPO_USER"
+	gcpBlueprintsRepoPasswordEnv = "PORCH_BLUEPRINTS_REPO_PASSWORD"
+	gcpBucketRefEnv              = "PORCH_BUCKET_REF"
+	gcpRedisBucketRefEnv         = "PORCH_REDIS_BUCKET_REF"
+	gcpHierarchyRefEnv           = "PORCH_HIERARCHY_REF"
 	kptFunctionRefEnv            = "PORCH_KPT_FUNCTION_REF"
 
 	kptRepoUrlEnv      = "PORCH_KPT_REPO_URL"
 	kptRepoUserEnv     = "PORCH_KPT_REPO_USER"
 	kptRepoPasswordEnv = "PORCH_KPT_REPO_PASSWORD"
 
-	gcrPrefixEnv = "PORCH_GCR_PREFIX_URL"
+	gcrPrefixEnv = "PORCH_PREFIX_URL"
 )
 
 type TestSuiteWithGit struct {
@@ -95,7 +95,7 @@ func (t *TestSuiteWithGit) SetupEnvvars() {
 	t.gcpRedisBucketRef = defaultGCPRedisBucketRef
 	t.gcpHierarchyRef = defaultGCPHierarchyRef
 	t.kptRepo = defaultKPTRepo
-	t.gcrPrefix = defaultGCRPrefix
+	t.gcrPrefix = defaultKrmFnPrefix
 	t.kptFunctionRef = defaultKptFunctionRef
 
 	if e := os.Getenv(testBlueprintsRepoUrlEnv); e != "" {

@@ -37,7 +37,7 @@ func TestContainerFn(t *testing.T) {
 	}{
 		{
 			name:  "simple busybox",
-			image: "gcr.io/google-containers/busybox",
+			image: "busybox:1.37",
 		},
 		{
 			name:  "non-existing image",

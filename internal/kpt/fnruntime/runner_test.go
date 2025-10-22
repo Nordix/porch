@@ -612,14 +612,7 @@ func TestPrintFnStderr(t *testing.T) {
 4
 5`,
 			truncateOutput: false,
-			expected: `  Stderr:
-    "0"
-    "1"
-    "2"
-    "3"
-    "4"
-    "5"
-`,
+			expected:       "Stderr: 0, 1, 2, 3, 4, 5",
 		},
 	}
 	cleanupFunc := func() func() {
