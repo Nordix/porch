@@ -101,7 +101,7 @@ func (f *GitRepoFactory) CheckRepositoryConnection(ctx context.Context, reposito
 	})
 
 	refs, err := remote.List(&gogit.ListOptions{
-		Auth: auth,
+		Auth:    auth,
 		Timeout: 20,
 	})
 	if err != nil {
