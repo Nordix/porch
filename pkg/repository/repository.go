@@ -330,7 +330,7 @@ type ListPackageRevisionFilter struct {
 	Lifecycles []porchapi.PackageRevisionLifecycle
 
 	// KptfileLabels matches labels specified in the Kptfile
-	KptfileLabels map[string]string
+	KptfileLabels labels.Selector
 
 	Label labels.Selector
 }
@@ -345,22 +345,8 @@ func (f *ListPackageRevisionFilter) Matches(ctx context.Context, p PackageRevisi
 		return false
 	}
 
-	if len(f.KptfileLabels) > 0 {
-		packageRevision, err := p.GetPackageRevision(ctx)
-		if err != nil {
-			return false
-		}
-
-		if packageRevision.Spec.PackageMetadata == nil {
-			return false
-		}
-
-		for labelKey, expectedlValue := range f.KptfileLabels {
-			actualValue, exists := packageRevision.Spec.PackageMetadata.Labels[labelKey]
-			if !exists || actualValue != expectedlValue {
-				return false
-			}
-		}
+	if !f.MatchesKptfileLabels(ctx, p) {
+		return false
 	}
 
 	if !f.MatchesLabels(ctx, p) {
@@ -385,6 +371,20 @@ func (f *ListPackageRevisionFilter) FilteredRepository() string {
 func (f *ListPackageRevisionFilter) MatchesLabels(ctx context.Context, p PackageRevision) bool {
 	if f.Label != nil {
 		return f.Label.Matches(getPkgRevLabels(p))
+	}
+
+	return true
+}
+
+// MatchesKptfileLabels returns true if the filter either:
+//   - does not filter on labels in package metadata (nil KptfileLabels field), OR
+//   - matches on labels in the Kptfile of the resources of the provided PackageRevision
+func (f *ListPackageRevisionFilter) MatchesKptfileLabels(ctx context.Context, p PackageRevision) bool {
+	if f.KptfileLabels != nil {
+		packageRevision, err := p.GetPackageRevision(ctx)
+		if err != nil || packageRevision.Spec.PackageMetadata == nil {
+			return f.KptfileLabels.Matches(labels.Set(packageRevision.Spec.PackageMetadata.Labels))
+		}
 	}
 
 	return true

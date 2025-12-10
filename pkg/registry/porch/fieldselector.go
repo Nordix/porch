@@ -24,6 +24,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 )
 
@@ -74,6 +75,15 @@ var (
 			}
 			return err
 		},
+		porchapi.PkgRevSelectorKptfileLabels: func(filter *repository.ListPackageRevisionFilter, labelRequirement string) error {
+			parsedReq, err := labels.ParseToRequirements(labelRequirement)
+			if err != nil {
+				return apierrors.NewBadRequest(err.Error())
+			}
+
+			filter.KptfileLabels = filter.KptfileLabels.Add(parsedReq[0])
+			return nil
+		},
 	}
 )
 
@@ -93,18 +103,14 @@ func convertPackageFieldSelector(label, value string) (internalLabel, internalVa
 
 // convertPackageRevisionFieldSelector is the schema conversion function for normalizing the FieldSelector for PackageRevision
 func convertPackageRevisionFieldSelector(label, value string) (internalLabel, internalValue string, err error) {
-	if slices.Contains(porchapi.PackageRevisionSelectableFields, porchapi.PkgRevFieldSelector(label)) {
-		return label, value, nil
-	}
-
-	if strings.HasPrefix(label, "spec.packageMetadata.labels[") && strings.HasSuffix(label, "]") {
-		start := len("spec.packageMetadata.labels[")
-		end := len(label) - 1
-		labelKey := label[start:end]
-		if labelKey == "" {
+	mapSelectorSplit := strings.Split(label, "[")
+	if len(mapSelectorSplit) > 1 {
+		if labelKey := mapSelectorSplit[1]; labelKey == "]" {
 			return "", "", fmt.Errorf("label key cannot be empty in field selector %q", label)
 		}
+	}
 
+	if isSelectable := slices.Contains(porchapi.PackageRevisionSelectableFields, porchapi.PkgRevFieldSelector(mapSelectorSplit[0])); isSelectable {
 		return label, value, nil
 	}
 
@@ -159,8 +165,9 @@ func parsePackageFieldSelector(fieldSelector fields.Selector) (repository.ListPa
 // parsePackageRevisionFieldSelector parses client-provided fields.Selector into a ListPackageRevisionFilter
 func parsePackageRevisionFieldSelector(options *metainternalversion.ListOptions) (*repository.ListPackageRevisionFilter, error) {
 	filter := &repository.ListPackageRevisionFilter{
-		Label: options.LabelSelector,
-		Key:   repository.PackageRevisionKey{},
+		Label:         options.LabelSelector,
+		Key:           repository.PackageRevisionKey{},
+		KptfileLabels: labels.Everything(),
 	}
 
 	fieldSelector := options.FieldSelector
@@ -178,23 +185,10 @@ func parsePackageRevisionFieldSelector(options *metainternalversion.ListOptions)
 			return filter, apierrors.NewBadRequest(fmt.Sprintf("unsupported fieldSelector operator %q for field %q", requirement.Operator, requirement.Field))
 		}
 
-		if strings.HasPrefix(requirement.Field, "spec.packageMetadata.labels[") && strings.HasSuffix(requirement.Field, "]") {
-			start := len("spec.packageMetadata.labels[")
-			end := len(requirement.Field) - 1
-			labelKey := requirement.Field[start:end]
-
-			if labelKey == "" {
-				return filter, apierrors.NewBadRequest(fmt.Sprintf("label key cannot be empty in field selector %q", requirement.Field))
-			}
-
-			if filter.KptfileLabels == nil {
-				filter.KptfileLabels = make(map[string]string)
-			}
-
-			filter.KptfileLabels[labelKey] = requirement.Value
-
-			// skip the upcoming requirement.Field check
-			return filter, nil
+		mapSelectorSplit := strings.Split(requirement.Field, "[")
+		if len(mapSelectorSplit) > 1 {
+			requirement.Field = mapSelectorSplit[0]
+			requirement.Value = strings.Split(mapSelectorSplit[1], "]")[0] + "=" + requirement.Value
 		}
 
 		filteredField := porchapi.PkgRevFieldSelector(requirement.Field)

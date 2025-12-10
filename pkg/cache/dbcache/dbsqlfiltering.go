@@ -20,6 +20,7 @@ import (
 
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
 	"github.com/nephio-project/porch/pkg/repository"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 func pkgListFilter2WhereClause(filter repository.ListPackageFilter) string {
@@ -134,15 +135,19 @@ func filter2SubClauseLifecycle(whereStatement string, filterField []porchapi.Pac
 	}
 }
 
-func filter2SubClauseKptfileLabels(whereStatement string, filterLabels map[string]string, first bool) (string, bool) {
-	if len(filterLabels) == 0 {
+func filter2SubClauseKptfileLabels(whereStatement string, filterLabels labels.Selector, first bool) (string, bool) {
+	if filterLabels == nil {
+		return whereStatement, first
+	}
+	requirements, _ := filterLabels.Requirements()
+	if len(requirements) == 0 {
 		return whereStatement, first
 	}
 
 	var subClauses []string
-	for labelKey, labelValue := range filterLabels {
+	for _, req := range requirements {
 		subClause := fmt.Sprintf("(package_revisions.spec::jsonb->'packageMetadata'->'labels'->>'%s' = '%s')",
-			labelKey, labelValue)
+			req.Key(), req.Values().List()[0])
 		subClauses = append(subClauses, subClause)
 	}
 
