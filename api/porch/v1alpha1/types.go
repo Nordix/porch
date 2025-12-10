@@ -52,6 +52,7 @@ const (
 	PkgRevSelectorRepository    PkgRevFieldSelector = "spec.repository"
 	PkgRevSelectorWorkspaceName PkgRevFieldSelector = "spec.workspaceName"
 	PkgRevSelectorLifecycle     PkgRevFieldSelector = "spec.lifecycle"
+	PkgRevSelectorKptfileLabels PkgRevFieldSelector = "spec.packageMetadata.labels"
 )
 
 var PackageRevisionSelectableFields = []PkgRevFieldSelector{
@@ -62,6 +63,7 @@ var PackageRevisionSelectableFields = []PkgRevFieldSelector{
 	PkgRevSelectorRepository,
 	PkgRevSelectorWorkspaceName,
 	PkgRevSelectorLifecycle,
+	PkgRevSelectorKptfileLabels,
 }
 
 // PackageRevisionList
