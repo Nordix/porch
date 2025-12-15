@@ -64,6 +64,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/nephio-project/porch/api/porch/v1alpha1.ResultList":                     schema_porch_api_porch_v1alpha1_ResultList(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.SecretRef":                      schema_porch_api_porch_v1alpha1_SecretRef(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.Selector":                       schema_porch_api_porch_v1alpha1_Selector(ref),
+		"github.com/nephio-project/porch/api/porch/v1alpha1.SubpackageSpec":                 schema_porch_api_porch_v1alpha1_SubpackageSpec(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.Task":                           schema_porch_api_porch_v1alpha1_Task(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.TaskResult":                     schema_porch_api_porch_v1alpha1_TaskResult(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.UpstreamLock":                   schema_porch_api_porch_v1alpha1_UpstreamLock(ref),
@@ -507,6 +508,13 @@ func schema_porch_api_porch_v1alpha1_PackageCloneTaskSpec(ref common.ReferenceCa
 			SchemaProps: spec.SchemaProps{
 				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
+					"subpackage": {
+						SchemaProps: spec.SchemaProps{
+							Description: "`Subpackage` is a subpackage to clone into a parent package. If unspecified, a main package will be cloned.",
+							Default:     map[string]interface{}{},
+							Ref:         ref("github.com/nephio-project/porch/api/porch/v1alpha1.SubpackageSpec"),
+						},
+					},
 					"upstreamRef": {
 						SchemaProps: spec.SchemaProps{
 							Description: "`Upstream` is the reference to the upstream package to clone.",
@@ -518,7 +526,7 @@ func schema_porch_api_porch_v1alpha1_PackageCloneTaskSpec(ref common.ReferenceCa
 			},
 		},
 		Dependencies: []string{
-			"github.com/nephio-project/porch/api/porch/v1alpha1.UpstreamPackage"},
+			"github.com/nephio-project/porch/api/porch/v1alpha1.SubpackageSpec", "github.com/nephio-project/porch/api/porch/v1alpha1.UpstreamPackage"},
 	}
 }
 
@@ -550,9 +558,9 @@ func schema_porch_api_porch_v1alpha1_PackageInitTaskSpec(ref common.ReferenceCal
 				Properties: map[string]spec.Schema{
 					"subpackage": {
 						SchemaProps: spec.SchemaProps{
-							Description: "`Subpackage` is a directory path to a subpackage to initialize. If unspecified, the main package will be initialized.",
-							Type:        []string{"string"},
-							Format:      "",
+							Description: "`Subpackage` is a subpackage to initialize in a parent package. If unspecified, a main package will be initialized.",
+							Default:     map[string]interface{}{},
+							Ref:         ref("github.com/nephio-project/porch/api/porch/v1alpha1.SubpackageSpec"),
 						},
 					},
 					"description": {
@@ -587,6 +595,8 @@ func schema_porch_api_porch_v1alpha1_PackageInitTaskSpec(ref common.ReferenceCal
 				},
 			},
 		},
+		Dependencies: []string{
+			"github.com/nephio-project/porch/api/porch/v1alpha1.SubpackageSpec"},
 	}
 }
 
@@ -1574,6 +1584,28 @@ func schema_porch_api_porch_v1alpha1_Selector(ref common.ReferenceCallback) comm
 				},
 			},
 		},
+	}
+}
+
+func schema_porch_api_porch_v1alpha1_SubpackageSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "SubpackageSpec defines a subpackage to be initialized in or cloned into a parent package.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"parent": {
+						SchemaProps: spec.SchemaProps{
+							Description: "`Parent` is a reference to the parent of package of the subpackage",
+							Default:     map[string]interface{}{},
+							Ref:         ref("github.com/nephio-project/porch/api/porch/v1alpha1.PackageRevisionRef"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/nephio-project/porch/api/porch/v1alpha1.PackageRevisionRef"},
 	}
 }
 
