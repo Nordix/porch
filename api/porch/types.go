@@ -183,8 +183,8 @@ type RenderStatus struct {
 
 // PackageInitTaskSpec defines the package initialization task.
 type PackageInitTaskSpec struct {
-	// `Subpackage` is a directory path to a subpackage to initialize. If unspecified, the main package will be initialized.
-	Subpackage string `json:"subpackage,omitempty"`
+	// `Subpackage` is a subpackage to initialize in a parent package. If unspecified, a main package will be initialized.
+	Subpackage SubpackageSpec `json:"subpackage,omitempty"`
 	// `Description` is a short description of the package.
 	Description string `json:"description,omitempty"`
 	// `Keywords` is a list of keywords describing the package.
@@ -194,8 +194,8 @@ type PackageInitTaskSpec struct {
 }
 
 type PackageCloneTaskSpec struct {
-	// // `Subpackage` is a path to a directory where to clone the upstream package.
-	// Subpackage string `json:"subpackage,omitempty"`
+	// `Subpackage` is a subpackage to clone into a parent package. If unspecified, a main package will be cloned.
+	Subpackage SubpackageSpec `json:"subpackage,omitempty"`
 
 	// `Upstream` is the reference to the upstream package to clone.
 	Upstream UpstreamPackage `json:"upstreamRef,omitempty"`
@@ -225,6 +225,12 @@ type PackageUpgradeTaskSpec struct {
 	//    it with the remote version.
 	//  * copy-merge: Copy all the remote changes to the local package.
 	Strategy PackageMergeStrategy `json:"strategy,omitempty"`
+}
+
+// SubpackageSpec defines a subpackage to be initialized in or cloned into a parent package.
+type SubpackageSpec struct {
+	// `Parent` is a reference to the parent of package of the subpackage
+	Parent PackageRevisionRef `json:"parent,omitempty"`
 }
 
 const (
