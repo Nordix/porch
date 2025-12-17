@@ -38,6 +38,7 @@ func (f *DBCacheFactory) NewCache(ctx context.Context, options cachetypes.CacheO
 
 	return &dbCache{
 		repositories: make(map[repository.RepositoryKey]*dbRepository),
+		locks:        map[repository.RepositoryKey]*sync.Mutex{},
 		mainLock:     &sync.RWMutex{},
 		options:      options,
 	}, nil

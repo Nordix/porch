@@ -140,7 +140,7 @@ func (c completedConfig) getRestConfig() (*rest.Config, error) {
 	}
 }
 
-func (c completedConfig) getCoreClient() (client.WithWatch, error) {
+func (c completedConfig) buildClient(withWatch bool) (client.Client, error) {
 	restConfig, err := c.getRestConfig()
 	if err != nil {
 		return nil, err
@@ -154,11 +154,9 @@ func (c completedConfig) getCoreClient() (client.WithWatch, error) {
 	if err := configapi.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("error building scheme: %w", err)
 	}
-
 	if err := porchapi.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("error building scheme: %w", err)
 	}
-
 	if err := corev1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("error building scheme: %w", err)
 	}
@@ -166,49 +164,25 @@ func (c completedConfig) getCoreClient() (client.WithWatch, error) {
 		return nil, fmt.Errorf("error building scheme: %w", err)
 	}
 
-	coreClient, err := client.NewWithWatch(restConfig, client.Options{
-		Scheme: scheme,
-	})
+	if withWatch {
+		return client.NewWithWatch(restConfig, client.Options{Scheme: scheme})
+	}
+	return client.New(restConfig, client.Options{Scheme: scheme})
+}
+
+func (c completedConfig) getCoreClient() (client.WithWatch, error) {
+	coreClient, err := c.buildClient(true)
 	if err != nil {
 		return nil, fmt.Errorf("error building client for core apiserver: %w", err)
 	}
-
-	return coreClient, nil
+	return coreClient.(client.WithWatch), nil
 }
 
 func (c completedConfig) getClientReader() (client.Reader, error) {
-	restConfig, err := c.getRestConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	// set high qps/burst limits for parallel webhook operations
-	restConfig.QPS = 200
-	restConfig.Burst = 400
-
-	scheme := runtime.NewScheme()
-	if err := configapi.AddToScheme(scheme); err != nil {
-		return nil, fmt.Errorf("error building scheme: %w", err)
-	}
-
-	if err := porchapi.AddToScheme(scheme); err != nil {
-		return nil, fmt.Errorf("error building scheme: %w", err)
-	}
-
-	if err := corev1.AddToScheme(scheme); err != nil {
-		return nil, fmt.Errorf("error building scheme: %w", err)
-	}
-	if err := internalapi.AddToScheme(scheme); err != nil {
-		return nil, fmt.Errorf("error building scheme: %w", err)
-	}
-
-	clientReader, err := client.New(restConfig, client.Options{
-		Scheme: scheme,
-	})
+	clientReader, err := c.buildClient(false)
 	if err != nil {
 		return nil, fmt.Errorf("error building client reader: %w", err)
 	}
-
 	return clientReader, nil
 }
 

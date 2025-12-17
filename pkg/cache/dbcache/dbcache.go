@@ -38,6 +38,7 @@ var _ cachetypes.Cache = &dbCache{}
 
 type dbCache struct {
 	repositories map[repository.RepositoryKey]*dbRepository
+	locks        map[repository.RepositoryKey]*sync.Mutex
 	mainLock     *sync.RWMutex
 	options      cachetypes.CacheOptions
 }
@@ -51,14 +52,17 @@ func (c *dbCache) OpenRepository(ctx context.Context, repositorySpec *configapi.
 		return nil, err
 	}
 
-	c.mainLock.Lock()
-	defer c.mainLock.Unlock()
+	lock := c.getOrInsertLock(repoKey)
+	lock.Lock()
+	defer lock.Unlock()
 
+	c.mainLock.RLock()
 	if dbRepo, ok := c.repositories[repoKey]; ok {
-		// Keep the spec updated in the cache.
+		c.mainLock.RUnlock()
 		dbRepo.spec = repositorySpec
 		return dbRepo, nil
 	}
+	c.mainLock.RUnlock()
 
 	dbRepo := &dbRepository{
 		repoKey:              repoKey,
@@ -75,7 +79,10 @@ func (c *dbCache) OpenRepository(ctx context.Context, repositorySpec *configapi.
 		return nil, err
 	}
 
+	c.mainLock.Lock()
 	c.repositories[repoKey] = dbRepo
+	c.mainLock.Unlock()
+
 	dbRepo.repositorySync = newRepositorySync(dbRepo, c.options)
 
 	return dbRepo, nil
@@ -109,6 +116,17 @@ func (c *dbCache) CloseRepository(ctx context.Context, repositorySpec *configapi
 		return err
 	}
 
+	lock := c.getOrInsertLock(repoKey)
+	lock.Lock()
+	defer lock.Unlock()
+
+	defer func() {
+		c.mainLock.Lock()
+		delete(c.locks, repoKey)
+		delete(c.repositories, repoKey)
+		c.mainLock.Unlock()
+	}()
+
 	c.mainLock.RLock()
 	dbRepo, ok := c.repositories[repoKey]
 	c.mainLock.RUnlock()
@@ -116,14 +134,10 @@ func (c *dbCache) CloseRepository(ctx context.Context, repositorySpec *configapi
 		return pkgerrors.Errorf("dbcache.CloseRepository: repo %+v not found", repoKey)
 	}
 
-	defer func() {
-		c.mainLock.Lock()
-		delete(c.repositories, repoKey)
-		c.mainLock.Unlock()
-	}()
-
-	if err := dbRepo.Close(ctx); err != nil {
-		return pkgerrors.Wrapf(err, "failed to close db repository %+v", repoKey)
+	if dbRepo != nil {
+		if err := dbRepo.Close(ctx); err != nil {
+			return pkgerrors.Wrapf(err, "failed to close db repository %+v", repoKey)
+		}
 	}
 
 	return nil
@@ -149,4 +163,16 @@ func (c *dbCache) GetRepository(repoKey repository.RepositoryKey) repository.Rep
 
 func (c *dbCache) CheckRepositoryConnectivity(ctx context.Context, repositorySpec *configapi.Repository) error {
 	return externalrepo.CheckRepositoryConnection(ctx, repositorySpec, c.options.ExternalRepoOptions)
+}
+
+func (c *dbCache) getOrInsertLock(key repository.RepositoryKey) *sync.Mutex {
+
+	c.mainLock.Lock()
+	defer c.mainLock.Unlock()
+	if lock, exists := c.locks[key]; exists {
+		return lock
+	}
+	lock := &sync.Mutex{}
+	c.locks[key] = lock
+	return lock
 }
