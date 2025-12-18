@@ -16,11 +16,11 @@ package crcache
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/pkg/cache/crcache/meta"
+	"github.com/nephio-project/porch/pkg/cache/repomap"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/externalrepo"
 	"github.com/nephio-project/porch/pkg/repository"
@@ -32,9 +32,7 @@ import (
 var tracer = otel.Tracer("crcache")
 
 type Cache struct {
-	repositories  map[repository.RepositoryKey]*cachedRepository
-	mainLock      *sync.RWMutex
-	locks         map[repository.RepositoryKey]*sync.Mutex
+	repositories  repomap.SafeRepoMap
 	metadataStore meta.MetadataStore
 	options       cachetypes.CacheOptions
 }
@@ -52,23 +50,23 @@ func (c *Cache) OpenRepository(ctx context.Context, repositorySpec *configapi.Re
 		return nil, err
 	}
 
-	lock := c.getOrInsertLock(key)
-	lock.Lock()
-	defer lock.Unlock()
-
-	c.mainLock.RLock()
-	if repo, ok := c.repositories[key]; ok && repo != nil {
-		c.mainLock.RUnlock()
-		// Keep the spec updated in the cache.
-		repo.repoSpec = repositorySpec
-		// If there is an error from the background refresh goroutine, return it.
-		if err := repo.getRefreshError(); err != nil {
-			return nil, err
-		}
-		return repo, nil
+	foundRepo, ok := c.repositories.Load(key)
+	if !ok || foundRepo == nil {
+		return c.createRepository(ctx, key, repositorySpec)
 	}
-	c.mainLock.RUnlock()
 
+	repo := foundRepo.(*cachedRepository)
+
+	// Keep the spec updated in the cache.
+	repo.repoSpec = repositorySpec
+	// If there is an error from the background refresh goroutine, return it.
+	if err := repo.getRefreshError(); err != nil {
+		return nil, err
+	}
+	return repo, nil
+}
+
+func (c *Cache) createRepository(ctx context.Context, key repository.RepositoryKey, repositorySpec *configapi.Repository) (repository.Repository, error) {
 	externalRepo, err := externalrepo.CreateRepositoryImpl(ctx, repositorySpec, c.options.ExternalRepoOptions)
 	if err != nil {
 		return nil, err
@@ -76,10 +74,7 @@ func (c *Cache) OpenRepository(ctx context.Context, repositorySpec *configapi.Re
 
 	cachedRepo := newRepository(key, repositorySpec, externalRepo, c.metadataStore, c.options)
 
-	c.mainLock.Lock()
-	c.repositories[key] = cachedRepo
-	c.mainLock.Unlock()
-
+	c.repositories.Store(key, cachedRepo)
 	return cachedRepo, nil
 }
 
@@ -96,20 +91,7 @@ func (c *Cache) CloseRepository(ctx context.Context, repositorySpec *configapi.R
 		return err
 	}
 
-	lock := c.getOrInsertLock(key)
-	lock.Lock()
-	defer lock.Unlock()
-
-	defer func() {
-		c.mainLock.Lock()
-		delete(c.locks, key)
-		delete(c.repositories, key)
-		c.mainLock.Unlock()
-	}()
-
-	c.mainLock.RLock()
-	repo, ok := c.repositories[key]
-	c.mainLock.RUnlock()
+	repo, ok := c.repositories.LoadAndDelete(key)
 
 	if ok && repo != nil {
 		if err := repo.Close(ctx); err != nil {
@@ -125,34 +107,19 @@ func (c *Cache) CloseRepository(ctx context.Context, repositorySpec *configapi.R
 func (c *Cache) GetRepositories() []*configapi.Repository {
 	repoSlice := []*configapi.Repository{}
 
-	c.mainLock.RLock()
-	defer c.mainLock.RUnlock()
-	for _, repo := range c.repositories {
-		repoSlice = append(repoSlice, repo.repoSpec)
-	}
+	c.repositories.Range(func(key, value any) bool {
+		repoSlice = append(repoSlice, value.(*cachedRepository).repoSpec)
+		return true
+	})
 
 	return repoSlice
 }
 
 func (c *Cache) GetRepository(repoKey repository.RepositoryKey) repository.Repository {
-	c.mainLock.RLock()
-	defer c.mainLock.RUnlock()
-	return c.repositories[repoKey]
+	repo, _ := c.repositories.Load(repoKey)
+	return repo
 }
 
 func (c *Cache) CheckRepositoryConnectivity(ctx context.Context, repositorySpec *configapi.Repository) error {
 	return externalrepo.CheckRepositoryConnection(ctx, repositorySpec, c.options.ExternalRepoOptions)
-}
-
-func (c *Cache) getOrInsertLock(key repository.RepositoryKey) *sync.Mutex {
-
-	c.mainLock.Lock()
-	defer c.mainLock.Unlock()
-	if lock, exists := c.locks[key]; exists {
-		return lock
-	}
-	lock := &sync.Mutex{}
-	c.locks[key] = lock
-
-	return lock
 }
