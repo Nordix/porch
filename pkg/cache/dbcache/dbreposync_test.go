@@ -18,7 +18,7 @@ import (
 	"time"
 
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
-	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	configapi "github.com/nephio-project/porch/controllers/repositories/api/v1alpha1"
 	"github.com/nephio-project/porch/pkg/cache/testutil"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/externalrepo"
@@ -152,7 +152,7 @@ func (t *DbTestSuite) TestDBSyncRunOnceAt() {
 			Namespace: namespace,
 		},
 		Spec: configapi.RepositorySpec{
-			Sync: &configapi.RepositorySync{
+			Sync: &configapi.CacheSync{
 				RunOnceAt: &runOnceTime,
 			},
 		},
@@ -161,7 +161,7 @@ func (t *DbTestSuite) TestDBSyncRunOnceAt() {
 
 	fakeClient := testutil.NewFakeClientWithStatus(scheme, repoObj)
 	testRepo := t.createTestRepo(namespace, repoName)
-	testRepo.spec.Spec.Sync = &configapi.RepositorySync{
+	testRepo.spec.Spec.Sync = &configapi.CacheSync{
 		RunOnceAt: &runOnceTime,
 	}
 	mockCache.EXPECT().GetRepository(mock.Anything).Return(testRepo).Maybe()
