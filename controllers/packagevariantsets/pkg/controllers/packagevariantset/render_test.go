@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
-	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	configapi "github.com/nephio-project/porch/controllers/repositories/api/v1alpha1"
 	pkgvarapi "github.com/nephio-project/porch/controllers/packagevariants/api/v1alpha1"
 	api "github.com/nephio-project/porch/controllers/packagevariantsets/api/v1alpha2"
 	kptfilev1 "github.com/nephio-project/porch/pkg/kpt/api/kptfile/v1"
