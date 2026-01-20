@@ -316,15 +316,17 @@ func (t *TestSuite) createOrUpdate(obj client.Object, opts []client.CreateOption
 	}()
 
 	// for create, object MUST NOT have resourceVersion set
-	resVer := obj.GetResourceVersion()
 	obj.SetResourceVersion("")
 	if err := t.Client.Create(t.GetContext(), obj, opts...); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			succeededOp = "update"
-			t.Logf("failed to create resource as it already exists - attempting to update resource %v", DebugFormat(obj))
+			t.Logf("resource already exists - attempting to update resource %v", DebugFormat(obj))
 
 			// for update, object MUST have resourceVersion set
-			obj.SetResourceVersion(resVer)
+			// get it to make sure we have the most up-to-date resourceVersion
+			upToDateObj := obj.DeepCopyObject().(client.Object)
+			t.Reader.Get(t.GetContext(), client.ObjectKeyFromObject(obj), upToDateObj)
+			obj.SetResourceVersion(upToDateObj.GetResourceVersion())
 			if err := t.Client.Update(t.GetContext(), obj); err != nil {
 				eh("failed to update resource %s: %v", DebugFormat(obj), err)
 			}
@@ -569,7 +571,7 @@ func (t *TestSuite) CountPackageRevisions() *PackageRevisionStatusCounts {
 	packageRevisions, err := t.Clientset.PorchV1alpha1().PackageRevisions(t.Namespace).
 		List(t.GetContext(), metav1.ListOptions{})
 	if err != nil {
-		t.Fatalf("error getting package revisions to count: %w")
+		t.Fatalf("error getting package revisions to count: %w", err)
 	}
 
 	counts := &PackageRevisionStatusCounts{}
@@ -595,6 +597,7 @@ type PackageRevisionStatusCounts struct {
 
 func (t *MultiClusterTestSuite) PackageRevisionCountsMustMatch(expected *PackageRevisionStatusCounts) {
 	t.T().Helper()
+
 	actual := t.CountPackageRevisions()
 
 	// use assert.Equal for the individual lifecycle statuses so as to check all of them

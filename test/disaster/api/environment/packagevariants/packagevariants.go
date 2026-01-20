@@ -17,14 +17,17 @@ import (
 	"slices"
 
 	"github.com/nephio-project/porch/test/e2e/suiteutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pvapi "github.com/nephio-project/porch/controllers/packagevariants/api/v1alpha1"
 	"github.com/nephio-project/porch/controllers/packagevariantsets/pkg/controllers/packagevariantset"
 )
 
 func Backup(t *suiteutils.MultiClusterTestSuite) *pvapi.PackageVariantList {
+	t.T().Helper()
+
 	var variants pvapi.PackageVariantList
-	t.ListF(&variants)
+	t.ListF(&variants, client.InNamespace(t.Namespace))
 	variants.Items = slices.DeleteFunc(variants.Items, func(aVariant pvapi.PackageVariant) bool {
 		_, createdByVariantSet := aVariant.Labels[packagevariantset.PackageVariantSetOwnerLabel]
 		return createdByVariantSet
@@ -33,6 +36,8 @@ func Backup(t *suiteutils.MultiClusterTestSuite) *pvapi.PackageVariantList {
 }
 
 func Reconcile(t *suiteutils.MultiClusterTestSuite, variants *pvapi.PackageVariantList, batchSize int) {
+	t.T().Helper()
+
 	for batch := range slices.Chunk(variants.Items, batchSize) {
 		for _, each := range batch {
 			t.CreateOrUpdateE(&each)

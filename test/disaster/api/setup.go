@@ -23,12 +23,14 @@ var (
 )
 
 func setupEnv(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
 	if err := (shell.ShellRunner{PorchRoot: t.PorchRoot}).RunCommandLine(t.PorchRoot + setupScript); err != nil {
 		t.Fatalf("Error running %s: %v", t.PorchRoot+setupScript, err)
 	}
 }
 
 func resetEnv(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
 	if err := (shell.ShellRunner{PorchRoot: t.PorchRoot}).RunCommandLine(t.PorchRoot+setupScript, "reset"); err != nil {
 		t.Fatalf("Error running %s: %v", t.PorchRoot+setupScript, err)
 	}

@@ -696,7 +696,7 @@ func validateRepository(w http.ResponseWriter, r *http.Request, clientReader cli
 		}
 		if isConflict(&existing, &attempted) {
 			klog.Errorf("repository validation failed: conflict detected between attempted %s/%s and existing %s/%s", attempted.Namespace, attempted.Name, existing.Namespace, existing.Name)
-			writeModificationResponse(fmt.Sprintf("Repository conflict with existing repository: %s/%s", existing.Namespace, existing.Name), "RepositoryConflict", admissionReviewRequest, &w)
+			writeModificationResponse(fmt.Sprintf("Repository %s/%s would conflict with existing repository: %s/%s", attempted.Namespace, attempted.Name, existing.Namespace, existing.Name), "RepositoryConflict", admissionReviewRequest, &w)
 			return
 		}
 	}

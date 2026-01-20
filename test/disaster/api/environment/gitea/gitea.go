@@ -34,6 +34,8 @@ const (
 )
 
 func Backup(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
 	kind.UseDataCluster(t)
 	var service corev1.Service
 	t.GetF(client.ObjectKey{
@@ -68,6 +70,8 @@ func Backup(t *suiteutils.MultiClusterTestSuite) {
 		return
 	}()
 
+	t.Logf("Backing up %d Gitea repos...", len(repoUrls))
+
 	if err := os.RemoveAll(backupRootFolder); err != nil {
 		t.Fatalf("error backing up Gitea: error deleting previous backup: %w", err)
 	}
@@ -76,16 +80,23 @@ func Backup(t *suiteutils.MultiClusterTestSuite) {
 		t.Logf("Cloning repo to back up: %q", url)
 		dir := fmt.Sprintf("%s/%s", backupRootFolder, name)
 		if _, err := git.PlainClone(dir, false, &git.CloneOptions{
-			URL:      url,
-			Progress: os.Stdout,
-			Tags:     git.AllTags,
+			URL:          url,
+			Progress:     os.Stdout,
+			Tags:         git.AllTags,
+			SingleBranch: false,
 		}); err != nil {
 			t.Fatalf("error backing up Gitea: error cloning repo %q: %w", url, err.Error())
 		}
 	}
+
+	t.Logf("Backed up Gitea repos to directory %q", backupRootFolder)
 }
 
 func Wipe(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
+	t.Logf("Wiping Gitea")
+
 	kind.UseDataCluster(t)
 	if err := t.KubeClient.CoreV1().Pods("gitea").
 		DeleteCollection(t.GetContext(),
@@ -113,13 +124,19 @@ func Wipe(t *suiteutils.MultiClusterTestSuite) {
 		}
 		t.Logf("Still waiting for Gitea pod...")
 	}
+
+	t.Logf("Wiped Gitea")
 }
 
 func Restore(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
 	repoBackups, err := os.ReadDir(backupRootFolder)
 	if err != nil {
 		t.Fatalf("error restoring Gitea: error searching for repo backups in %q: %w", backupRootFolder, err)
 	}
+
+	t.Logf("Restoring %d Gitea repos from directory %q", len(repoBackups), backupRootFolder)
 
 	for _, repoDir := range repoBackups {
 		if repoDir.IsDir() {
@@ -139,4 +156,6 @@ func Restore(t *suiteutils.MultiClusterTestSuite) {
 			}
 		}
 	}
+
+	t.Logf("Successfully restored Gitea repos")
 }

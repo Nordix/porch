@@ -17,17 +17,24 @@ import (
 	"slices"
 
 	"github.com/nephio-project/porch/test/e2e/suiteutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 )
 
 func Backup(t *suiteutils.MultiClusterTestSuite) *configapi.RepositoryList {
+	t.T().Helper()
+
 	var repos configapi.RepositoryList
-	t.ListF(&repos)
+	t.ListF(&repos, client.InNamespace(t.Namespace))
+	t.Logf("Backed up %d Porch Repository objects", len(repos.Items))
 	return &repos
 }
 
 func Reconcile(t *suiteutils.MultiClusterTestSuite, repos *configapi.RepositoryList, batchSize int) {
+	t.T().Helper()
+
+	t.Logf("Reconciling %d Porch Repository objects in batches of %d", len(repos.Items), batchSize)
 	for batch := range slices.Chunk(repos.Items, batchSize) {
 		for _, each := range batch {
 			t.CreateOrUpdateE(&each)

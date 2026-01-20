@@ -49,10 +49,11 @@ func (t *MultiClusterTestSuite) SetupSuite() {
 }
 
 func (t *MultiClusterTestSuite) UseKubeconfigFile(kubeconfigPath string) {
+	t.T().Helper()
 	os.Setenv(clientcmd.RecommendedConfigPathEnvVar, t.PorchRoot+kubeconfigPath)
 	cfg, err := config.GetConfig()
 	if err != nil {
-		t.Fatalf("Unable to switch clusters - error loading k8s client config from %q: %v", kubeconfigPath, err)
+		t.Fatalf("Unable to switch clusters - error loading Kubernetes client config from file%q: %v", kubeconfigPath, err)
 	}
 
 	if cachedClient, found := t.clients[kubeconfigPath]; found {
@@ -111,6 +112,8 @@ func (t *MultiClusterTestSuite) UseKubeconfigFile(kubeconfigPath string) {
 			t.KubeClient = newKubeClient
 		}
 	}
+
+	t.Logf("Now using kubeconfig file %q", kubeconfigPath)
 }
 
 func (t *MultiClusterTestSuite) DropCachedClients(kubeconfigPath string) {

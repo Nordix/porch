@@ -469,6 +469,8 @@ func (t *TestSuite) WaitUntilMultipleRepositoriesReady(waitingRepos []configapi.
 		return
 	}()
 
+	t.Logf("Waiting for %d repositories in namespace %q to be ready: %s", len(repoNames), t.Namespace, repoNames)
+
 	var innerErr error
 	err := wait.PollUntilContextTimeout(t.GetContext(), time.Second, 300*time.Second, true, func(ctx context.Context) (bool, error) {
 		var repos configapi.RepositoryList
@@ -491,7 +493,7 @@ func (t *TestSuite) WaitUntilMultipleRepositoriesReady(waitingRepos []configapi.
 		return allReady, nil
 	})
 	if err != nil {
-		t.Fatalf("Repositories not ready after wait: %v", innerErr)
+		t.Fatalf("Repositories not ready after wait: %w (inner error: %w)", err, innerErr)
 	}
 }
 

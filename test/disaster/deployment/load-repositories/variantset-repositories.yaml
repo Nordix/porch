@@ -22,7 +22,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-1.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-1.git
   type: git
 
 ---
@@ -37,7 +37,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-2.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-2.git
   type: git
 
 ---
@@ -52,7 +52,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-3.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-3.git
   type: git
 
 ---
@@ -67,7 +67,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-4.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-4.git
   type: git
 
 ---
@@ -82,7 +82,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-5.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-5.git
   type: git
 
 ---
@@ -97,7 +97,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-6.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-6.git
   type: git
 
 ---
@@ -112,7 +112,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-7.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-7.git
   type: git
 
 ---
@@ -127,7 +127,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-8.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-8.git
   type: git
 
 ---
@@ -142,7 +142,7 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-9.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-9.git
   type: git
 
 ---
@@ -157,5 +157,5 @@ spec:
   git:
     branch: main
     directory: /
-    repo: http://nephio:secret@172.18.255.200:3000/nephio/variantset-edge-10.git
+    repo: http://[GITEA_PLACEHOLDER]/nephio/variantset-edge-10.git
   type: git

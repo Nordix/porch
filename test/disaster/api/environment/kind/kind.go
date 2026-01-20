@@ -30,16 +30,23 @@ var (
 )
 
 func Wipe(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
+	t.Logf("Wiping Porch Kind clusters...")
 	if err := deleteCluster(t, dbCacheCluster); err != nil {
-		t.Fatalf("error wiping Porch cluster: error deleting Kind clusters: %w", err)
+		t.Fatalf("error wiping Porch cluster with DB cache: error deleting Kind cluster %q: %w", dbCacheCluster, err)
 	}
 	t.DropCachedClients(dbCacheKubeconfigFile)
 	// if err := deleteCluster(crCacheCluster); err != nil {
-	// 	t.Fatalf("error wiping Porch cluster: error deleting Kind clusters: %w", err)
+	// 	t.Fatalf("error wiping Porch cluster with CR cache: error deleting Kind cluster %q: %w", crCacheCluster, err)
 	// }
+	t.Logf("Wiped Porch Kind clusters...")
 }
 
 func Reinstall(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
+	t.Logf("Reinstalling Porch Kind clusters...")
 	if err := createCluster(t, dbCacheCluster, t.PorchRoot+dbCacheKubeconfigFile); err != nil {
 		t.Fatalf("error reinstalling Porch cluster %q: error creating Kind cluster: %w", dbCacheCluster, err)
 	}
@@ -52,27 +59,48 @@ func Reinstall(t *suiteutils.MultiClusterTestSuite) {
 	if err := installPorchDBCache(t); err != nil {
 		t.Fatalf("error reinstalling Porch cluster %q: error deploying Porch: %w", dbCacheCluster, err.Error())
 	}
+	// UseCRCacheCluster(t)
+	// if err := installPorchCRCache(t); err != nil {
+	// 	t.Fatalf("error reinstalling Porch cluster %q: error deploying Porch: %w", crCacheCluster, err.Error())
+	// }
 }
 
 func UseDataCluster(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
+	t.Logf("Switching kubeconfig to data cluster")
 	t.UseKubeconfigFile(dataClusterKubeconfigFile)
 }
 func UseDBCacheCluster(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
+	t.Logf("Switching kubeconfig to Porch cluster with DB cache")
 	t.UseKubeconfigFile(dbCacheKubeconfigFile)
 }
 func UseCRCacheCluster(t *suiteutils.MultiClusterTestSuite) {
+	t.T().Helper()
+
+	t.Logf("Switching kubeconfig to Porch cluster with CR cache")
 	t.UseKubeconfigFile(crCacheKubeconfigFile)
 }
 
 func deleteCluster(t *suiteutils.MultiClusterTestSuite, clusterName string) error {
+	t.T().Helper()
+
 	return (shell.ShellRunner{PorchRoot: t.PorchRoot}).RunCommandLine("kind", "delete", "cluster", "--name", clusterName)
 }
 
 func createCluster(t *suiteutils.MultiClusterTestSuite, clusterName string, kubeconfigPath string) error {
+	t.T().Helper()
+
+	t.Logf("Creating Kind cluster %q", clusterName)
 	return (shell.ShellRunner{PorchRoot: t.PorchRoot}).RunCommandLine("kind", "create", "cluster", "--name", clusterName, "--kubeconfig", kubeconfigPath)
 }
 
 func installPorchDBCache(t *suiteutils.MultiClusterTestSuite) error {
+	t.T().Helper()
+
+	t.Logf("Installing Porch with DB cache")
 	return (shell.ShellRunner{PorchRoot: t.PorchRoot}).RunCommandLine("make",
 		"-C", t.PorchRoot, "load-images-to-kind",
 		"deploy-current-config", "IMAGE_REPO=porch-kind", "IMAGE_TAG=test",

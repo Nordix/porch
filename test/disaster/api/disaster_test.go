@@ -17,18 +17,22 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-billy/v5/helper/chroot"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/storage/filesystem"
+	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/test/disaster/api/environment/gitea"
 	"github.com/nephio-project/porch/test/disaster/api/environment/kind"
 	"github.com/nephio-project/porch/test/disaster/api/environment/packagevariants"
 	"github.com/nephio-project/porch/test/disaster/api/environment/packagevariantsets"
+	"github.com/nephio-project/porch/test/disaster/api/environment/pods"
 	repositories "github.com/nephio-project/porch/test/disaster/api/environment/porchrepositories"
 	"github.com/nephio-project/porch/test/disaster/api/environment/postgres"
 	"github.com/nephio-project/porch/test/e2e/suiteutils"
 	"github.com/stretchr/testify/suite"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type PorchDisasterSuite struct {
@@ -38,8 +42,20 @@ type PorchDisasterSuite struct {
 	skipVariantSets bool
 }
 
+func TestDisasterRecovery(t *testing.T) {
+	// Skip if not running disaster-recovery tests
+	if os.Getenv("DISASTER") == "" {
+		t.Skip("Skipping disaster-recovery tests in non-disaster-recovery environment")
+	}
+
+	suite.Run(t, &PorchDisasterSuite{
+		skipVariants:    true,
+		skipVariantSets: true,
+	})
+}
+
 func (t *PorchDisasterSuite) SetupSuite() {
-	suite := &t.MultiClusterTestSuite
+	s := &t.MultiClusterTestSuite
 
 	t.PorchRoot = func() string {
 
@@ -61,48 +77,53 @@ func (t *PorchDisasterSuite) SetupSuite() {
 	}
 
 	if os.Getenv("SETUP_ENV") == "true" {
-		setupEnv(suite)
-	}
-	if os.Getenv("SETUP_ENV") == "reset" {
-		resetEnv(suite)
+		setupEnv(s)
 	}
 
-	suite.SetupSuite()
+	s.SetupSuite()
 }
 
-func TestDisasterRecovery(t *testing.T) {
-	// Skip if not running E2E tests
-	if os.Getenv("E2E") == "" {
-		t.Skip("Skipping disaster-recovery tests in non-E2E environment")
+func (t *PorchDisasterSuite) SetupTest() {
+	s := &t.MultiClusterTestSuite
+	kind.UseDBCacheCluster(s)
+	actualCounts := t.CountPackageRevisions()
+	environmentReady := func() bool {
+		expectedCountsBefore := &suiteutils.PackageRevisionStatusCounts{
+			Total:            1044,
+			Draft:            5,
+			Proposed:         5,
+			Published:        1029,
+			DeletionProposed: 5,
+		}
+
+		return actualCounts.Total == expectedCountsBefore.Total &&
+			actualCounts.Draft == expectedCountsBefore.Draft &&
+			actualCounts.Proposed == expectedCountsBefore.Proposed &&
+			actualCounts.Published == expectedCountsBefore.Published &&
+			actualCounts.DeletionProposed == expectedCountsBefore.DeletionProposed
 	}
 
-	disSuite := PorchDisasterSuite{
-		skipVariants:    true,
-		skipVariantSets: true,
+	if !environmentReady() {
+		if _, err := os.Stat("./dumped_db.sql"); err == nil {
+			t.Logf("found DB cache backup from previous test - restoring from it")
+			postgres.Restore(s)
+			kind.UseDBCacheCluster(s)
+		} else {
+			t.Logf("resetting environment before test")
+			resetEnv(s)
+		}
 	}
-	suite.Run(t, &disSuite)
+
+	actualCounts = t.CountPackageRevisions()
+	if !environmentReady() {
+		t.Logf("DB cache restoration did not restore all expected package revisions - resetting environment")
+		resetEnv(s)
+	}
 }
 
 func (t *PorchDisasterSuite) TestCompleteDisaster() {
 	s := &t.MultiClusterTestSuite
 
-	// expectedCountsBefore := &suiteutils.PackageRevisionStatusCounts{
-	// 	Total:            1100,
-	// 	Draft:            5,
-	// 	Proposed:         5,
-	// 	Published:        1065,
-	// 	DeletionProposed: 5,
-	// }
-	expectedCountsBefore := &suiteutils.PackageRevisionStatusCounts{
-		Total:            1044,
-		Draft:            5,
-		Proposed:         5,
-		Published:        1029,
-		DeletionProposed: 5,
-	}
-	t.PackageRevisionCountsMustMatch(expectedCountsBefore)
-
-	kind.UseDataCluster(s)
 	gitea.Backup(s)
 	postgres.Backup(s)
 
@@ -112,12 +133,10 @@ func (t *PorchDisasterSuite) TestCompleteDisaster() {
 	variantSetsToReconcile := packagevariantsets.Backup(s)
 
 	kind.Wipe(s)
-	kind.UseDataCluster(s)
 	gitea.Wipe(s)
 	postgres.Wipe(s)
 
 	kind.Reinstall(s)
-	kind.UseDataCluster(s)
 	gitea.Restore(s)
 	postgres.Restore(s)
 
@@ -126,5 +145,143 @@ func (t *PorchDisasterSuite) TestCompleteDisaster() {
 	packagevariants.Reconcile(s, variantsToReconcile, 20)
 	packagevariantsets.Reconcile(s, variantSetsToReconcile, 20)
 
-	t.PackageRevisionCountsMustMatch(expectedCountsBefore)
+	expectedCountsAfter := &suiteutils.PackageRevisionStatusCounts{
+		Total:            1044,
+		Draft:            5,
+		Proposed:         5,
+		Published:        1029,
+		DeletionProposed: 5,
+	}
+	t.PackageRevisionCountsMustMatch(expectedCountsAfter)
+}
+
+func (t *PorchDisasterSuite) TestKubernetesClusterLoss() {
+	s := &t.MultiClusterTestSuite
+
+	kind.UseDBCacheCluster(s)
+	repositoriesToReconcile := repositories.Backup(s)
+	variantsToReconcile := packagevariants.Backup(s)
+	variantSetsToReconcile := packagevariantsets.Backup(s)
+
+	kind.Wipe(s)
+
+	kind.Reinstall(s)
+
+	kind.UseDBCacheCluster(s)
+	repositories.Reconcile(s, repositoriesToReconcile, 20)
+	packagevariants.Reconcile(s, variantsToReconcile, 20)
+	packagevariantsets.Reconcile(s, variantSetsToReconcile, 20)
+
+	expectedCountsAfter := &suiteutils.PackageRevisionStatusCounts{
+		Total:            1044,
+		Draft:            5,
+		Proposed:         5,
+		Published:        1029,
+		DeletionProposed: 5,
+	}
+	t.PackageRevisionCountsMustMatch(expectedCountsAfter)
+}
+
+func (t *PorchDisasterSuite) TestDBCacheLossWithoutBackup() {
+	s := &t.MultiClusterTestSuite
+
+	//************************************************************
+	// test case is "without a backup", but we need one afterward
+	// to restore the environment to a known state for other tests
+	//************************************************************
+	postgres.Backup(s)
+
+	kind.UseDBCacheCluster(s)
+	repositoriesToReconcile := repositories.Backup(s)
+	variantsToReconcile := packagevariants.Backup(s)
+	variantSetsToReconcile := packagevariantsets.Backup(s)
+
+	postgres.Wipe(s)
+
+	kind.UseDBCacheCluster(s)
+	repositories.Reconcile(s, repositoriesToReconcile, 20)
+	packagevariants.Reconcile(s, variantsToReconcile, 20)
+	packagevariantsets.Reconcile(s, variantSetsToReconcile, 20)
+
+	// no package revisions available with no DB cache
+	expectedCountsAfter := &suiteutils.PackageRevisionStatusCounts{
+		Total:            0,
+		Draft:            0,
+		Proposed:         0,
+		Published:        0,
+		DeletionProposed: 0,
+	}
+	t.PackageRevisionCountsMustMatch(expectedCountsAfter)
+
+	// restarting porch-server microservice allows it to rebuild what it can from Git
+	// Draft, Proposed, and DeletionProposed data is lost
+	pods.RestartPorchServer(s)
+	expectedCountsAfterServerRestart := &suiteutils.PackageRevisionStatusCounts{
+		Total:            1034,
+		Draft:            0,
+		Proposed:         0,
+		Published:        1034,
+		DeletionProposed: 0,
+	}
+	t.PackageRevisionCountsMustMatch(expectedCountsAfterServerRestart)
+
+	//*******************************
+	// restore environment after test
+	//*******************************
+	postgres.Restore(s)
+}
+
+func (t *PorchDisasterSuite) TestDBCacheLossWithBackup() {
+	s := &t.MultiClusterTestSuite
+
+	postgres.Backup(s)
+
+	kind.UseDBCacheCluster(s)
+	repositoriesToReconcile := repositories.Backup(s)
+	variantsToReconcile := packagevariants.Backup(s)
+	variantSetsToReconcile := packagevariantsets.Backup(s)
+
+	kind.UseDataCluster(s)
+	postgres.Wipe(s)
+
+	kind.UseDataCluster(s)
+	postgres.Restore(s)
+
+	kind.UseDBCacheCluster(s)
+	repositories.Reconcile(s, repositoriesToReconcile, 20)
+	packagevariants.Reconcile(s, variantsToReconcile, 20)
+	packagevariantsets.Reconcile(s, variantSetsToReconcile, 20)
+
+	expectedCountsAfter := &suiteutils.PackageRevisionStatusCounts{
+		Total:            1044,
+		Draft:            5,
+		Proposed:         5,
+		Published:        1029,
+		DeletionProposed: 5,
+	}
+	t.PackageRevisionCountsMustMatch(expectedCountsAfter)
+}
+
+func (t *PorchDisasterSuite) TestPorchPodsUngracefulRestart() {
+	s := &t.MultiClusterTestSuite
+
+	kind.UseDBCacheCluster(s)
+	pods.RestartAllPorchPods(s)
+
+	// wait a bit before trying to reconcile Porch objects
+	// give porch-server some time to re-sync everything and get the API available again
+	time.Sleep(1 * time.Minute)
+
+	var repos configapi.RepositoryList
+	t.ListF(&repos, client.InNamespace(t.Namespace))
+	t.WaitUntilMultipleRepositoriesReady(repos.Items)
+
+	expectedCountsAfter := &suiteutils.PackageRevisionStatusCounts{
+		Total:            1044,
+		Draft:            5,
+		Proposed:         5,
+		Published:        1029,
+		DeletionProposed: 5,
+	}
+	t.PackageRevisionCountsMustMatch(expectedCountsAfter)
 }
