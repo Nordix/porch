@@ -14,6 +14,8 @@
 package pods
 
 import (
+	"time"
+
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/test/e2e/suiteutils"
 	corev1 "k8s.io/api/core/v1"
@@ -59,6 +61,7 @@ func RestartPorchServer(t *suiteutils.MultiClusterTestSuite) {
 	var repos configapi.RepositoryList
 	t.ListF(&repos, client.InNamespace(t.Namespace))
 	t.WaitUntilMultipleRepositoriesReady(repos.Items)
+	time.Sleep(1 * time.Minute)
 }
 
 func RestartAllPorchPods(t *suiteutils.MultiClusterTestSuite) {

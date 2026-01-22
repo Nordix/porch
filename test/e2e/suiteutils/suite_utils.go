@@ -486,9 +486,11 @@ func (t *TestSuite) WaitUntilMultipleRepositoriesReady(waitingRepos []configapi.
 		}
 
 		allReady := !slices.ContainsFunc(repos.Items, func(aRepo configapi.Repository) bool {
-			return slices.ContainsFunc(repoNames, func(aName string) bool { return aName == aRepo.Name }) && (aRepo.Status.Conditions == nil || slices.ContainsFunc(aRepo.Status.Conditions, func(aCondition metav1.Condition) bool {
-				return aCondition.Type == configapi.RepositoryReady && aCondition.Status != metav1.ConditionTrue
-			}))
+			return slices.Contains(repoNames, aRepo.Name) &&
+				(aRepo.Status.Conditions == nil ||
+					slices.ContainsFunc(aRepo.Status.Conditions, func(aCondition metav1.Condition) bool {
+						return aCondition.Type == configapi.RepositoryReady && aCondition.Status != metav1.ConditionTrue
+					}))
 		})
 		return allReady, nil
 	})
@@ -770,6 +772,24 @@ func (t *TestSuite) AddResourceToPackage(resources *porchapi.PackageRevisionReso
 		t.Fatalf("Failed to read file from %q: %v", filePath, err)
 	}
 	resources.Spec.Resources[name] = string(file)
+}
+
+func (t *TestSuite) TimingHelper(operationDescription string, toTime func(t *TestSuite)) {
+	t.T().Helper()
+	start := time.Now()
+
+	defer func() {
+		t.T().Helper()
+		descForLog := func() string {
+			if operationDescription != "" {
+				return " to " + operationDescription
+			}
+			return ""
+		}()
+		t.Logf("took %v%s", time.Since(start), descForLog)
+	}()
+
+	toTime(t)
 }
 
 func RunInParallel(functions ...func() any) []any {
