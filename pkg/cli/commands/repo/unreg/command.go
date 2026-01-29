@@ -147,8 +147,5 @@ func getSecretName(repo *configapi.Repository) string {
 	if repo.Spec.Git != nil {
 		return repo.Spec.Git.SecretRef.Name
 	}
-	if repo.Spec.Oci != nil {
-		return repo.Spec.Oci.SecretRef.Name
-	}
 	return ""
 }

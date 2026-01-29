@@ -47,9 +47,7 @@ var RegLong = `
 Args:
 
   REPOSITORY:
-    The URI for the registry. It can be either a git repository
-    or an oci repository. For the latter, the URI must have the
-    'oci://' prefix.
+    The URI for a git repository.
 
 Flags:
 

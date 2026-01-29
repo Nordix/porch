@@ -111,8 +111,7 @@ type PackageRevisionSpec struct {
 	// cloned from another package.
 	// Each change to the packagerevision will result in a correspondig
 	// task being added to the list of tasks. It will describe the operation
-	// performed and will have a corresponding entry (commit or layer) in git
-	// or oci.
+	// performed and will have a corresponding entry (commit) in git.
 	// The task slice describes the history of the packagerevision, so it
 	// is an append only list (We might introduce some kind of compaction in the
 	// future to keep the number of tasks at a reasonable number).
@@ -253,19 +252,15 @@ type RepositoryType string
 
 const (
 	RepositoryTypeGit RepositoryType = "git"
-	RepositoryTypeOCI RepositoryType = "oci"
 )
 
 // UpstreamRepository repository may be specified directly or by referencing another Repository resource.
 type UpstreamPackage struct {
-	// Type of the repository (i.e. git, OCI). If empty, `upstreamRef` will be used.
+	// Type of the repository (i.e. git). If empty, `upstreamRef` will be used.
 	Type RepositoryType `json:"type,omitempty"`
 
 	// Git upstream package specification. Required if `type` is `git`. Must be unspecified if `type` is not `git`.
 	Git *GitPackage `json:"git,omitempty"`
-
-	// OCI upstream package specification. Required if `type` is `oci`. Must be unspecified if `type` is not `oci`.
-	Oci *OciPackage `json:"oci,omitempty"`
 
 	// UpstreamRef is the reference to the package from a registered repository rather than external package.
 	UpstreamRef *PackageRevisionRef `json:"upstreamRef,omitempty"`
@@ -289,12 +284,6 @@ type GitPackage struct {
 type SecretRef struct {
 	// Name of the secret. The secret is expected to be located in the same namespace as the resource containing the reference.
 	Name string `json:"name"`
-}
-
-// OciPackage describes a repository compatible with the Open Container Registry standard.
-type OciPackage struct {
-	// Image is the address of an OCI image.
-	Image string `json:"image"`
 }
 
 // PackageRevisionRef is a reference to a package revision.
@@ -556,8 +545,7 @@ type PackageSpec struct {
 type PackageStatus struct {
 	// LatestRevision identifies the package revision that is the latest
 	// published package revision belonging to this package. Latest is determined by comparing
-	// packages that have valid semantic version as their revision. In case of git backend, branch tracking
-	// revisions like "main" and in case of oci backend, revisions tracking "latest" are not considered during
-	// selection of the latest revision.
+	// packages that have valid semantic version as their revision. Branch tracking
+	// revisions like "main" are not considered during selection of the latest revision.
 	LatestRevision int `json:"latestRevision,omitempty"`
 }

@@ -38,8 +38,7 @@ import (
 // We take advantage of the cache having a global view of all the packages
 // in a repository and compute the latest package revision in the cache
 // rather than add another level of caching in the repositories themselves.
-// This also reuses the revision comparison code and ensures same behavior
-// between Git and OCI.
+// This also reuses the revision comparison code and ensures consistent behavior.
 
 var _ repository.Repository = &cachedRepository{}
 
@@ -599,8 +598,8 @@ func (r *cachedRepository) refreshAllCachedPackages(ctx context.Context) (map[re
 		return r.cachedPackages, r.cachedPackageRevisions, nil
 	}
 
-	// Look up all existing PackageRevCRs so we an compare those to the
-	// actual Packagerevisions found in git/oci, and add/prune PackageRevCRs
+	// Look up all existing PackageRevCRs so we can compare those to the
+	// actual Packagerevisions found in git, and add/prune PackageRevCRs
 	// as necessary.
 	existingPkgRevCRs, err := r.metadataStore.List(ctx, r.repoSpec)
 	if err != nil {

@@ -32,29 +32,11 @@ func TestExternaRepo(t *testing.T) {
 			Name:      "repo-name",
 		},
 		Spec: configapi.RepositorySpec{
-			Type: configapi.RepositoryTypeOCI,
+			Type: configapi.RepositoryTypeGit,
 		},
 	}
 
 	repo, err := CreateRepositoryImpl(ctx, &repoSpec, externalrepotypes.ExternalRepoOptions{})
-	assert.NotNil(t, err)
-	assert.Nil(t, repo)
-
-	_, err = RepositoryKey(&repoSpec)
-	assert.NotNil(t, err)
-	assert.Equal(t, "oci not configured", err.Error())
-
-	repoSpec.Spec.Oci = &configapi.OciRepository{
-		Registry: "OCIRegistry",
-	}
-
-	ociRepoKey, err := RepositoryKey(&repoSpec)
-	assert.Nil(t, err)
-	assert.NotNil(t, ociRepoKey)
-	assert.Equal(t, "oci://OCIRegistry", ociRepoKey.Path)
-
-	repoSpec.Spec.Type = configapi.RepositoryTypeGit
-	repo, err = CreateRepositoryImpl(ctx, &repoSpec, externalrepotypes.ExternalRepoOptions{})
 	assert.NotNil(t, err)
 	assert.Nil(t, repo)
 
@@ -96,21 +78,6 @@ func TestExternaRepo(t *testing.T) {
 
 func TestCheckRepositoryConnection(t *testing.T) {
 	ctx := context.TODO()
-
-	// Test OCI repository connection check
-	ociRepo := &configapi.Repository{
-		Spec: configapi.RepositorySpec{
-			Type: configapi.RepositoryTypeOCI,
-			Oci: &configapi.OciRepository{
-				Registry: "test-registry",
-			},
-		},
-	}
-
-	// Connection checks may succeed in some environments, so just verify no panic
-	assert.NotPanics(t, func() {
-		CheckRepositoryConnection(ctx, ociRepo, externalrepotypes.ExternalRepoOptions{})
-	})
 
 	// Test Git repository connection check
 	gitRepo := &configapi.Repository{

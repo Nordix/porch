@@ -63,10 +63,8 @@ func (m *clonePackageMutation) apply(ctx context.Context, resources repository.P
 		cloned, err = m.cloneFromRegisteredRepository(ctx, ref)
 	} else if git := m.task.Clone.Upstream.Git; git != nil {
 		cloned, err = m.cloneFromGit(ctx, git)
-	} else if oci := m.task.Clone.Upstream.Oci; oci != nil {
-		cloned, err = m.cloneFromOci(ctx, oci)
 	} else {
-		err = pkgerrors.New("invalid clone source (neither of git, oci, nor upstream were specified)")
+		err = pkgerrors.New("invalid clone source (neither git nor upstream were specified)")
 	}
 
 	if err != nil {
@@ -197,8 +195,4 @@ func (m *clonePackageMutation) cloneFromGit(ctx context.Context, gitPackage *por
 	return repository.PackageResources{
 		Contents: contents,
 	}, nil
-}
-
-func (m *clonePackageMutation) cloneFromOci(_ context.Context, _ *porchapi.OciPackage) (repository.PackageResources, error) {
-	return repository.PackageResources{}, pkgerrors.New("clone from OCI is not implemented")
 }

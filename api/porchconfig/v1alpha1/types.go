@@ -26,7 +26,7 @@ import (
 // +kubebuilder:printcolumn:name="Sync schedule",type=string,JSONPath=`.spec.sync.schedule`
 //+kubebuilder:printcolumn:name="Deployment",type=boolean,JSONPath=`.spec.deployment`
 //+kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
-//+kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.spec['git','oci']['repo','registry']`
+//+kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.spec.git.repo`
 // +kubebuilder:validation:XValidation:rule="self.metadata.name.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="metadata.name must conform to the RFC1123 DNS label standard"
 // +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="metadata.name must be no more than 63 characters"
 
@@ -43,7 +43,6 @@ type RepositoryType string
 
 const (
 	RepositoryTypeGit RepositoryType = "git"
-	RepositoryTypeOCI RepositoryType = "oci"
 )
 
 type RepositoryContent string
@@ -61,7 +60,7 @@ type RepositorySpec struct {
 	Description string `json:"description,omitempty"`
 	// The repository is a deployment repository; final packages in this repository are deployment ready.
 	Deployment bool `json:"deployment,omitempty"`
-	// Type of the repository (i.e. git, OCI)
+	// Type of the repository (i.e. git)
 	Type RepositoryType `json:"type,omitempty"`
 	// The Content field is deprecated, please do not specify it in new manifests.
 	// For partial backward compatibility it is still recognized, but its only valid value is "Package", and if not specified its default value is also "Package".
@@ -72,8 +71,6 @@ type RepositorySpec struct {
 	Sync *RepositorySync `json:"sync,omitempty"`
 	// Git repository details. Required if `type` is `git`. Ignored if `type` is not `git`.
 	Git *GitRepository `json:"git,omitempty"`
-	// OCI repository details. Required if `type` is `oci`. Ignored if `type` is not `oci`.
-	Oci *OciRepository `json:"oci,omitempty"`
 }
 
 type RepositorySync struct {
@@ -105,24 +102,12 @@ type GitRepository struct {
 	Email string `json:"email,omitempty"`
 }
 
-// OciRepository describes a repository compatible with the Open Container Registry standard.
-// TODO: allow sub-selection of the registry, i.e. filter by tags, ...?
-// TODO: authentication types?
-type OciRepository struct {
-	// Registry is the address of the OCI registry
-	Registry string `json:"registry"`
-	// Reference to secret containing authentication credentials.
-	SecretRef SecretRef `json:"secretRef,omitempty"`
-}
-
 // UpstreamRepository repository may be specified directly or by referencing another Repository resource.
 type UpstreamRepository struct {
-	// Type of the repository (i.e. git, OCI). If empty, repositoryRef will be used.
+	// Type of the repository (i.e. git). If empty, repositoryRef will be used.
 	Type RepositoryType `json:"type,omitempty"`
 	// Git repository details. Required if `type` is `git`. Must be unspecified if `type` is not `git`.
 	Git *GitRepository `json:"git,omitempty"`
-	// OCI repository details. Required if `type` is `oci`. Must be unspecified if `type` is not `oci`.
-	Oci *OciRepository `json:"oci,omitempty"`
 	// RepositoryRef contains a reference to an existing Repository resource to be used as the default upstream repository.
 	RepositoryRef *RepositoryRef `json:"repositoryRef,omitempty"`
 }

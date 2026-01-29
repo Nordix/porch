@@ -137,27 +137,6 @@ spec:
                 required:
                 - repo
                 type: object
-              oci:
-                description: OCI repository details. Required if `type` is `oci`.
-                  Ignored if `type` is not `oci`.
-                properties:
-                  registry:
-                    description: Registry is the address of the OCI registry
-                    type: string
-                  secretRef:
-                    description: Reference to secret containing authentication credentials.
-                    properties:
-                      name:
-                        description: Name of the secret. The secret is expected to
-                          be located in the same namespace as the resource containing
-                          the reference.
-                        type: string
-                    required:
-                    - name
-                    type: object
-                required:
-                - registry
-                type: object
               sync:
                 description: Repository sync/reconcile details
                 properties:
@@ -174,7 +153,7 @@ spec:
                     type: string
                 type: object
               type:
-                description: Type of the repository (i.e. git, OCI)
+                description: Type of the repository (i.e. git)
                 type: string
             type: object
           status:

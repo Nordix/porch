@@ -252,19 +252,15 @@ type RepositoryType string
 
 const (
 	RepositoryTypeGit RepositoryType = "git"
-	RepositoryTypeOCI RepositoryType = "oci"
 )
 
 // UpstreamRepository repository may be specified directly or by referencing another Repository resource.
 type UpstreamPackage struct {
-	// Type of the repository (i.e. git, OCI). If empty, `upstreamRef` will be used.
+	// Type of the repository (i.e. git). If empty, `upstreamRef` will be used.
 	Type RepositoryType `json:"type,omitempty"`
 
 	// Git upstream package specification. Required if `type` is `git`. Must be unspecified if `type` is not `git`.
 	Git *GitPackage `json:"git,omitempty"`
-
-	// OCI upstream package specification. Required if `type` is `oci`. Must be unspecified if `type` is not `oci`.
-	Oci *OciPackage `json:"oci,omitempty"`
 
 	// UpstreamRef is the reference to the package from a registered repository rather than external package.
 	UpstreamRef *PackageRevisionRef `json:"upstreamRef,omitempty"`
@@ -288,12 +284,6 @@ type GitPackage struct {
 type SecretRef struct {
 	// Name of the secret. The secret is expected to be located in the same namespace as the resource containing the reference.
 	Name string `json:"name"`
-}
-
-// OciPackage describes a repository compatible with the Open Container Registry standard.
-type OciPackage struct {
-	// Image is the address of an OCI image.
-	Image string `json:"image"`
 }
 
 // PackageRevisionRef is a reference to a package revision.

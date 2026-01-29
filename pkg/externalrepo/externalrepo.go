@@ -26,7 +26,6 @@ import (
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/pkg/externalrepo/fake"
 	"github.com/nephio-project/porch/pkg/externalrepo/git"
-	"github.com/nephio-project/porch/pkg/externalrepo/oci"
 	externalrepotypes "github.com/nephio-project/porch/pkg/externalrepo/types"
 	"github.com/nephio-project/porch/pkg/repository"
 	"go.opentelemetry.io/otel"
@@ -45,9 +44,6 @@ func CreateRepositoryImpl(ctx context.Context, repositorySpec *configapi.Reposit
 	var repoFactory externalrepotypes.ExternalRepoFactory
 
 	switch repositoryType := repositorySpec.Spec.Type; repositoryType {
-	case configapi.RepositoryTypeOCI:
-		repoFactory = new(oci.OciRepoFactory)
-
 	case configapi.RepositoryTypeGit:
 		repoFactory = new(git.GitRepoFactory)
 
@@ -69,8 +65,6 @@ func CheckRepositoryConnection(ctx context.Context, repo *configapi.Repository, 
 	var repoFactory externalrepotypes.ExternalRepoFactory
 
 	switch repo.Spec.Type {
-	case configapi.RepositoryTypeOCI:
-		repoFactory = new(oci.OciRepoFactory)
 	case configapi.RepositoryTypeGit:
 		repoFactory = new(git.GitRepoFactory)
 	default:
@@ -83,18 +77,6 @@ func CheckRepositoryConnection(ctx context.Context, repo *configapi.Repository, 
 
 func RepositoryKey(repositorySpec *configapi.Repository) (repository.RepositoryKey, error) {
 	switch repositoryType := repositorySpec.Spec.Type; repositoryType {
-	case configapi.RepositoryTypeOCI:
-		ociSpec := repositorySpec.Spec.Oci
-		if ociSpec == nil {
-			return repository.RepositoryKey{}, fmt.Errorf("oci not configured")
-		}
-		return repository.RepositoryKey{
-			Namespace:         repositorySpec.Namespace,
-			Name:              repositorySpec.Name,
-			Path:              "oci://" + ociSpec.Registry,
-			PlaceholderWSname: "OCI",
-		}, nil
-
 	case configapi.RepositoryTypeGit:
 		gitSpec := repositorySpec.Spec.Git
 		if gitSpec == nil {

@@ -114,12 +114,6 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 	}
 
 	switch {
-	case strings.HasPrefix(source, "oci://"):
-		r.clone.Upstream.Type = porchapi.RepositoryTypeOCI
-		r.clone.Upstream.Oci = &porchapi.OciPackage{
-			Image: source,
-		}
-
 	case strings.Contains(source, "/"):
 		if parse.HasGitSuffix(source) { // extra parsing required
 			repo, dir, ref, err := parse.URL(source)

@@ -37,7 +37,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/nephio-project/porch/api/porch/v1alpha1.GitPackage":                     schema_porch_api_porch_v1alpha1_GitPackage(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.Locator":                        schema_porch_api_porch_v1alpha1_Locator(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.NameMeta":                       schema_porch_api_porch_v1alpha1_NameMeta(ref),
-		"github.com/nephio-project/porch/api/porch/v1alpha1.OciPackage":                     schema_porch_api_porch_v1alpha1_OciPackage(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.PackageCloneTaskSpec":           schema_porch_api_porch_v1alpha1_PackageCloneTaskSpec(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.PackageEditTaskSpec":            schema_porch_api_porch_v1alpha1_PackageEditTaskSpec(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.PackageInitTaskSpec":            schema_porch_api_porch_v1alpha1_PackageInitTaskSpec(ref),
@@ -503,28 +502,6 @@ func schema_porch_api_porch_v1alpha1_NameMeta(ref common.ReferenceCallback) comm
 						},
 					},
 				},
-			},
-		},
-	}
-}
-
-func schema_porch_api_porch_v1alpha1_OciPackage(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "OciPackage describes a repository compatible with the Open Container Registry standard.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"image": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Image is the address of an OCI image.",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-				},
-				Required: []string{"image"},
 			},
 		},
 	}
@@ -1735,7 +1712,7 @@ func schema_porch_api_porch_v1alpha1_UpstreamPackage(ref common.ReferenceCallbac
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Type of the repository (i.e. git, OCI). If empty, `upstreamRef` will be used.",
+							Description: "Type of the repository (i.e. git). If empty, `upstreamRef` will be used.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -1744,12 +1721,6 @@ func schema_porch_api_porch_v1alpha1_UpstreamPackage(ref common.ReferenceCallbac
 						SchemaProps: spec.SchemaProps{
 							Description: "Git upstream package specification. Required if `type` is `git`. Must be unspecified if `type` is not `git`.",
 							Ref:         ref("github.com/nephio-project/porch/api/porch/v1alpha1.GitPackage"),
-						},
-					},
-					"oci": {
-						SchemaProps: spec.SchemaProps{
-							Description: "OCI upstream package specification. Required if `type` is `oci`. Must be unspecified if `type` is not `oci`.",
-							Ref:         ref("github.com/nephio-project/porch/api/porch/v1alpha1.OciPackage"),
 						},
 					},
 					"upstreamRef": {
@@ -1762,7 +1733,7 @@ func schema_porch_api_porch_v1alpha1_UpstreamPackage(ref common.ReferenceCallbac
 			},
 		},
 		Dependencies: []string{
-			"github.com/nephio-project/porch/api/porch/v1alpha1.GitPackage", "github.com/nephio-project/porch/api/porch/v1alpha1.OciPackage", "github.com/nephio-project/porch/api/porch/v1alpha1.PackageRevisionRef"},
+			"github.com/nephio-project/porch/api/porch/v1alpha1.GitPackage", "github.com/nephio-project/porch/api/porch/v1alpha1.PackageRevisionRef"},
 	}
 }
 
