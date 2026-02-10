@@ -9,6 +9,7 @@ import (
 
 	v1alpha10 "github.com/nephio-project/porch/api/porch/v1alpha1"
 	"github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	"github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/engine"
 	"github.com/nephio-project/porch/pkg/repository"
 	mock "github.com/stretchr/testify/mock"
@@ -39,6 +40,52 @@ type MockCaDEngine_Expecter struct {
 
 func (_m *MockCaDEngine) EXPECT() *MockCaDEngine_Expecter {
 	return &MockCaDEngine_Expecter{mock: &_m.Mock}
+}
+
+// Cache provides a mock function for the type MockCaDEngine
+func (_mock *MockCaDEngine) Cache() cachetypes.Cache {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Cache")
+	}
+
+	var r0 cachetypes.Cache
+	if returnFunc, ok := ret.Get(0).(func() cachetypes.Cache); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(cachetypes.Cache)
+		}
+	}
+	return r0
+}
+
+// MockCaDEngine_Cache_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Cache'
+type MockCaDEngine_Cache_Call struct {
+	*mock.Call
+}
+
+// Cache is a helper method to define mock.On call
+func (_e *MockCaDEngine_Expecter) Cache() *MockCaDEngine_Cache_Call {
+	return &MockCaDEngine_Cache_Call{Call: _e.mock.On("Cache")}
+}
+
+func (_c *MockCaDEngine_Cache_Call) Run(run func()) *MockCaDEngine_Cache_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockCaDEngine_Cache_Call) Return(cache cachetypes.Cache) *MockCaDEngine_Cache_Call {
+	_c.Call.Return(cache)
+	return _c
+}
+
+func (_c *MockCaDEngine_Cache_Call) RunAndReturn(run func() cachetypes.Cache) *MockCaDEngine_Cache_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // CreatePackage provides a mock function for the type MockCaDEngine
