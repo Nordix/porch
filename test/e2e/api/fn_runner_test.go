@@ -239,7 +239,24 @@ func (t *PorchSuite) setupFunctionTestPackage(repoName, packageName, workspace s
 		waitForReady = opts[0].WaitForReady
 	}
 
-	pr := t.CreatePackageCloneF(repoName, packageName, workspace, upstreamRef, upstreamDir)
+	// Wait for Repository Controller to sync and check if package already discovered
+	t.WaitUntilRepositoryReady(repoName, t.Namespace)
+	
+	var pr *porchapi.PackageRevision
+	prList := &porchapi.PackageRevisionList{}
+	t.ListF(prList, client.InNamespace(t.Namespace))
+	for i := range prList.Items {
+		if prList.Items[i].Spec.PackageName == packageName &&
+			prList.Items[i].Spec.RepositoryName == repoName &&
+			prList.Items[i].Spec.WorkspaceName == workspace {
+			pr = &prList.Items[i]
+			break
+		}
+	}
+	
+	if pr == nil {
+		pr = t.CreatePackageCloneF(repoName, packageName, workspace, upstreamRef, upstreamDir)
+	}
 
 	if waitForReady {
 		return t.WaitUntilPackageRevisionResourcesExists(types.NamespacedName{Namespace: t.Namespace, Name: pr.Name})
