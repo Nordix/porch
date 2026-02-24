@@ -1,4 +1,4 @@
-// Copyright 2022, 2025 The kpt and Nephio Authors
+// Copyright 2022-2026 The kpt and Nephio Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import (
 	kptfileko "github.com/kptdev/krm-functions-sdk/go/fn/kptfileko"
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"github.com/nephio-project/porch/pkg/repository"
 	pkgerrors "github.com/pkg/errors"
 	"go.opentelemetry.io/otel/trace"
@@ -469,13 +470,13 @@ func syncReadinessGates(kptf *kptfileko.KptfileKubeObject, desired []porchapi.Re
 	return changed, nil
 }
 
-func convertStatusToKptfile(s porchapi.ConditionStatus) kptfilev1.ConditionStatus {
+func convertStatusToKptfile(s metav1.ConditionStatus) kptfilev1.ConditionStatus {
 	switch s {
-	case porchapi.ConditionTrue:
+	case metav1.ConditionTrue:
 		return kptfilev1.ConditionTrue
-	case porchapi.ConditionFalse:
+	case metav1.ConditionFalse:
 		return kptfilev1.ConditionFalse
-	case porchapi.ConditionUnknown:
+	case metav1.ConditionUnknown:
 		return kptfilev1.ConditionUnknown
 	default:
 		panic(fmt.Errorf("unknown condition status: %v", s))

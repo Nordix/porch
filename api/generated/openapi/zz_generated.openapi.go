@@ -30,7 +30,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/nephio-project/porch/api/porch.PackageRevision":                         schema_nephio_project_porch_api_porch_PackageRevision(ref),
 		"github.com/nephio-project/porch/api/porch.PackageRevisionResources":                schema_nephio_project_porch_api_porch_PackageRevisionResources(ref),
 		"github.com/nephio-project/porch/api/porch.PorchPackage":                            schema_nephio_project_porch_api_porch_PorchPackage(ref),
-		"github.com/nephio-project/porch/api/porch/v1alpha1.Condition":                      schema_porch_api_porch_v1alpha1_Condition(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.Field":                          schema_porch_api_porch_v1alpha1_Field(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.File":                           schema_porch_api_porch_v1alpha1_File(ref),
 		"github.com/nephio-project/porch/api/porch/v1alpha1.GitLock":                        schema_porch_api_porch_v1alpha1_GitLock(ref),
@@ -263,45 +262,6 @@ func schema_nephio_project_porch_api_porch_PorchPackage(ref common.ReferenceCall
 		},
 		Dependencies: []string{
 			"github.com/nephio-project/porch/api/porch.PackageSpec", "github.com/nephio-project/porch/api/porch.PackageStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
-	}
-}
-
-func schema_porch_api_porch_v1alpha1_Condition(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Type: []string{"object"},
-				Properties: map[string]spec.Schema{
-					"type": {
-						SchemaProps: spec.SchemaProps{
-							Default: "",
-							Type:    []string{"string"},
-							Format:  "",
-						},
-					},
-					"status": {
-						SchemaProps: spec.SchemaProps{
-							Default: "",
-							Type:    []string{"string"},
-							Format:  "",
-						},
-					},
-					"reason": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
-					"message": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
-				},
-				Required: []string{"type", "status"},
-			},
-		},
 	}
 }
 
@@ -1087,7 +1047,7 @@ func schema_porch_api_porch_v1alpha1_PackageRevisionStatus(ref common.ReferenceC
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/nephio-project/porch/api/porch/v1alpha1.Condition"),
+										Ref:     ref("k8s.io/apimachinery/pkg/apis/meta/v1.Condition"),
 									},
 								},
 							},
@@ -1097,7 +1057,7 @@ func schema_porch_api_porch_v1alpha1_PackageRevisionStatus(ref common.ReferenceC
 			},
 		},
 		Dependencies: []string{
-			"github.com/nephio-project/porch/api/porch/v1alpha1.Condition", "github.com/nephio-project/porch/api/porch/v1alpha1.Locator", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+			"github.com/nephio-project/porch/api/porch/v1alpha1.Locator", "k8s.io/apimachinery/pkg/apis/meta/v1.Condition", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
 	}
 }
 

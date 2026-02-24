@@ -25,6 +25,7 @@ import (
 	"github.com/nephio-project/porch/pkg/externalrepo/fake"
 	"github.com/nephio-project/porch/pkg/repository"
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
@@ -82,10 +83,10 @@ func TestKptfilePatch(t *testing.T) {
 					},
 				},
 				Status: porchapi.PackageRevisionStatus{
-					Conditions: []porchapi.Condition{
+					Conditions: []metav1.Condition{
 						{
 							Type:   "foo",
-							Status: porchapi.ConditionTrue,
+							Status: metav1.ConditionTrue,
 						},
 					},
 				},
@@ -154,16 +155,16 @@ func TestKptfilePatch(t *testing.T) {
 					},
 				},
 				Status: porchapi.PackageRevisionStatus{
-					Conditions: []porchapi.Condition{
+					Conditions: []metav1.Condition{
 						{
 							Type:    "foo",
-							Status:  porchapi.ConditionTrue,
+							Status:  metav1.ConditionTrue,
 							Reason:  "reason",
 							Message: "message",
 						},
 						{
 							Type:    "bar",
-							Status:  porchapi.ConditionFalse,
+							Status:  metav1.ConditionFalse,
 							Reason:  "reason",
 							Message: "message",
 						},
@@ -263,16 +264,16 @@ func TestKptfilePatch(t *testing.T) {
 					},
 				},
 				Status: porchapi.PackageRevisionStatus{
-					Conditions: []porchapi.Condition{
+					Conditions: []metav1.Condition{
 						{
 							Type:    "foo",
-							Status:  porchapi.ConditionTrue,
+							Status:  metav1.ConditionTrue,
 							Reason:  "reason",
 							Message: "message",
 						},
 						{
 							Type:    "bar",
-							Status:  porchapi.ConditionFalse,
+							Status:  metav1.ConditionFalse,
 							Reason:  "reason",
 							Message: "message",
 						},
@@ -330,10 +331,10 @@ func TestKptfilePatch(t *testing.T) {
 					},
 				},
 				Status: porchapi.PackageRevisionStatus{
-					Conditions: []porchapi.Condition{
+					Conditions: []metav1.Condition{
 						{
 							Type:   "foo",
-							Status: porchapi.ConditionTrue,
+							Status: metav1.ConditionTrue,
 						},
 					},
 				},
@@ -461,16 +462,16 @@ status:
 			},
 		},
 		Status: porchapi.PackageRevisionStatus{
-			Conditions: []porchapi.Condition{
+			Conditions: []metav1.Condition{
 				{
 					Type:    "foo",
-					Status:  porchapi.ConditionTrue,
+					Status:  metav1.ConditionTrue,
 					Reason:  "updated-foo",
 					Message: "updated foo message",
 				},
 				{
 					Type:    "new-condition",
-					Status:  porchapi.ConditionFalse,
+					Status:  metav1.ConditionFalse,
 					Reason:  "new-reason",
 					Message: "new message",
 				},

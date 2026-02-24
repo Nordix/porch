@@ -1,4 +1,4 @@
-// Copyright 2022, 2025 The kpt and Nephio Authors
+// Copyright 2022-2026 The kpt and Nephio Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,36 +37,37 @@ func ToAPIReadinessGates(kf kptfilev1.KptFile) []porchapi.ReadinessGate {
 	return readinessGates
 }
 
-func ToAPIConditions(kf kptfilev1.KptFile) []porchapi.Condition {
-	var conditions []porchapi.Condition
+func ToAPIConditions(kf kptfilev1.KptFile) []metav1.Condition {
+	var conditions []metav1.Condition
 	if kf.Status != nil && kf.Status.Conditions != nil {
 		for _, s := range kf.Status.Conditions {
-			conditions = append(conditions, porchapi.Condition{
-				Type:    s.Type,
-				Status:  toAPIConditionStatus(s.Status),
-				Reason:  s.Reason,
-				Message: s.Message,
+			conditions = append(conditions, metav1.Condition{
+				Type:               s.Type,
+				Status:             toAPIConditionStatus(s.Status),
+				Reason:             s.Reason,
+				Message:            s.Message,
+				LastTransitionTime: metav1.Now(),
 			})
 		}
 	}
 	return conditions
 }
 
-func toAPIConditionStatus(s kptfilev1.ConditionStatus) porchapi.ConditionStatus {
+func toAPIConditionStatus(s kptfilev1.ConditionStatus) metav1.ConditionStatus {
 	switch s {
 	case kptfilev1.ConditionTrue:
-		return porchapi.ConditionTrue
+		return metav1.ConditionTrue
 	case kptfilev1.ConditionFalse:
-		return porchapi.ConditionFalse
+		return metav1.ConditionFalse
 	case kptfilev1.ConditionUnknown:
-		return porchapi.ConditionUnknown
+		return metav1.ConditionUnknown
 	default:
 		panic(fmt.Errorf("unknown condition status: %v", s))
 	}
 }
 
-func UpsertAPICondition(conditions []porchapi.Condition, condition porchapi.Condition) []porchapi.Condition {
-	updatedConditions := []porchapi.Condition{}
+func UpsertAPICondition(conditions []metav1.Condition, condition metav1.Condition) []metav1.Condition {
+	updatedConditions := []metav1.Condition{}
 
 	for _, conditionItem := range conditions {
 		if conditionItem.Type != condition.Type {

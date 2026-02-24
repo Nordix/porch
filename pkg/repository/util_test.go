@@ -120,16 +120,20 @@ func TestToAPIConditions(t *testing.T) {
 }
 
 func TestToAPIConditionStatus(t *testing.T) {
-	assert.Equal(t, porchapi.ConditionTrue, toAPIConditionStatus(kptfilev1.ConditionTrue))
-	assert.Equal(t, porchapi.ConditionFalse, toAPIConditionStatus(kptfilev1.ConditionFalse))
-	assert.Equal(t, porchapi.ConditionUnknown, toAPIConditionStatus(kptfilev1.ConditionUnknown))
+	assert.Equal(t, metav1.ConditionTrue, toAPIConditionStatus(kptfilev1.ConditionTrue))
+	assert.Equal(t, metav1.ConditionFalse, toAPIConditionStatus(kptfilev1.ConditionFalse))
+	assert.Equal(t, metav1.ConditionUnknown, toAPIConditionStatus(kptfilev1.ConditionUnknown))
 }
 
 func TestUpsertAPICondition(t *testing.T) {
-	conditions := []porchapi.Condition{}
+	conditions := []metav1.Condition{}
 
-	condition0 := porchapi.Condition{
-		Type: "Condition0",
+	condition0 := metav1.Condition{
+		Type:               "Condition0",
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             "Test",
+		Message:            "Test",
 	}
 
 	upsertedConditions := UpsertAPICondition(conditions, condition0)
@@ -140,8 +144,12 @@ func TestUpsertAPICondition(t *testing.T) {
 	assert.Equal(t, 1, len(upsertedConditions))
 	assert.Equal(t, condition0, upsertedConditions[0])
 
-	condition1 := porchapi.Condition{
-		Type: "Condition1",
+	condition1 := metav1.Condition{
+		Type:               "Condition1",
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             "Test",
+		Message:            "Test",
 	}
 
 	upsertedConditions = UpsertAPICondition(upsertedConditions, condition1)

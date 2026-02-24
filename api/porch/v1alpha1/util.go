@@ -14,7 +14,11 @@
 
 package v1alpha1
 
-import "slices"
+import (
+	"slices"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 func (pr *PackageRevision) IsPublished() bool {
 	return LifecycleIsPublished(pr.Spec.Lifecycle)
@@ -37,9 +41,9 @@ func (l *PackageRevisionLifecycle) IsValid() bool {
 }
 
 // Check ReadinessGates checks if the package has met all readiness gates
-func PackageRevisionIsReady(readinessGates []ReadinessGate, conditions []Condition) bool {
+func PackageRevisionIsReady(readinessGates []ReadinessGate, conditions []metav1.Condition) bool {
 	// Index our conditions
-	conds := make(map[string]Condition)
+	conds := make(map[string]metav1.Condition)
 	for _, c := range conditions {
 		conds[c.Type] = c
 	}

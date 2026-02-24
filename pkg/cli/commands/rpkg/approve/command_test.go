@@ -108,7 +108,7 @@ func TestCmd(t *testing.T) {
 						},
 					},
 					Status: porchapi.PackageRevisionStatus{
-						Conditions: []porchapi.Condition{
+						Conditions: []metav1.Condition{
 							{
 								Type:   "nephio.org.Specializer.specialize",
 								Status: "False",
