@@ -370,5 +370,7 @@ All "work in progress" on package revisions lost:
     - a similar effect to the use of `porchctl rpkg reject`
 
 {{% alert title="Warning" color="warning" %}}
+
 Having a valid backup of the DB cache database avoids this situation. Porch highly recommends making regular backups.
+
 {{% /alert %}}
