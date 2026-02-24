@@ -18,25 +18,24 @@ in several locations:
         <!-- TODO: Repositories will be ../2_concepts/repositories.md -->
         <!-- TODO: Repository Adapters will be ../2_concepts/repositories.md -->
   - **Git** repositories are Porch's primary and fully-supported storage backend
-- and the contents of the **package revision cache** (which, depending on the cache option configured at install-time, may
-  be either **incorporated in the cluster's control plane** (with the CR cache) or stored in **a separate SQL database**
-  (with the DB cache)).
-  A more detailed explanation of the package revision cache and the different cache options can be found in the Architecture
-  and Components section: [Cache]({{% relref "/docs/5_architecture_and_components/package-cache/_index.md" %}})
+- the contents of the **package revision cache**. Depending on the cache option configured at install-time, the package
+  revision cache may be either **incorporated in the cluster's control plane** (with the CR cache) or stored in **a separate**
+  **SQL database** (with the DB cache).  A more detailed explanation of the package revision cache and the different cache
+  options can be found in the Architecture and Components section: [Cache]({{% relref "/docs/5_architecture_and_components/package-cache/_index.md" %}}).
 
 Porch's data storage operations are covered in significantly greater depth in the [Architecture and Components section]({{% relref "/docs/5_architecture_and_components/_index.md" %}}).
 
 Each data store serves as the source of truth for different elements of Porch's data structure:
-- custom resource objects on Kubernetes control plane:
+- custom resource objects on the Kubernetes control plane:
     - Porch repositories (Repository objects)
     - package variants (and by extension package variant sets)
-    - **(if the CR cache is configured)** "work-in-progress" package revisions whose lifecycle stage is "Draft", "Proposed",
+    - **if the CR cache is configured:** "work-in-progress" package revisions whose lifecycle stage is "Draft", "Proposed",
       or "DeletionProposed"
 - Git repositories:
     - package revisions (Kpt package file contents and directory structures)
 - Package revision cache:
     - Kubernetes-related metadata for package revisions (e.g. labels and annotations)
-    - **(if the DB cache is configured)** "work-in-progress" package revisions whose lifecycle stage is "Draft", "Proposed",
+    - **if the DB cache is configured:** "work-in-progress" package revisions whose lifecycle stage is "Draft", "Proposed",
       or "DeletionProposed"
 
 ## Backup strategy
@@ -107,17 +106,22 @@ for your specific database!
 ## Automated disaster recovery testing
 
 Porch includes an automated disaster-recovery test suite to allow for regression-testing its behaviour under a selection
-of data-loss conditions. This suite sets up Porch in a specially-configured Kind environment, creates a large number of
-Repository objects and package revisions to provide a representative workload, and verifies
+of data-loss conditions. This suite sets up Porch in a specially-configured Kind cluster environment, creates a large
+number of Repository objects and package revisions to provide a representative workload, and verifies
 [the disaster scenarios detailed below]({{% relref "#disaster-scenarios" %}}) against it.
 
 ### Test suite:
 
 {{% alert title="Caution!" color="warning" %}}
 
-The test suite:
-- is extremely long-running - ~1 hour
-- uses large quantities of system resources due to high load on Porch. Slowdowns are likely if run on low- or medium-specification systems!
+The test suite was developed on a system with the following specifications:
+- CPU: 11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz
+    - Logical processors: 8
+- RAM: 24 GB
+- Storage: 250 GiB
+
+Based on observation, the test suite took **an average of ~1 hour for a full run**. Your results may vary based on your
+specific system resources; a system with too low a specification **may not even be able to run the suite**.
 
 {{% /alert %}}
 
@@ -135,12 +139,12 @@ make test-disaster-recovery
 
 #### Environment details
 
-Before running the disaster scenarios, the suite creates, installs, and loads the Kind environment as follows:
+By default, before running the disaster scenarios, the suite creates, installs, and loads the Kind environment as follows:
 
 {{% details summary="**Environment configuration** (click to expand)" %}}
 
-- a local Kind cluster (the "data cluster") containing
-  - a Git server
+- a local Kind cluster (the "data cluster") containing:
+  - a Git server (Gitea)
     - containing several copies of public repositories, each containing a large quantity of sample, test, and catalogued
       Kpt packages
       - to provide a representative workload for Porch when restoring and reconciling package revision data
@@ -161,13 +165,13 @@ Before running the disaster scenarios, the suite creates, installs, and loads th
 #### Test cases
 
 The Go-based suite runs the following test cases, each replicating one of the disaster scenarios below:
-- `TestCompleteDisaster` - ["Complete disaster"]({{% relref "#1-complete-disaster" %}})
-- `TestKubernetesClusterLoss` - ["Kubernetes cluster loss"]({{% relref "#2-kubernetes-cluster-loss" %}})
-- `TestPorchPodsUngracefulRestart` - ["Porch microservices restarted"]({{% relref "#3-porch-microservices-restarted" %}})
-- `TestDBCacheLossWithBackup` - ["DB cache loss with backup"]({{% relref "#4-db-cache-loss-with-backup" %}})
-- `TestDBCacheLossWithoutBackup` - ["DB cache loss without backup"]({{% relref "#4-db-cache-loss-without-backup" %}})
+- `TestCompleteDisaster` - [Complete disaster]({{% relref "#1-complete-disaster" %}})
+- `TestKubernetesClusterLoss` - [Kubernetes cluster loss]({{% relref "#2-kubernetes-cluster-loss" %}})
+- `TestPorchPodsUngracefulRestart` - [Porch microservices restarted]({{% relref "#3-porch-microservices-restarted" %}})
+- `TestDBCacheLossWithBackup` - [DB cache loss with backup]({{% relref "#4-db-cache-loss-with-backup" %}})
+- `TestDBCacheLossWithoutBackup` - [DB cache loss without backup]({{% relref "#4-db-cache-loss-without-backup" %}})
 
-For further test development, the suite's source can be found in the Porch repository at `test/disaster/api/disaster_test.go`.
+For further test development, the disaster-recovery suite's source can be found in the Porch repository at `test/disaster/api/disaster_test.go`.
 If updating the tests, please follow the [Code Contribution]({{% relref "/docs/12_contributing/code-contribution" %}})
 guide, and, if the updates include changes to this document, the [Documentation Contribution]({{% relref "/docs/12_contributing/docs-contribution" %}})
 guide.
