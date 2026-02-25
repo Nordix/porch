@@ -150,13 +150,10 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Get kpt version from go.mod
+        # TODO: Temporary hardcoded version - revert once kpt dependency is published as a release
         id: kpt-version
         run: |
-          KPT_VERSION=$(grep 'github.com/kptdev/kpt' go.mod | awk '{print $2}')
-          if [ -z "$KPT_VERSION" ]; then
-            echo "Warning: Could not extract kpt version from go.mod, using fallback"
-            KPT_VERSION="v1.0.0-beta.59.2"
-          fi
+          KPT_VERSION="v1.0.0-beta.61"
           echo "version=${KPT_VERSION}" >> $GITHUB_OUTPUT
       - name: Install kpt
         uses: jaxxstorm/action-install-gh-release@v2.1.0
