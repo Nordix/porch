@@ -307,6 +307,10 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 	return config, nil
 }
 
+func DoIt(x int) int {
+	return x * x
+}
+
 // RunPorchServer starts a new PorchServer given PorchServerOptions
 func (o PorchServerOptions) RunPorchServer(ctx context.Context) error {
 	config, err := o.Config()
