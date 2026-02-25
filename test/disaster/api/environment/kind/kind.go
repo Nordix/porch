@@ -52,10 +52,6 @@ func Reinstall(t *suiteutils.MultiClusterTestSuite) {
 	if err := installPorchDBCache(t); err != nil {
 		t.Fatalf("error reinstalling Porch cluster %q: error deploying Porch: %w", dbCacheCluster, err.Error())
 	}
-	// UseCRCacheCluster(t)
-	// if err := installPorchCRCache(t); err != nil {
-	// 	t.Fatalf("error reinstalling Porch cluster %q: error deploying Porch: %w", crCacheCluster, err.Error())
-	// }
 }
 
 func UseDataCluster(t *suiteutils.MultiClusterTestSuite) {
