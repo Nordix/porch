@@ -17,7 +17,7 @@ in several locations:
         <!-- TODO: add links to Repositories and Repository Adapters documentation once each is merged -->
         <!-- TODO: Repositories will be ../2_concepts/repositories.md -->
         <!-- TODO: Repository Adapters will be ../2_concepts/repositories.md -->
-  - **Git** repositories are Porch's primary and fully-supported storage backend
+    - **Git** repositories are Porch's primary and fully-supported storage backend
 - the contents of the **package revision cache**. Depending on the cache option configured at install-time, the package
   revision cache may be either **incorporated in the cluster's control plane** (with the CR cache) or stored in **a separate**
   **SQL database** (with the DB cache).  A more detailed explanation of the package revision cache and the different cache
@@ -141,15 +141,13 @@ make test-disaster-recovery
 
 By default, before running the disaster scenarios, the suite creates, installs, and loads the Kind environment as follows:
 
-{{% details summary="**Environment configuration** (click to expand)" %}}
-
 - a local Kind cluster (the "data cluster") containing:
-  - a Git server (Gitea)
-    - containing several copies of public repositories, each containing a large quantity of sample, test, and catalogued
+    - a Git server (Gitea)
+        - containing several copies of public repositories, each containing a large quantity of sample, test, and catalogued
       Kpt packages
-      - to provide a representative workload for Porch when restoring and reconciling package revision data
-  - a PostgreSQL instance, set up to allow Porch to connect to and use it for the DB cache
-    - to make it possible to wipe and restore the database independently of Porch
+            - to provide a representative workload for Porch when restoring and reconciling package revision data
+    - a PostgreSQL instance, set up to allow Porch to connect to and use it for the DB cache
+        - to make it possible to wipe and restore the database independently of Porch
 - another local Kind cluster
     - with Porch installed
         - with DB cache connected to the PostgreSQL instance installed on the data cluster
@@ -159,8 +157,6 @@ By default, before running the disaster scenarios, the suite creates, installs, 
     - this is calculated to maximize number of package revisions and provide representative workload
 - a small number of new package revisions in various lifecycle states, set up using Porch's API to allow testing that they
   also will be properly backed up and restored
-
-{{% /details %}}
 
 #### Test cases
 
