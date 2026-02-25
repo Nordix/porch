@@ -308,6 +308,7 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 }
 
 func DoIt(x int) int {
+	x = x + 1
 	return x * x
 }
 
