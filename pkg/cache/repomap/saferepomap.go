@@ -42,7 +42,10 @@ func (s *SafeRepoMap) LoadAndDelete(key repository.RepositoryKey) (repository.Re
 }
 
 func (s *SafeRepoMap) Range(f func(key, value any) bool) {
-	s.syncMap.Range(f)
+	s.syncMap.Range(func(key, value any) bool {
+		loader := value.(*repoLoader)
+		return f(key, loader.repo)
+	})
 }
 
 type repoLoader struct {
