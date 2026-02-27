@@ -18,7 +18,6 @@ import (
 	"context"
 	"os"
 
-	porchclient "github.com/nephio-project/porch/api/generated/clientset/versioned"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -28,19 +27,17 @@ import (
 
 type MultiClusterTestSuite struct {
 	TestSuite
-	scheme       *runtime.Scheme
-	clients      map[string]client.Client
-	porchclients map[string]*porchclient.Clientset
-	readers      map[string]client.Client
-	kubeClients  map[string]kubernetes.Interface
-	PorchRoot    string
+	scheme      *runtime.Scheme
+	clients     map[string]client.Client
+	readers     map[string]client.Client
+	kubeClients map[string]kubernetes.Interface
+	PorchRoot   string
 }
 
 func (t *MultiClusterTestSuite) SetupSuite() {
 	t.ctx = context.Background()
 
 	t.clients = make(map[string]client.Client)
-	t.porchclients = make(map[string]*porchclient.Clientset)
 	t.readers = make(map[string]client.Client)
 	t.kubeClients = make(map[string]kubernetes.Interface)
 
@@ -66,22 +63,6 @@ func (t *MultiClusterTestSuite) UseKubeconfigFile(kubeconfigPath string) {
 		} else {
 			t.Fatalf("Failed to initialize k8s client (%s): %v", cfg.Host, err)
 		}
-	}
-
-	if cachedPorchClient, found := t.porchclients[kubeconfigPath]; found {
-		t.Clientset = cachedPorchClient
-	} else {
-		if newClient, err := porchclient.NewForConfig(cfg); err != nil {
-			t.Fatalf("Failed to initialize Porch client (%s): %v", cfg.Host, err)
-		} else {
-			t.porchclients[kubeconfigPath] = newClient
-			t.Clientset = newClient
-		}
-	}
-	if cs, err := porchclient.NewForConfig(cfg); err != nil {
-		t.Fatalf("Failed to initialize Porch clientset: %v", err)
-	} else {
-		t.Clientset = cs
 	}
 
 	// Direct API reader to avoid stale cache reads
@@ -117,7 +98,6 @@ func (t *MultiClusterTestSuite) UseKubeconfigFile(kubeconfigPath string) {
 
 func (t *MultiClusterTestSuite) DropCachedClients(kubeconfigPath string) {
 	delete(t.clients, kubeconfigPath)
-	delete(t.porchclients, kubeconfigPath)
 	delete(t.readers, kubeconfigPath)
 	delete(t.kubeClients, kubeconfigPath)
 }

@@ -210,12 +210,11 @@ data:
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
 	t.UpdateF(pr)
 	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
-	t.UpdateApprovalF(pr, metav1.UpdateOptions{})
+	published := t.UpdateApprovalF(pr, metav1.UpdateOptions{})
 
-	// upgrade "test-workspace" to basensV2
-	pr.Spec.Lifecycle = porchapi.PackageRevisionLifecycleDraft
-	pr.Spec.WorkspaceName = testWorkspace + "-upgrade"
-	pr.Spec.Tasks = []porchapi.Task{{
+	// Create new PackageRevision for upgrade workspace
+	upgradePr := t.CreatePackageSkeleton(gitRepository, "testns", testWorkspace+"-upgrade")
+	upgradePr.Spec.Tasks = []porchapi.Task{{
 		Type: porchapi.TaskTypeUpgrade,
 		Upgrade: &porchapi.PackageUpgradeTaskSpec{
 			OldUpstream: porchapi.PackageRevisionRef{
@@ -225,16 +224,15 @@ data:
 				Name: basensV2.Name,
 			},
 			LocalPackageRevisionRef: porchapi.PackageRevisionRef{
-				Name: pr.Name, // this is still the name of the "test-workspace" PR
+				Name: published.Name,
 			},
 		},
 	}}
-
-	t.CreateF(pr)
+	t.CreateF(upgradePr)
 
 	t.GetF(client.ObjectKey{
 		Namespace: t.Namespace,
-		Name:      pr.Name,
+		Name:      upgradePr.Name,
 	}, &revisionResources)
 
 	if _, found := revisionResources.Spec.Resources["resourcequota.yaml"]; !found {
