@@ -751,6 +751,8 @@ func TestUpdatePackageResourcesRenderFailure(t *testing.T) {
 				},
 			}, nil)
 
+			mockPkgRev.On("Key").Return(repository.PackageRevisionKey{}).Maybe()
+
 			mockCache.On("OpenRepository", mock.Anything, repositoryObj).Return(mockRepo, nil)
 			mockRepo.On("UpdatePackageRevision", mock.Anything, mockPkgRev).Return(mockDraft, nil)
 
