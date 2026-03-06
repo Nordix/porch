@@ -870,6 +870,7 @@ func RunInParallel(functions ...func() any) []any {
 		group.Add(1)
 		go func() {
 			defer group.Done()
+			fmt.Printf("Starting %s \n", time.Now())
 			if reflect.TypeOf(eachFunction).NumOut() == 0 {
 				results = append(results, nil)
 				eachFunction()
