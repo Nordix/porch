@@ -63,6 +63,9 @@ type PorchServerOptions struct {
 	CacheType         string
 	DbCacheDriver     string
 	DbCacheDataSource string
+	DbMaxConnections     int
+	DbMaxIdleConnections int
+	DbMaxConnLifetime    time.Duration
 
 	DefaultImagePrefix       string
 	FunctionRunnerAddress    string
@@ -181,6 +184,33 @@ func (o *PorchServerOptions) Complete() error {
 	if o.CacheType == string(cachetypes.DBCacheType) {
 		if err := o.setupDBCacheConn(); err != nil {
 			return err
+		}
+		// Set connection pool defaults from environment variables
+		if maxConns := os.Getenv("DB_MAX_CONNECTIONS"); maxConns != "" {
+			if n, err := fmt.Sscanf(maxConns, "%d", &o.DbMaxConnections); err != nil || n != 1 {
+				klog.Warningf("Invalid DB_MAX_CONNECTIONS value %q, using default 100", maxConns)
+				o.DbMaxConnections = 100
+			}
+		} else {
+			o.DbMaxConnections = 100
+		}
+		if maxIdle := os.Getenv("DB_MAX_IDLE_CONNECTIONS"); maxIdle != "" {
+			if n, err := fmt.Sscanf(maxIdle, "%d", &o.DbMaxIdleConnections); err != nil || n != 1 {
+				klog.Warningf("Invalid DB_MAX_IDLE_CONNECTIONS value %q, using default 100", maxIdle)
+				o.DbMaxIdleConnections = 100
+			}
+		} else {
+			o.DbMaxIdleConnections = 100
+		}
+		if maxLifetime := os.Getenv("DB_MAX_CONN_LIFETIME"); maxLifetime != "" {
+			if d, err := time.ParseDuration(maxLifetime); err != nil {
+				klog.Warningf("Invalid DB_MAX_CONN_LIFETIME value %q, using default 3m", maxLifetime)
+				o.DbMaxConnLifetime = 3 * time.Minute
+			} else {
+				o.DbMaxConnLifetime = d
+			}
+		} else {
+			o.DbMaxConnLifetime = 3 * time.Minute
 		}
 	}
 
@@ -304,8 +334,11 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 				RepoOperationRetryAttempts: o.RepoOperationRetryAttempts,
 				CacheType:                  cachetypes.CacheType(o.CacheType),
 				DBCacheOptions: cachetypes.DBCacheOptions{
-					Driver:     o.DbCacheDriver,
-					DataSource: o.DbCacheDataSource,
+					Driver:             o.DbCacheDriver,
+					DataSource:         o.DbCacheDataSource,
+					MaxConnections:     o.DbMaxConnections,
+					MaxIdleConnections: o.DbMaxIdleConnections,
+					MaxConnLifetime:    o.DbMaxConnLifetime,
 				},
 			},
 			ListTimeoutPerRepository: o.ListTimeoutPerRepository,

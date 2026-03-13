@@ -114,20 +114,18 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 			}
 		}
 	case upstream, downstream:
-		// do nothing
+		packageRevisionList := porchapi.PackageRevisionList{}
+		listOpts := []client.ListOption{}
+		if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
+			listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
+		}
+		if err := r.client.List(r.ctx, &packageRevisionList, listOpts...); err != nil {
+			return errors.E(op, err)
+		}
+		r.prs = packageRevisionList.Items
 	default:
 		return errors.E(op, fmt.Errorf("argument for 'discover' must be one of 'upstream' or 'downstream'"))
 	}
-
-	packageRevisionList := porchapi.PackageRevisionList{}
-	listOpts := []client.ListOption{}
-	if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
-		listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
-	}
-	if err := r.client.List(r.ctx, &packageRevisionList, listOpts...); err != nil {
-		return errors.E(op, err)
-	}
-	r.prs = packageRevisionList.Items
 
 	return nil
 }
@@ -242,6 +240,19 @@ func makePackageRevision(oldLocal *porchapi.PackageRevision, workspace string, t
 }
 
 func (r *runner) findPackageRevision(prName string) *porchapi.PackageRevision {
+	// Use GET instead of searching through cached list
+	if r.discover == "" {
+		pr := &porchapi.PackageRevision{}
+		ns := ""
+		if r.cfg.Namespace != nil {
+			ns = *r.cfg.Namespace
+		}
+		if err := r.client.Get(r.ctx, client.ObjectKey{Namespace: ns, Name: prName}, pr); err != nil {
+			return nil
+		}
+		return pr
+	}
+	// Discover mode uses cached list
 	for i := range r.prs {
 		pr := r.prs[i]
 		if pr.Name == prName {
@@ -252,6 +263,25 @@ func (r *runner) findPackageRevision(prName string) *porchapi.PackageRevision {
 }
 
 func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *porchapi.PackageRevision {
+	// Use List for finding by package name/repo/revision
+	if r.discover == "" {
+		list := &porchapi.PackageRevisionList{}
+		ns := ""
+		if r.cfg.Namespace != nil {
+			ns = *r.cfg.Namespace
+		}
+		if err := r.client.List(r.ctx, list, client.InNamespace(ns)); err != nil {
+			return nil
+		}
+		for i := range list.Items {
+			pr := &list.Items[i]
+			if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision == revision {
+				return pr
+			}
+		}
+		return nil
+	}
+	// Discover mode uses cached list
 	for i := range r.prs {
 		pr := r.prs[i]
 		if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision == revision {
@@ -262,6 +292,28 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 }
 
 func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapi.PackageRevision {
+	// Use List for finding latest by package name/repo
+	if r.discover == "" {
+		list := &porchapi.PackageRevisionList{}
+		ns := ""
+		if r.cfg.Namespace != nil {
+			ns = *r.cfg.Namespace
+		}
+		if err := r.client.List(r.ctx, list, client.InNamespace(ns)); err != nil {
+			return nil
+		}
+		latest := 0
+		var output *porchapi.PackageRevision
+		for i := range list.Items {
+			pr := &list.Items[i]
+			if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision > latest {
+				latest = pr.Spec.Revision
+				output = pr
+			}
+		}
+		return output
+	}
+	// Discover mode uses cached list
 	latest := 0
 	var output *porchapi.PackageRevision
 	for _, pr := range r.prs {

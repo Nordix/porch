@@ -29,12 +29,8 @@ const (
 )
 
 func PackageAlreadyExists(ctx context.Context, c client.Client, repository, packageName, namespace string) (bool, error) {
-	// only the first package revision can be created from init or clone, so
-	// we need to check that the package doesn't already exist.
 	packageRevisionList := porchapi.PackageRevisionList{}
-	if err := c.List(ctx, &packageRevisionList, &client.ListOptions{
-		Namespace: namespace,
-	}); err != nil {
+	if err := c.List(ctx, &packageRevisionList, client.InNamespace(namespace)); err != nil {
 		return false, err
 	}
 	for _, pr := range packageRevisionList.Items {
