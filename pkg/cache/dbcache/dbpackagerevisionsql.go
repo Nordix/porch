@@ -118,12 +118,17 @@ func pkgRevListPRsFromDB(ctx context.Context, filter repository.ListPackageRevis
 			package_revisions.lifecycle,
 			package_revisions.ext_pr_id,
 			package_revisions.latest,
-			package_revisions.tasks
+			package_revisions.tasks,
+			COALESCE(kptfile.resource_value, '')
 		FROM package_revisions
 		INNER JOIN packages
 			ON package_revisions.k8s_name_space=packages.k8s_name_space AND package_revisions.package_k8s_name=packages.k8s_name
 		INNER JOIN repositories
 			ON packages.k8s_name_space=repositories.k8s_name_space AND packages.repo_k8s_name=repositories.k8s_name
+		LEFT JOIN resources AS kptfile
+			ON package_revisions.k8s_name_space=kptfile.k8s_name_space
+			AND package_revisions.k8s_name=kptfile.k8s_name
+			AND kptfile.resource_key='Kptfile'
 	`
 
 	sqlStatement += prListFilter2WhereClause(filter)
@@ -139,7 +144,7 @@ func pkgRevListPRsFromDB(ctx context.Context, filter repository.ListPackageRevis
 		return nil, err
 	}
 
-	return pkgRevScanRowsFromDB(ctx, rows)
+	return pkgRevScanRowsFromDBWithKptfile(ctx, rows)
 }
 
 func pkgRevReadPRsFromDB(ctx context.Context, pk repository.PackageKey) ([]*dbPackageRevision, error) {
@@ -478,4 +483,71 @@ func findUpstreamRefsFromDB(ctx context.Context, namespace, prName string) (stri
 		return "", err
 	}
 	return downstreamName, nil
+}
+
+// pkgRevScanRowsFromDBWithKptfile scans rows that include Kptfile from LEFT JOIN
+func pkgRevScanRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows) ([]*dbPackageRevision, error) {
+	_, span := tracer.Start(ctx, "dbpackagesql::pkgRevScanRowsFromDBWithKptfile", trace.WithAttributes())
+	defer span.End()
+
+	defer rows.Close()
+
+	var dbPkgRevs []*dbPackageRevision
+
+	for rows.Next() {
+		var pkgRev dbPackageRevision
+		var pkgK8SName, prK8SName, metaAsJSON, specAsJSON, extPRID, tasks, kptfileData string
+
+		err := rows.Scan(
+			&pkgRev.pkgRevKey.PkgKey.RepoKey.Namespace,
+			&pkgRev.pkgRevKey.PkgKey.RepoKey.Name,
+			&pkgRev.pkgRevKey.PkgKey.RepoKey.Path,
+			&pkgRev.pkgRevKey.PkgKey.RepoKey.PlaceholderWSname,
+			&pkgK8SName,
+			&pkgRev.pkgRevKey.PkgKey.Path,
+			&prK8SName,
+			&pkgRev.pkgRevKey.Revision,
+			&metaAsJSON,
+			&specAsJSON,
+			&pkgRev.updated,
+			&pkgRev.updatedBy,
+			&pkgRev.lifecycle,
+			&extPRID,
+			&pkgRev.latest,
+			&tasks,
+			&kptfileData)
+
+		if err != nil {
+			klog.Warningf("pkgRevScanRowsFromDBWithKptfile: scanning rows failed: %q", err)
+			return nil, err
+		}
+
+		repo := cachetypes.CacheInstance.GetRepository(pkgRev.pkgRevKey.PkgKey.RepoKey)
+		if repo != nil {
+			if dbRepo, ok := repo.(*dbRepository); ok {
+				pkgRev.repo = dbRepo
+			} else {
+				klog.Warningf("pkgRevScanRowsFromDBWithKptfile: repository %+v is not a dbRepository for package revision %s", pkgRev.pkgRevKey.PkgKey.RepoKey, prK8SName)
+				continue
+			}
+		} else {
+			klog.V(4).Infof("pkgRevScanRowsFromDBWithKptfile: repository %+v not found in cache for package revision %s", pkgRev.pkgRevKey.PkgKey.RepoKey, prK8SName)
+			continue
+		}
+		pkgRev.pkgRevKey.PkgKey.Package = repository.K8SName2PkgName(pkgK8SName)
+		pkgRev.pkgRevKey.WorkspaceName = repository.K8SName2PkgRevWSName(pkgK8SName, prK8SName)
+		setValueFromJSON(metaAsJSON, &pkgRev.meta)
+		setValueFromJSON(specAsJSON, &pkgRev.spec)
+		setValueFromJSON(extPRID, &pkgRev.extPRID)
+		setValueFromJSON(tasks, &pkgRev.tasks)
+
+		// Store Kptfile in resources map
+		if kptfileData != "" {
+			pkgRev.resources = map[string]string{"Kptfile": kptfileData}
+		}
+
+		dbPkgRevs = append(dbPkgRevs, &pkgRev)
+	}
+
+	return dbPkgRevs, nil
 }
