@@ -333,6 +333,10 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 				RepoSyncFrequency:          o.RepoSyncFrequency,
 				RepoOperationRetryAttempts: o.RepoOperationRetryAttempts,
 				CacheType:                  cachetypes.CacheType(o.CacheType),
+				CRCacheOptions: cachetypes.CRCacheOptions{
+					MaxConcurrentLists:       o.MaxConcurrentLists,
+					ListTimeoutPerRepository: o.ListTimeoutPerRepository,
+				},
 				DBCacheOptions: cachetypes.DBCacheOptions{
 					Driver:             o.DbCacheDriver,
 					DataSource:         o.DbCacheDataSource,
@@ -341,8 +345,6 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 					MaxConnLifetime:    o.DbMaxConnLifetime,
 				},
 			},
-			ListTimeoutPerRepository: o.ListTimeoutPerRepository,
-			MaxConcurrentLists:       o.MaxConcurrentLists,
 		},
 	}
 	return config, nil
