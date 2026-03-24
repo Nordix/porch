@@ -17,7 +17,6 @@ package upgrade
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"slices"
 
@@ -141,9 +140,6 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Debug: Log upgrade command start
-	fmt.Fprintf(cmd.ErrOrStderr(), "[DEBUG] Starting upgrade command for %s at %v\n", args[0], time.Now())
-
 	pr := r.findPackageRevision(args[0])
 	if pr == nil {
 		return errors.E(op, pkgerrors.Errorf("could not find package revision %s", args[0]))
@@ -158,13 +154,8 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		return err
 	})
 	if err != nil {
-		// Debug: Log upgrade command error
-		fmt.Fprintf(cmd.ErrOrStderr(), "[DEBUG] Upgrade command failed for %s at %v: %v\n", args[0], time.Now(), err)
 		return errors.E(op, err)
 	}
-
-	// Debug: Log upgrade command success
-	fmt.Fprintf(cmd.ErrOrStderr(), "[DEBUG] Upgrade command completed for %s at %v\n", args[0], time.Now())
 
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s upgraded to %s\n", pr.Name, newPr.Name); err != nil {
 		return errors.E(op, err)
@@ -174,9 +165,6 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 }
 
 func (r *runner) doUpgrade(pr *porchapi.PackageRevision) (*porchapi.PackageRevision, error) {
-	// Debug: Log doUpgrade start
-	fmt.Printf("[DEBUG] doUpgrade starting for %s at %v\n", pr.Name, time.Now())
-
 	if !pr.IsPublished() {
 		return nil, pkgerrors.Errorf("to upgrade a package, it must be in a published state, not %q", pr.Spec.Lifecycle)
 	}
@@ -230,17 +218,7 @@ func (r *runner) doUpgrade(pr *porchapi.PackageRevision) (*porchapi.PackageRevis
 	}
 	newPr := makePackageRevision(pr, r.workspace, upgradeTask)
 
-	// Debug: Log before API call
-	fmt.Printf("[DEBUG] About to create PackageRevision via API for %s at %v\n", pr.Name, time.Now())
-
 	err := r.client.Create(r.ctx, newPr)
-
-	// Debug: Log after API call
-	if err != nil {
-		fmt.Printf("[DEBUG] API call failed for %s at %v: %v\n", pr.Name, time.Now(), err)
-	} else {
-		fmt.Printf("[DEBUG] API call succeeded for %s at %v\n", pr.Name, time.Now())
-	}
 
 	return newPr, pkgerrors.Wrapf(err, "failed to do create package revision %q", newPr.Name)
 }
@@ -289,7 +267,6 @@ func (r *runner) findPackageRevision(prName string) *porchapi.PackageRevision {
 func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *porchapi.PackageRevision {
 	// Use List with server-side filtering by package name, repo, and revision
 	if r.discover == "" {
-		fmt.Printf("[DEBUG] About to LIST PackageRevisions for %s/%s revision %d with server-side filtering at %v\n", repo, name, revision, time.Now())
 		list := &porchapi.PackageRevisionList{}
 		ns := ""
 		if r.cfg.Namespace != nil {
@@ -327,11 +304,9 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 		for i := range list.Items {
 			pr := &list.Items[i]
 			if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision == revision {
-				fmt.Printf("[DEBUG] Found matching PackageRevision: %s\n", pr.Name)
 				return pr
 			}
 		}
-		fmt.Printf("[DEBUG] No matching PackageRevision found for %s/%s revision %d\n", repo, name, revision)
 		return nil
 	}
 	// Discover mode uses cached list
