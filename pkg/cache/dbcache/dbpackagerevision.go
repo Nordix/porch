@@ -55,6 +55,12 @@ type dbPackageRevision struct {
 	latest    bool
 	tasks     []porchapi.Task
 	resources map[string]string
+
+	// Denormalized KPTFile fields to avoid repeated YAML parsing
+	kptfileConditions     []porchapi.Condition
+	kptfileReadinessGates []porchapi.ReadinessGate
+	kptfileLabels         map[string]string
+	kptfileAnnotations    map[string]string
 }
 
 func (pr *dbPackageRevision) KubeObjectName() string {
@@ -186,13 +192,12 @@ func (pr *dbPackageRevision) GetPackageRevision(ctx context.Context) (*porchapi.
 
 	_, upstreamLock, _ := pr.GetUpstreamLock(ctx)
 	_, selfLock, _ := pr.GetLock(ctx)
-	kf, _ := pr.GetKptfile(ctx)
 
 	status := porchapi.PackageRevisionStatus{
 		UpstreamLock: repository.KptUpstreamLock2APIUpstreamLock(upstreamLock),
 		SelfLock:     repository.KptUpstreamLock2APIUpstreamLock(selfLock),
 		Deployment:   pr.repo.deployment,
-		Conditions:   repository.ToAPIConditions(kf),
+		Conditions:   pr.kptfileConditions,
 	}
 
 	if porchapi.LifecycleIsPublished(pr.Lifecycle(ctx)) {
@@ -237,12 +242,12 @@ func (pr *dbPackageRevision) GetPackageRevision(ctx context.Context) (*porchapi.
 			RepositoryName: pr.Key().RKey().Name,
 			Lifecycle:      pr.Lifecycle(ctx),
 			Tasks:          pr.tasks,
-			ReadinessGates: repository.ToAPIReadinessGates(kf),
+			ReadinessGates: pr.kptfileReadinessGates,
 			WorkspaceName:  pr.Key().WorkspaceName,
 			Revision:       pr.Key().Revision,
 			PackageMetadata: &porchapi.PackageMetadata{
-				Labels:      kf.Labels,
-				Annotations: kf.Annotations,
+				Labels:      pr.kptfileLabels,
+				Annotations: pr.kptfileAnnotations,
 			},
 		},
 		Status: status,
@@ -309,15 +314,19 @@ func (pr *dbPackageRevision) ToMainPackageRevision(ctx context.Context) reposito
 			Revision:      -1,
 			WorkspaceName: pr.Key().RKey().PlaceholderWSname,
 		},
-		meta:      metav1.ObjectMeta{},
-		spec:      &porchapi.PackageRevisionSpec{},
-		updated:   time.Now(),
-		updatedBy: getCurrentUser(),
-		lifecycle: pr.lifecycle,
-		extPRID:   pr.extPRID,
-		latest:    false,
-		tasks:     pr.tasks,
-		resources: pr.resources,
+		meta:                  metav1.ObjectMeta{},
+		spec:                  &porchapi.PackageRevisionSpec{},
+		updated:               time.Now(),
+		updatedBy:             getCurrentUser(),
+		lifecycle:             pr.lifecycle,
+		extPRID:               pr.extPRID,
+		latest:                false,
+		tasks:                 pr.tasks,
+		resources:             pr.resources,
+		kptfileConditions:     pr.kptfileConditions,
+		kptfileReadinessGates: pr.kptfileReadinessGates,
+		kptfileLabels:         pr.kptfileLabels,
+		kptfileAnnotations:    pr.kptfileAnnotations,
 	}
 
 	mainPR.meta.CreationTimestamp = metav1.Time{Time: time.Now()}
@@ -420,6 +429,10 @@ func (pr *dbPackageRevision) copyToThis(otherPr *dbPackageRevision) {
 	pr.lifecycle = otherPr.lifecycle
 	pr.tasks = otherPr.tasks
 	pr.resources = otherPr.resources
+	pr.kptfileConditions = otherPr.kptfileConditions
+	pr.kptfileReadinessGates = otherPr.kptfileReadinessGates
+	pr.kptfileLabels = otherPr.kptfileLabels
+	pr.kptfileAnnotations = otherPr.kptfileAnnotations
 }
 
 func (pr *dbPackageRevision) UpdateResources(ctx context.Context, new *porchapi.PackageRevisionResources, change *porchapi.Task) error {
@@ -432,6 +445,7 @@ func (pr *dbPackageRevision) UpdateResources(ctx context.Context, new *porchapi.
 	}()
 
 	pr.resources = new.Spec.Resources
+	pr.refreshKptfileFields()
 
 	if change != nil && porchapi.IsValidFirstTaskType(change.Type) {
 		if len(pr.tasks) > 0 {
@@ -441,6 +455,26 @@ func (pr *dbPackageRevision) UpdateResources(ctx context.Context, new *porchapi.
 	}
 
 	return nil
+}
+
+// refreshKptfileFields extracts denormalized fields from the Kptfile resource
+// so that GetPackageRevision can avoid repeated YAML parsing.
+func (pr *dbPackageRevision) refreshKptfileFields() {
+	kfString, ok := pr.resources[kptfile.KptFileName]
+	if !ok || kfString == "" {
+		return
+	}
+
+	kf, err := kptfileutil.DecodeKptfile(strings.NewReader(kfString))
+	if err != nil {
+		klog.Warningf("refreshKptfileFields: error decoding Kptfile for %+v: %v", pr.Key(), err)
+		return
+	}
+
+	pr.kptfileConditions = repository.ToAPIConditions(*kf)
+	pr.kptfileReadinessGates = repository.ToAPIReadinessGates(*kf)
+	pr.kptfileLabels = kf.Labels
+	pr.kptfileAnnotations = kf.Annotations
 }
 
 func (pr *dbPackageRevision) publishPR(ctx context.Context, newLifecycle porchapi.PackageRevisionLifecycle) error {

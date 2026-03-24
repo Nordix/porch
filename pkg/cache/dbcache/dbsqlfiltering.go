@@ -144,7 +144,7 @@ func filter2SubClauseKptfileLabels(whereStatement string, filterLabels map[strin
 
 	var subClauses []string
 	for labelKey, labelValue := range filterLabels {
-		subClause := fmt.Sprintf("(package_revisions.spec::jsonb->'packageMetadata'->'labels'->>'%s' = '%s')",
+		subClause := fmt.Sprintf("(package_revisions.kptfile_labels::jsonb->>'%s' = '%s')",
 			labelKey, labelValue)
 		subClauses = append(subClauses, subClause)
 	}

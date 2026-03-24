@@ -261,6 +261,7 @@ func (s *repositorySync) cacheExternalPRs(ctx context.Context, externalPrMap map
 			tasks:     extAPIPR.Spec.Tasks,
 			resources: resources,
 		}
+		dbPR.refreshKptfileFields()
 		_, err = s.repo.savePackageRevision(ctx, &dbPR, true)
 		if err != nil {
 			klog.Errorf("repositorySync %+v: failed to save external package revision %+v to database", s.repo.Key(), extPRKey)

@@ -48,7 +48,11 @@ func pkgRevReadFromDB(ctx context.Context, prk repository.PackageRevisionKey, re
 			package_revisions.lifecycle,
 			package_revisions.ext_pr_id,
 			package_revisions.latest,
-			package_revisions.tasks
+			package_revisions.tasks,
+			package_revisions.kptfile_conditions,
+			package_revisions.kptfile_readiness_gates,
+			package_revisions.kptfile_labels,
+			package_revisions.kptfile_annotations
 		FROM package_revisions INNER JOIN packages
 			ON package_revisions.k8s_name_space=packages.k8s_name_space AND package_revisions.package_k8s_name=packages.k8s_name
 		 INNER JOIN repositories
@@ -119,6 +123,10 @@ func pkgRevStreamPRsFromDB(ctx context.Context, filter repository.ListPackageRev
 			package_revisions.ext_pr_id,
 			package_revisions.latest,
 			package_revisions.tasks,
+			package_revisions.kptfile_conditions,
+			package_revisions.kptfile_readiness_gates,
+			package_revisions.kptfile_labels,
+			package_revisions.kptfile_annotations,
 			COALESCE(kptfile.resource_value, '')
 		FROM package_revisions
 		INNER JOIN packages
@@ -181,7 +189,11 @@ func pkgRevReadPRsFromDB(ctx context.Context, pk repository.PackageKey) ([]*dbPa
 			package_revisions.lifecycle,
 			package_revisions.ext_pr_id,
 			package_revisions.latest,
-			package_revisions.tasks
+			package_revisions.tasks,
+			package_revisions.kptfile_conditions,
+			package_revisions.kptfile_readiness_gates,
+			package_revisions.kptfile_labels,
+			package_revisions.kptfile_annotations
 		FROM package_revisions INNER JOIN packages
 			ON package_revisions.k8s_name_space=packages.k8s_name_space AND package_revisions.package_k8s_name=packages.k8s_name
 		 INNER JOIN repositories
@@ -229,7 +241,11 @@ func pkgRevReadLatestPRFromDB(ctx context.Context, pk repository.PackageKey) (*d
 			package_revisions.lifecycle,
 			package_revisions.ext_pr_id,
 			package_revisions.latest,
-			package_revisions.tasks
+			package_revisions.tasks,
+			package_revisions.kptfile_conditions,
+			package_revisions.kptfile_readiness_gates,
+			package_revisions.kptfile_labels,
+			package_revisions.kptfile_annotations
 		FROM package_revisions INNER JOIN packages
 			ON package_revisions.k8s_name_space=packages.k8s_name_space AND package_revisions.package_k8s_name=packages.k8s_name
 		 INNER JOIN repositories
@@ -297,6 +313,7 @@ func pkgRevScanRowsFromDB(ctx context.Context, rows *sql.Rows) ([]*dbPackageRevi
 	for rows.Next() {
 		var pkgRev dbPackageRevision
 		var pkgK8SName, prK8SName, metaAsJSON, specAsJSON, extPRID, tasks string
+		var kptfileConditions, kptfileReadinessGates, kptfileLabels, kptfileAnnotations string
 
 		err := rows.Scan(
 			&pkgRev.pkgRevKey.PkgKey.RepoKey.Namespace,
@@ -314,7 +331,11 @@ func pkgRevScanRowsFromDB(ctx context.Context, rows *sql.Rows) ([]*dbPackageRevi
 			&pkgRev.lifecycle,
 			&extPRID,
 			&pkgRev.latest,
-			&tasks)
+			&tasks,
+			&kptfileConditions,
+			&kptfileReadinessGates,
+			&kptfileLabels,
+			&kptfileAnnotations)
 
 		if err != nil {
 			klog.Warningf("pkgRevScanRowsFromDB: scanning rows failed: %q", err)
@@ -339,6 +360,10 @@ func pkgRevScanRowsFromDB(ctx context.Context, rows *sql.Rows) ([]*dbPackageRevi
 		setValueFromJSON(specAsJSON, &pkgRev.spec)
 		setValueFromJSON(extPRID, &pkgRev.extPRID)
 		setValueFromJSON(tasks, &pkgRev.tasks)
+		setValueFromJSON(kptfileConditions, &pkgRev.kptfileConditions)
+		setValueFromJSON(kptfileReadinessGates, &pkgRev.kptfileReadinessGates)
+		setValueFromJSON(kptfileLabels, &pkgRev.kptfileLabels)
+		setValueFromJSON(kptfileAnnotations, &pkgRev.kptfileAnnotations)
 
 		dbPkgRevs = append(dbPkgRevs, &pkgRev)
 	}
@@ -353,8 +378,8 @@ func pkgRevWriteToDB(ctx context.Context, pr *dbPackageRevision) error {
 	klog.V(5).Infof("pkgRevWriteToDB: writing package revision %+v", pr.Key())
 
 	sqlStatement := `
-        INSERT INTO package_revisions (k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        INSERT INTO package_revisions (k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks, kptfile_conditions, kptfile_readiness_gates, kptfile_labels, kptfile_annotations)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 
 	klog.V(6).Infof("pkgRevWriteToDB: running query %q on package revision %+v", sqlStatement, pr)
@@ -362,7 +387,8 @@ func pkgRevWriteToDB(ctx context.Context, pr *dbPackageRevision) error {
 	if _, err := GetDB().db.Exec(ctx,
 		sqlStatement,
 		prk.K8SNS(), prk.K8SName(),
-		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks)); err == nil {
+		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks),
+		valueAsJSON(pr.kptfileConditions), valueAsJSON(pr.kptfileReadinessGates), valueAsJSON(pr.kptfileLabels), valueAsJSON(pr.kptfileAnnotations)); err == nil {
 		klog.V(5).Infof("pkgRevWriteToDB: query succeeded, row created")
 	} else {
 		klog.Warningf("pkgRevWriteToDB: query failed for %+v %q", pr.Key(), err)
@@ -385,27 +411,31 @@ func pkgRevUpdateDB(ctx context.Context, pr *dbPackageRevision, updateResources 
 	klog.V(5).Infof("pkgRevUpdateDB: updating package revision %+v", pr.Key())
 
 	sqlStatement := `
-        UPDATE package_revisions SET package_k8s_name=$3, revision=$4, meta=$5, spec=$6, updated=$7, updatedby=$8, lifecycle=$9, ext_pr_id=$10, tasks=$11
+        UPDATE package_revisions SET package_k8s_name=$3, revision=$4, meta=$5, spec=$6, updated=$7, updatedby=$8, lifecycle=$9, ext_pr_id=$10, tasks=$11, kptfile_conditions=$12, kptfile_readiness_gates=$13, kptfile_labels=$14, kptfile_annotations=$15
         WHERE k8s_name_space=$1 AND k8s_name=$2
 	`
 	if pr.pkgRevKey.Revision == -1 {
 		sqlStatement = `
     INSERT INTO package_revisions (
-        k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks
+        k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks, kptfile_conditions, kptfile_readiness_gates, kptfile_labels, kptfile_annotations
     ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
     )
     ON CONFLICT (k8s_name_space, k8s_name)
     DO UPDATE SET
-        package_k8s_name = EXCLUDED.package_k8s_name,
-        meta             = EXCLUDED.meta,
-		revision         = EXCLUDED.revision,
-        spec             = EXCLUDED.spec,
-        updated          = EXCLUDED.updated,
-        updatedby        = EXCLUDED.updatedby,
-        lifecycle        = EXCLUDED.lifecycle,
-        ext_pr_id        = EXCLUDED.ext_pr_id,
-        tasks            = EXCLUDED.tasks;
+        package_k8s_name       = EXCLUDED.package_k8s_name,
+        meta                   = EXCLUDED.meta,
+		revision               = EXCLUDED.revision,
+        spec                   = EXCLUDED.spec,
+        updated                = EXCLUDED.updated,
+        updatedby              = EXCLUDED.updatedby,
+        lifecycle              = EXCLUDED.lifecycle,
+        ext_pr_id              = EXCLUDED.ext_pr_id,
+        tasks                  = EXCLUDED.tasks,
+        kptfile_conditions     = EXCLUDED.kptfile_conditions,
+        kptfile_readiness_gates = EXCLUDED.kptfile_readiness_gates,
+        kptfile_labels         = EXCLUDED.kptfile_labels,
+        kptfile_annotations    = EXCLUDED.kptfile_annotations;
 	`
 	}
 
@@ -414,7 +444,8 @@ func pkgRevUpdateDB(ctx context.Context, pr *dbPackageRevision, updateResources 
 	result, err := GetDB().db.Exec(ctx,
 		sqlStatement,
 		prk.K8SNS(), prk.K8SName(),
-		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks))
+		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks),
+		valueAsJSON(pr.kptfileConditions), valueAsJSON(pr.kptfileReadinessGates), valueAsJSON(pr.kptfileLabels), valueAsJSON(pr.kptfileAnnotations))
 
 	if err == nil {
 		if rowsAffected, _ := result.RowsAffected(); rowsAffected == 1 {
@@ -506,6 +537,7 @@ func pkgRevStreamRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows, call
 	for rows.Next() {
 		var pkgRev dbPackageRevision
 		var pkgK8SName, prK8SName, metaAsJSON, specAsJSON, extPRID, tasks, kptfileData string
+		var kptfileConditions, kptfileReadinessGates, kptfileLabels, kptfileAnnotations string
 
 		err := rows.Scan(
 			&pkgRev.pkgRevKey.PkgKey.RepoKey.Namespace,
@@ -524,6 +556,10 @@ func pkgRevStreamRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows, call
 			&extPRID,
 			&pkgRev.latest,
 			&tasks,
+			&kptfileConditions,
+			&kptfileReadinessGates,
+			&kptfileLabels,
+			&kptfileAnnotations,
 			&kptfileData)
 
 		if err != nil {
@@ -549,6 +585,10 @@ func pkgRevStreamRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows, call
 		setValueFromJSON(specAsJSON, &pkgRev.spec)
 		setValueFromJSON(extPRID, &pkgRev.extPRID)
 		setValueFromJSON(tasks, &pkgRev.tasks)
+		setValueFromJSON(kptfileConditions, &pkgRev.kptfileConditions)
+		setValueFromJSON(kptfileReadinessGates, &pkgRev.kptfileReadinessGates)
+		setValueFromJSON(kptfileLabels, &pkgRev.kptfileLabels)
+		setValueFromJSON(kptfileAnnotations, &pkgRev.kptfileAnnotations)
 
 		// Store Kptfile in resources map
 		if kptfileData != "" {
