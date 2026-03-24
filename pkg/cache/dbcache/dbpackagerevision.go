@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync"
 	"time"
 
 	kptfile "github.com/kptdev/kpt/pkg/api/kptfile/v1"
@@ -55,6 +56,10 @@ type dbPackageRevision struct {
 	latest    bool
 	tasks     []porchapi.Task
 	resources map[string]string
+	
+	// Cached parsed Kptfile to avoid repeated YAML parsing
+	cachedKptfile *kptfile.KptFile
+	kptfileMutex  sync.RWMutex
 }
 
 func (pr *dbPackageRevision) KubeObjectName() string {
@@ -351,6 +356,23 @@ func (pr *dbPackageRevision) GetKptfile(ctx context.Context) (kptfile.KptFile, e
 	_, span := tracer.Start(ctx, "dbPackageRevision::GetKptfile", trace.WithAttributes())
 	defer span.End()
 
+	// Check if already parsed and cached
+	pr.kptfileMutex.RLock()
+	if pr.cachedKptfile != nil {
+		defer pr.kptfileMutex.RUnlock()
+		return *pr.cachedKptfile, nil
+	}
+	pr.kptfileMutex.RUnlock()
+
+	// Parse and cache
+	pr.kptfileMutex.Lock()
+	defer pr.kptfileMutex.Unlock()
+	
+	// Double-check after acquiring write lock
+	if pr.cachedKptfile != nil {
+		return *pr.cachedKptfile, nil
+	}
+
 	// Check if Kptfile is cached from list operation
 	var kfString string
 	if len(pr.resources) > 0 {
@@ -368,10 +390,13 @@ func (pr *dbPackageRevision) GetKptfile(ctx context.Context) (kptfile.KptFile, e
 		}
 	}
 
+	// Parse once and cache
 	kf, err := kptfileutil.DecodeKptfile(strings.NewReader(kfString))
 	if err != nil {
 		return kptfile.KptFile{}, fmt.Errorf("error decoding Kptfile: %w", err)
 	}
+	
+	pr.cachedKptfile = kf
 	return *kf, nil
 }
 
@@ -420,6 +445,11 @@ func (pr *dbPackageRevision) copyToThis(otherPr *dbPackageRevision) {
 	pr.lifecycle = otherPr.lifecycle
 	pr.tasks = otherPr.tasks
 	pr.resources = otherPr.resources
+	
+	// Clear cached Kptfile when copying to force re-parsing
+	pr.kptfileMutex.Lock()
+	pr.cachedKptfile = nil
+	pr.kptfileMutex.Unlock()
 }
 
 func (pr *dbPackageRevision) UpdateResources(ctx context.Context, new *porchapi.PackageRevisionResources, change *porchapi.Task) error {
@@ -432,6 +462,11 @@ func (pr *dbPackageRevision) UpdateResources(ctx context.Context, new *porchapi.
 	}()
 
 	pr.resources = new.Spec.Resources
+
+	// Clear cached Kptfile when resources are updated
+	pr.kptfileMutex.Lock()
+	pr.cachedKptfile = nil
+	pr.kptfileMutex.Unlock()
 
 	if change != nil && porchapi.IsValidFirstTaskType(change.Type) {
 		if len(pr.tasks) > 0 {
