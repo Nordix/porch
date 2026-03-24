@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/repository"
@@ -144,7 +145,20 @@ func pkgRevStreamPRsFromDB(ctx context.Context, filter repository.ListPackageRev
 		return err
 	}
 
-	return pkgRevStreamRowsFromDBWithKptfile(ctx, rows, callback)
+	// Collect all data first, then close connection
+	var packageRevisions []*dbPackageRevision
+	if err := pkgRevStreamRowsFromDBWithKptfile(ctx, rows, &packageRevisions); err != nil {
+		return err
+	}
+
+	// Process collected data after connection is closed
+	for _, pr := range packageRevisions {
+		if err := callback(pr); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func pkgRevListPRsFromDB(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]*dbPackageRevision, error) {
@@ -496,12 +510,16 @@ func findUpstreamRefsFromDB(ctx context.Context, namespace, prName string) (stri
 	return downstreamName, nil
 }
 
-// pkgRevStreamRowsFromDBWithKptfile scans rows that include Kptfile from LEFT JOIN
-func pkgRevStreamRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows, callback func(*dbPackageRevision) error) error {
+// pkgRevStreamRowsFromDBWithKptfile collects all rows into memory before closing connection
+func pkgRevStreamRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows, result *[]*dbPackageRevision) error {
 	_, span := tracer.Start(ctx, "dbpackagesql::pkgRevStreamRowsFromDBWithKptfile", trace.WithAttributes())
 	defer span.End()
 
-	defer rows.Close()
+	startTime := time.Now()
+	defer func() {
+		rows.Close()
+		klog.Infof("pkgRevStreamRowsFromDBWithKptfile: connection held for %v, collected %d rows", time.Since(startTime), len(*result))
+	}()
 
 	for rows.Next() {
 		var pkgRev dbPackageRevision
@@ -555,9 +573,7 @@ func pkgRevStreamRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows, call
 			pkgRev.resources = map[string]string{"Kptfile": kptfileData}
 		}
 
-		if err := callback(&pkgRev); err != nil {
-			return err
-		}
+		*result = append(*result, &pkgRev)
 	}
 
 	return nil

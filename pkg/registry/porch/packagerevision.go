@@ -92,74 +92,24 @@ func (r *packageRevisions) List(ctx context.Context, options *metainternalversio
 		return nil, err
 	}
 
-	// Collect all package revisions first
-	var allPackageRevisions []repository.PackageRevision
-	if err := r.listPackageRevisions(ctx, *filter, func(ctx context.Context, p repository.PackageRevision) error {
-		allPackageRevisions = append(allPackageRevisions, p)
+	// Use streaming approach - collect repository.PackageRevision objects first, then process
+	var packageRevisions []repository.PackageRevision
+	if err := r.streamPackageRevisions(ctx, *filter, func(ctx context.Context, p repository.PackageRevision) error {
+		packageRevisions = append(packageRevisions, p)
 		return nil
 	}); err != nil {
 		return nil, err
 	}
 
-	itemCount := len(allPackageRevisions)
-	if itemCount == 0 {
-		return result, nil
-	}
-
-	// Process items in parallel with worker pool
-	workerCount := 5 // conservative default to prevent OOM
-	if itemCount < workerCount {
-		workerCount = itemCount
-	}
-
-	type itemResult struct {
-		item  *porchapi.PackageRevision
-		index int
-		err   error
-	}
-
-	resultsCh := make(chan itemResult, itemCount)
-	itemQueue := make(chan struct {
-		pkg   repository.PackageRevision
-		index int
-	}, itemCount)
-
-	// Start workers
-	for i := 0; i < workerCount; i++ {
-		go func(workerID int) {
-			for job := range itemQueue {
-				item, err := job.pkg.GetPackageRevision(ctx)
-				resultsCh <- itemResult{item: item, index: job.index, err: err}
-			}
-		}(i)
-	}
-
-	// Queue all items
-	for i, pkg := range allPackageRevisions {
-		itemQueue <- struct {
-			pkg   repository.PackageRevision
-			index int
-		}{pkg: pkg, index: i}
-	}
-	close(itemQueue)
-
-	// Collect results (maintain order)
-	results := make([]*porchapi.PackageRevision, itemCount)
-	for i := 0; i < itemCount; i++ {
-		res := <-resultsCh
-		if res.err != nil {
-			klog.Warningf("Failed to fetch package revision during list, skipping: %v", res.err)
+	// Now process collected items (connection is already closed)
+	for _, pkg := range packageRevisions {
+		apiPkgRev, err := pkg.GetPackageRevision(ctx)
+		if err != nil {
+			klog.Warningf("Failed to fetch package revision during list, skipping: %v", err)
 			continue
 		}
-		if res.item != nil {
-			results[res.index] = res.item
-		}
-	}
-
-	// Append non-nil results to output
-	for _, item := range results {
-		if item != nil {
-			result.Items = append(result.Items, *item)
+		if apiPkgRev != nil {
+			result.Items = append(result.Items, *apiPkgRev)
 		}
 	}
 
