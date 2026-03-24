@@ -75,7 +75,6 @@ func TestPodEvaluatorExecutionSerial(t *testing.T) {
 
 	reqCh := make(chan *connectionRequest, 2)
 	go func() {
-		lock := &sync.Mutex{}
 		counter := &atomic.Int32{}
 		for req := range reqCh {
 			req.responseCh <- &connectionResponse{
@@ -84,7 +83,6 @@ func TestPodEvaluatorExecutionSerial(t *testing.T) {
 					grpcConnection: conn,
 					podKey:         ptr.To(client.ObjectKey{}),
 				},
-				fnEvaluationMutex:     lock,
 				concurrentEvaluations: counter,
 				err:                   nil,
 			}

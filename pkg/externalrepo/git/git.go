@@ -1434,7 +1434,7 @@ func (r *gitRepository) pushAndCleanup(ctx context.Context, ph *pushRefSpecBuild
 					CABundle:   r.caBundle,
 				})
 				if pushErr != nil {
-					klog.Warningf("git push failed attempt %d: %v", attempt, pushErr)
+					klog.Warningf("git push failed attempt %d/%d: repo %s:%s, specs %v: %v", attempt, maxRetries, r.key.Namespace, r.key.Name, specs, pushErr)
 				} else {
 					klog.Infof("git push completed: pushed %v to %s/%s in %s", specs, OriginName, r.key.Name, time.Since(pushStart))
 				}

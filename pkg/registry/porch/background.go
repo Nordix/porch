@@ -17,11 +17,13 @@ package porch
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
 	"github.com/nephio-project/porch/pkg/util"
+	"golang.org/x/sync/semaphore"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,8 +63,9 @@ func WithRepoOperationRetryAttempts(count int) BackgroundOption {
 
 func RunBackground(ctx context.Context, coreClient client.WithWatch, cache cachetypes.Cache, options ...BackgroundOption) {
 	b := &background{
-		coreClient: coreClient,
-		cache:      cache,
+		coreClient:         coreClient,
+		cache:              cache,
+		gitServerSemaphore: semaphore.NewWeighted(20), // Limit concurrent Git operations to 20
 	}
 
 	for _, o := range options {
@@ -79,6 +82,8 @@ type background struct {
 	periodicRepoSyncFrequency  time.Duration
 	listTimeoutPerRepo         time.Duration
 	repoOperationRetryAttempts int
+	repoMutexes                sync.Map              // Per-repository mutexes for event ordering
+	gitServerSemaphore         *semaphore.Weighted   // Rate limit Git server operations
 }
 
 const (
@@ -88,7 +93,7 @@ const (
 
 // run will run until ctx is done
 func (b *background) run(ctx context.Context) {
-	klog.Infof("Background routine starting ...")
+	klog.Infof("Background routine starting with per-repository event ordering + Git server rate limiting (max 20 concurrent Git ops)")
 
 	// Repository watch.
 	var events <-chan watch.Event
@@ -151,7 +156,7 @@ loop:
 			}
 
 		case t := <-ticker.C:
-			klog.V(2).Infof("Background task %s", t)
+			klog.Infof("Background task %s", t)
 			if err := b.runOnce(ctx); err != nil {
 				klog.Errorf("Periodic repository refresh failed: %v", err)
 			}
@@ -169,12 +174,43 @@ loop:
 
 func (b *background) updateCache(ctx context.Context, event watch.EventType, repository *configapi.Repository) error {
 	switch event {
-	case watch.Added, watch.Modified, watch.Deleted:
+	case watch.Deleted:
 		return b.handleRepositoryEvent(ctx, repository, event)
+	case watch.Added, watch.Modified:
+		// Process directly without channel bottleneck
+		b.processEventDirectly(ctx, event, repository)
+		return nil
 	default:
 		klog.Warningf("Unhandled watch event type: %s", event)
 	}
 	return nil
+}
+
+func (b *background) getRepositoryMutex(repoKey string) *sync.Mutex {
+	mutex, _ := b.repoMutexes.LoadOrStore(repoKey, &sync.Mutex{})
+	return mutex.(*sync.Mutex)
+}
+
+func (b *background) processEventDirectly(ctx context.Context, event watch.EventType, repository *configapi.Repository) {
+	// Create unique key for this repository
+	repoKey := fmt.Sprintf("%s/%s", repository.Namespace, repository.Name)
+
+	go func() {
+		// Get per-repository mutex to ensure event ordering
+		mutex := b.getRepositoryMutex(repoKey)
+		mutex.Lock()
+		defer mutex.Unlock()
+
+		// Create a derived context for this specific event
+		eventCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+
+		if err := b.handleRepositoryEvent(eventCtx, repository, event); err != nil {
+			if ctx.Err() == nil {
+				klog.Warningf("Direct processing error for %s:%s: %v", repository.Namespace, repository.Name, err)
+			}
+		}
+	}()
 }
 
 func (b *background) handleRepositoryEvent(ctx context.Context, repo *configapi.Repository, eventType watch.EventType) error {
@@ -182,29 +218,33 @@ func (b *background) handleRepositoryEvent(ctx context.Context, repo *configapi.
 	start := time.Now()
 	klog.Infof("%s, handling starting", msgPreamble)
 
-	if err := util.ValidateRepository(repo.Name, repo.Spec.Git.Directory); err != nil {
-		return fmt.Errorf("%s, handling failed, repo specification invalid :%q", msgPreamble, err)
+	// Check if context is already cancelled to avoid unnecessary work
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
-	// Verify repositories can be listed (core client is alive)
-	listCtx := ctx
-	var cancel context.CancelFunc
-	if b.listTimeoutPerRepo != 0 {
-		listCtx, cancel = context.WithTimeout(ctx, b.listTimeoutPerRepo)
-		defer cancel()
-	}
-	var repoList configapi.RepositoryList
-	if err := b.coreClient.List(listCtx, &repoList); err != nil {
-		return fmt.Errorf("%s, handling failed, could not list repos using core client :%q", msgPreamble, err)
+	if err := util.ValidateRepository(repo.Name, repo.Spec.Git.Directory); err != nil {
+		return fmt.Errorf("%s, handling failed, repo specification invalid :%q", msgPreamble, err)
 	}
 
 	var err error
 	switch eventType {
 	case watch.Deleted:
+		// For delete operations, we need the full repository list
+		listCtx := ctx
+		if b.listTimeoutPerRepo != 0 {
+			var cancel context.CancelFunc
+			listCtx, cancel = context.WithTimeout(ctx, b.listTimeoutPerRepo)
+			defer cancel()
+		}
+		var repoList configapi.RepositoryList
+		if listErr := b.coreClient.List(listCtx, &repoList); listErr != nil {
+			return fmt.Errorf("%s, handling failed, could not list repos for delete operation :%q", msgPreamble, listErr)
+		}
 		err = b.cache.CloseRepository(listCtx, repo, repoList.Items)
 	default:
 		// Check connectivity before caching
-		if err = b.checkRepositoryConnectivity(listCtx, repo); err != nil {
+		if err = b.checkRepositoryConnectivity(ctx, repo); err != nil {
 			klog.Warningf("Repository connectivity check failed for %s: %v", repo.Name, err)
 			condition := v1.Condition{
 				Type:               configapi.RepositoryReady,
@@ -214,9 +254,9 @@ func (b *background) handleRepositoryEvent(ctx context.Context, repo *configapi.
 				Reason:             configapi.ReasonError,
 				Message:            fmt.Sprintf("Repository connectivity check failed: %v", err),
 			}
-			return b.updateRepositoryStatusCondition(listCtx, repo, condition)
+			return b.updateRepositoryStatusCondition(ctx, repo, condition)
 		}
-		err = b.cacheRepository(listCtx, repo)
+		err = b.cacheRepository(ctx, repo)
 	}
 	if err == nil {
 		klog.Infof("%s, handling completed in %s", msgPreamble, time.Since(start))
@@ -227,7 +267,7 @@ func (b *background) handleRepositoryEvent(ctx context.Context, repo *configapi.
 }
 
 func (b *background) runOnce(ctx context.Context) error {
-	klog.V(2).Infof("background-refreshing repositories")
+	klog.Infof("background-refreshing repositories")
 	repositories := &configapi.RepositoryList{}
 	if err := b.coreClient.List(ctx, repositories); err != nil {
 		return fmt.Errorf("error listing repository objects: %w", err)
@@ -264,7 +304,7 @@ func (b *background) runOnce(ctx context.Context) error {
 func (b *background) cacheRepository(ctx context.Context, repo *configapi.Repository) error {
 	start := time.Now()
 	defer func() {
-		klog.V(2).Infof("background::cacheRepository (%s) took %s", repo.Name, time.Since(start))
+		klog.Infof("background::cacheRepository (%s) took %s", repo.Name, time.Since(start))
 	}()
 
 	_, err := b.cache.OpenRepository(ctx, repo)
@@ -303,6 +343,12 @@ func (b *background) cacheRepository(ctx context.Context, repo *configapi.Reposi
 }
 
 func (b *background) checkRepositoryConnectivity(ctx context.Context, repo *configapi.Repository) error {
+	// Rate limit Git server operations
+	if err := b.gitServerSemaphore.Acquire(ctx, 1); err != nil {
+		return fmt.Errorf("failed to acquire Git server semaphore: %w", err)
+	}
+	defer b.gitServerSemaphore.Release(1)
+	
 	return b.cache.CheckRepositoryConnectivity(ctx, repo)
 }
 

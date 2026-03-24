@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kptdev/kpt/pkg/lib/errors"
 	"github.com/kptdev/kpt/pkg/lib/util/parse"
@@ -163,6 +164,9 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 	const op errors.Op = command + ".runE"
 
+	startTime := time.Now()
+	fmt.Fprintf(cmd.ErrOrStderr(), "DEBUG: Clone command started at %s for package %s\n", startTime.Format(time.RFC3339Nano), r.target)
+
 	pr := &porchapi.PackageRevision{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PackageRevision",
@@ -183,9 +187,19 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 			},
 		},
 	}
+	apiCallStart := time.Now()
+	fmt.Fprintf(cmd.ErrOrStderr(), "DEBUG: Starting API call to create PackageRevision at %s\n", apiCallStart.Format(time.RFC3339Nano))
+
 	if err := r.client.Create(r.ctx, pr); err != nil {
+		apiCallEnd := time.Now()
+		fmt.Fprintf(cmd.ErrOrStderr(), "DEBUG: API call failed at %s (duration: %v) - Error: %v\n", apiCallEnd.Format(time.RFC3339Nano), apiCallEnd.Sub(apiCallStart), err)
 		return errors.E(op, err)
 	}
+
+	apiCallEnd := time.Now()
+	totalDuration := apiCallEnd.Sub(startTime)
+	apiDuration := apiCallEnd.Sub(apiCallStart)
+	fmt.Fprintf(cmd.ErrOrStderr(), "DEBUG: Clone command completed successfully at %s (total: %v, API call: %v)\n", apiCallEnd.Format(time.RFC3339Nano), totalDuration, apiDuration)
 
 	fmt.Fprintf(cmd.OutOrStdout(), "%s created\n", pr.Name)
 	return nil

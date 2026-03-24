@@ -147,8 +147,8 @@ func (c completedConfig) buildClient() (client.WithWatch, error) {
 	}
 
 	// set high qps/burst limits since this will effectively limit API server responsiveness
-	restConfig.QPS = 200
-	restConfig.Burst = 400
+	restConfig.QPS = 500
+	restConfig.Burst = 1000
 
 	scheme := runtime.NewScheme()
 	if err := configapi.AddToScheme(scheme); err != nil {
