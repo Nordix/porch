@@ -95,11 +95,11 @@ func pkgRevReadFromDB(ctx context.Context, prk repository.PackageRevisionKey, re
 	return readPr, err
 }
 
-func pkgRevListPRsFromDB(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]*dbPackageRevision, error) {
-	_, span := tracer.Start(ctx, "dbrepositorysql::pkgRevListPRsFromDB", trace.WithAttributes())
+func pkgRevStreamPRsFromDB(ctx context.Context, filter repository.ListPackageRevisionFilter, callback func(*dbPackageRevision) error) error {
+	_, span := tracer.Start(ctx, "dbrepositorysql::pkgRevStreamPRsFromDB", trace.WithAttributes())
 	defer span.End()
 
-	klog.V(5).Infof("pkgRevListPRsFromDB: listing package revisions for filter %+v", filter)
+	klog.V(5).Infof("pkgRevStreamPRsFromDB: streaming package revisions for filter %+v", filter)
 
 	sqlStatement := `
 		SELECT
@@ -137,14 +137,25 @@ func pkgRevListPRsFromDB(ctx context.Context, filter repository.ListPackageRevis
 			ORDER BY package_revisions.k8s_name_space, package_revisions.k8s_name
 	`
 
-	klog.V(6).Infof("pkgRevListPRsFromDB: running query %q on package revisions with filter %+v", sqlStatement, filter)
+	klog.V(6).Infof("pkgRevStreamPRsFromDB: running query %q on package revisions with filter %+v", sqlStatement, filter)
 	rows, err := GetDB().db.Query(ctx, sqlStatement)
 	if err != nil {
-		klog.Warningf("pkgRevListPRsFromDB: reading package revision list for filter %+v returned err: %q", filter, err)
-		return nil, err
+		klog.Warningf("pkgRevStreamPRsFromDB: reading package revision list for filter %+v returned err: %q", filter, err)
+		return err
 	}
 
-	return pkgRevScanRowsFromDBWithKptfile(ctx, rows)
+	return pkgRevStreamRowsFromDBWithKptfile(ctx, rows, callback)
+}
+
+func pkgRevListPRsFromDB(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]*dbPackageRevision, error) {
+	var result []*dbPackageRevision
+	if err := pkgRevStreamPRsFromDB(ctx, filter, func(pr *dbPackageRevision) error {
+		result = append(result, pr)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func pkgRevReadPRsFromDB(ctx context.Context, pk repository.PackageKey) ([]*dbPackageRevision, error) {
@@ -485,14 +496,12 @@ func findUpstreamRefsFromDB(ctx context.Context, namespace, prName string) (stri
 	return downstreamName, nil
 }
 
-// pkgRevScanRowsFromDBWithKptfile scans rows that include Kptfile from LEFT JOIN
-func pkgRevScanRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows) ([]*dbPackageRevision, error) {
-	_, span := tracer.Start(ctx, "dbpackagesql::pkgRevScanRowsFromDBWithKptfile", trace.WithAttributes())
+// pkgRevStreamRowsFromDBWithKptfile scans rows that include Kptfile from LEFT JOIN
+func pkgRevStreamRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows, callback func(*dbPackageRevision) error) error {
+	_, span := tracer.Start(ctx, "dbpackagesql::pkgRevStreamRowsFromDBWithKptfile", trace.WithAttributes())
 	defer span.End()
 
 	defer rows.Close()
-
-	var dbPkgRevs []*dbPackageRevision
 
 	for rows.Next() {
 		var pkgRev dbPackageRevision
@@ -518,8 +527,8 @@ func pkgRevScanRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows) ([]*db
 			&kptfileData)
 
 		if err != nil {
-			klog.Warningf("pkgRevScanRowsFromDBWithKptfile: scanning rows failed: %q", err)
-			return nil, err
+			klog.Warningf("pkgRevStreamRowsFromDBWithKptfile: scanning rows failed: %q", err)
+			return err
 		}
 
 		repo := cachetypes.CacheInstance.GetRepository(pkgRev.pkgRevKey.PkgKey.RepoKey)
@@ -527,11 +536,11 @@ func pkgRevScanRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows) ([]*db
 			if dbRepo, ok := repo.(*dbRepository); ok {
 				pkgRev.repo = dbRepo
 			} else {
-				klog.Warningf("pkgRevScanRowsFromDBWithKptfile: repository %+v is not a dbRepository for package revision %s", pkgRev.pkgRevKey.PkgKey.RepoKey, prK8SName)
+				klog.Warningf("pkgRevStreamRowsFromDBWithKptfile: repository %+v is not a dbRepository for package revision %s", pkgRev.pkgRevKey.PkgKey.RepoKey, prK8SName)
 				continue
 			}
 		} else {
-			klog.V(4).Infof("pkgRevScanRowsFromDBWithKptfile: repository %+v not found in cache for package revision %s", pkgRev.pkgRevKey.PkgKey.RepoKey, prK8SName)
+			klog.V(4).Infof("pkgRevStreamRowsFromDBWithKptfile: repository %+v not found in cache for package revision %s", pkgRev.pkgRevKey.PkgKey.RepoKey, prK8SName)
 			continue
 		}
 		pkgRev.pkgRevKey.PkgKey.Package = repository.K8SName2PkgName(pkgK8SName)
@@ -546,8 +555,10 @@ func pkgRevScanRowsFromDBWithKptfile(ctx context.Context, rows *sql.Rows) ([]*db
 			pkgRev.resources = map[string]string{"Kptfile": kptfileData}
 		}
 
-		dbPkgRevs = append(dbPkgRevs, &pkgRev)
+		if err := callback(&pkgRev); err != nil {
+			return err
+		}
 	}
 
-	return dbPkgRevs, nil
+	return nil
 }

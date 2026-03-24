@@ -140,6 +140,7 @@ func TestWatchResources(t *testing.T) {
 
 	mockWatcherManager.On("WatchPackageRevisions", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	mockEngine.On("ListPackageRevisions", mock.Anything, mock.Anything).Return([]repository.PackageRevision{}, nil).Maybe()
+	mockEngine.On("StreamPackageRevisions", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	watcher, err := packagerevisionresources.Watch(context.TODO(), &internalversion.ListOptions{})
 	assert.NoError(t, err)

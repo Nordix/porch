@@ -167,3 +167,9 @@ func (c *dbCache) ListPackageRevisions(ctx context.Context, filter repository.Li
 	}
 	return prs, nil
 }
+
+func (c *dbCache) StreamPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback func(repository.PackageRevision) error) error {
+	return pkgRevStreamPRsFromDB(ctx, filter, func(pr *dbPackageRevision) error {
+		return callback(pr)
+	})
+}

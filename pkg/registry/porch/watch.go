@@ -107,6 +107,7 @@ func (w *watcher) ResultChan() <-chan watch.Event {
 type packageReader interface {
 	watchPackages(ctx context.Context, filter repository.ListPackageRevisionFilter, callback engine.ObjectWatcher) error
 	listPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback func(ctx context.Context, p repository.PackageRevision) error) error
+	streamPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback func(ctx context.Context, p repository.PackageRevision) error) error
 }
 
 // objectExtractor transforms a repository.PackageRevision into the appropriate
@@ -172,7 +173,7 @@ func (w *watcher) listAndWatchInner(ctx context.Context, r packageReader, filter
 
 	sentAdd := 0
 	// TODO: Only if rv == 0?
-	if err := r.listPackageRevisions(ctx, filter, func(ctx context.Context, p repository.PackageRevision) error {
+	if err := r.streamPackageRevisions(ctx, filter, func(ctx context.Context, p repository.PackageRevision) error {
 		obj, err := w.extractor(ctx, p)
 		if err != nil {
 			w.mutex.Lock()

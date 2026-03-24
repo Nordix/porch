@@ -82,8 +82,8 @@ type background struct {
 	periodicRepoSyncFrequency  time.Duration
 	listTimeoutPerRepo         time.Duration
 	repoOperationRetryAttempts int
-	repoMutexes                sync.Map              // Per-repository mutexes for event ordering
-	gitServerSemaphore         *semaphore.Weighted   // Rate limit Git server operations
+	repoMutexes                sync.Map            // Per-repository mutexes for event ordering
+	gitServerSemaphore         *semaphore.Weighted // Rate limit Git server operations
 }
 
 const (
@@ -178,7 +178,7 @@ func (b *background) updateCache(ctx context.Context, event watch.EventType, rep
 		return b.handleRepositoryEvent(ctx, repository, event)
 	case watch.Added, watch.Modified:
 		// Process directly without channel bottleneck
-		b.processEventDirectly(ctx, event, repository)
+		b.processRepositoryEvent(ctx, event, repository)
 		return nil
 	default:
 		klog.Warningf("Unhandled watch event type: %s", event)
@@ -191,7 +191,7 @@ func (b *background) getRepositoryMutex(repoKey string) *sync.Mutex {
 	return mutex.(*sync.Mutex)
 }
 
-func (b *background) processEventDirectly(ctx context.Context, event watch.EventType, repository *configapi.Repository) {
+func (b *background) processRepositoryEvent(ctx context.Context, event watch.EventType, repository *configapi.Repository) {
 	// Create unique key for this repository
 	repoKey := fmt.Sprintf("%s/%s", repository.Namespace, repository.Name)
 
@@ -348,7 +348,7 @@ func (b *background) checkRepositoryConnectivity(ctx context.Context, repo *conf
 		return fmt.Errorf("failed to acquire Git server semaphore: %w", err)
 	}
 	defer b.gitServerSemaphore.Release(1)
-	
+
 	return b.cache.CheckRepositoryConnectivity(ctx, repo)
 }
 

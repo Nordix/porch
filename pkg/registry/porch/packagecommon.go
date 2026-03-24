@@ -73,6 +73,15 @@ func (r *packageCommon) listPackageRevisions(ctx context.Context, filter reposit
 	return nil
 }
 
+func (r *packageCommon) streamPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter,
+	callback func(ctx context.Context, p repository.PackageRevision) error) error {
+	ctx, span := tracer.Start(ctx, "packageCommon::streamPackageRevisions", trace.WithAttributes())
+	defer span.End()
+	return r.cad.StreamPackageRevisions(ctx, filter, func(p repository.PackageRevision) error {
+		return callback(ctx, p)
+	})
+}
+
 func (r *packageCommon) listPackages(ctx context.Context, filter repository.ListPackageFilter, callback func(p repository.Package) error) error {
 	var opts []client.ListOption
 	if ns := filter.Key.RepoKey.Namespace; ns != "" {

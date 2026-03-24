@@ -77,9 +77,9 @@ func init() {
 
 // ExtraConfig holds custom apiserver config
 type ExtraConfig struct {
-	CoreAPIKubeconfigPath    string
-	GRPCRuntimeOptions       engine.GRPCRuntimeOptions
-	CacheOptions             cachetypes.CacheOptions
+	CoreAPIKubeconfigPath string
+	GRPCRuntimeOptions    engine.GRPCRuntimeOptions
+	CacheOptions          cachetypes.CacheOptions
 }
 
 // Config defines the config for the apiserver

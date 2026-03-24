@@ -270,3 +270,16 @@ func (c *Cache) ListPackageRevisions(ctx context.Context, filter repository.List
 		}
 	}
 }
+
+func (c *Cache) StreamPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback func(repository.PackageRevision) error) error {
+	revisions, err := c.ListPackageRevisions(ctx, filter)
+	if err != nil {
+		return err
+	}
+	for _, rev := range revisions {
+		if err := callback(rev); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -297,6 +297,19 @@ func (m *mockCache) ListPackageRevisions(ctx context.Context, filter repository.
 	return args.Get(0).([]repository.PackageRevision), args.Error(1)
 }
 
+func (m *mockCache) StreamPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback func(repository.PackageRevision) error) error {
+	revisions, err := m.ListPackageRevisions(ctx, filter)
+	if err != nil {
+		return err
+	}
+	for _, rev := range revisions {
+		if err := callback(rev); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func TestCreatePRWith2Tasks(t *testing.T) {
 	pr := &porchapi.PackageRevision{
 		Spec: porchapi.PackageRevisionSpec{

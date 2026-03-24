@@ -71,14 +71,13 @@ type PorchServerOptions struct {
 	FunctionRunnerAddress    string
 	LocalStandaloneDebugging bool // Enables local standalone running/debugging of the apiserver.
 
-	ListTimeoutPerRepository   time.Duration
-	MaxConcurrentLists         int
-	MaxRequestBodySize         int
-	MaxRequestsInFlight        int // Maximum concurrent non-mutating requests
+	ListTimeoutPerRepository    time.Duration
+	MaxConcurrentLists          int
+	MaxRequestBodySize          int
+	MaxRequestsInFlight         int // Maximum concurrent non-mutating requests
 	MaxMutatingRequestsInFlight int // Maximum concurrent mutating requests
-	RepoOperationRetryAttempts int
-	RequestTimeout             time.Duration // Request timeout for API operations
-	RetryableGitErrors         []string      // Additional retryable git error patterns
+	RepoOperationRetryAttempts  int
+	RetryableGitErrors          []string // Additional retryable git error patterns
 
 	RepoSyncFrequency time.Duration
 
@@ -107,7 +106,6 @@ func NewPorchServerOptions(out, errOut io.Writer) *PorchServerOptions {
 
 		MaxRequestsInFlight:         1000, // Increased from default 400
 		MaxMutatingRequestsInFlight: 500,  // Increased from default 200
-		RequestTimeout:              290 * time.Second, // Hardcoded 290 second timeout
 		StdOut:                      out,
 		StdErr:                      errOut,
 	}
@@ -310,11 +308,10 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 	serverConfig := genericapiserver.NewRecommendedConfig(apiserver.Codecs)
 
 	// Set custom values before ApplyTo to prevent defaults from overriding them
-	serverConfig.RequestTimeout = o.RequestTimeout
 	serverConfig.MaxRequestsInFlight = o.MaxRequestsInFlight
 	serverConfig.MaxMutatingRequestsInFlight = o.MaxMutatingRequestsInFlight
-	klog.Infof("[DEBUG] Setting custom values BEFORE ApplyTo: RequestTimeout=%v, MaxRequestsInFlight=%d, MaxMutatingRequestsInFlight=%d", 
-		o.RequestTimeout, o.MaxRequestsInFlight, o.MaxMutatingRequestsInFlight)
+	klog.Infof("[DEBUG] Setting custom values BEFORE ApplyTo: MaxRequestsInFlight=%d, MaxMutatingRequestsInFlight=%d",
+		o.MaxRequestsInFlight, o.MaxMutatingRequestsInFlight)
 
 	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(sampleopenapi.GetOpenAPIDefinitions, openapi.NewDefinitionNamer(apiserver.Scheme))
 	serverConfig.OpenAPIConfig.Info.Title = OpenAPITitle
@@ -328,15 +325,14 @@ func (o *PorchServerOptions) Config() (*apiserver.Config, error) {
 	if err := o.RecommendedOptions.ApplyTo(serverConfig); err != nil {
 		return nil, err
 	}
-	klog.Infof("[DEBUG] Values AFTER ApplyTo: RequestTimeout=%v, MaxRequestsInFlight=%d, MaxMutatingRequestsInFlight=%d", 
-		serverConfig.RequestTimeout, serverConfig.MaxRequestsInFlight, serverConfig.MaxMutatingRequestsInFlight)
+	klog.Infof("[DEBUG] Values AFTER ApplyTo: MaxRequestsInFlight=%d, MaxMutatingRequestsInFlight=%d",
+		serverConfig.MaxRequestsInFlight, serverConfig.MaxMutatingRequestsInFlight)
 
 	// Apply custom settings AFTER RecommendedOptions to prevent them from being overwritten
-	serverConfig.RequestTimeout = o.RequestTimeout
 	serverConfig.MaxRequestsInFlight = o.MaxRequestsInFlight
 	serverConfig.MaxMutatingRequestsInFlight = o.MaxMutatingRequestsInFlight
-	klog.Infof("[DEBUG] Final values after override: RequestTimeout=%v, MaxRequestsInFlight=%d, MaxMutatingRequestsInFlight=%d", 
-		serverConfig.RequestTimeout, serverConfig.MaxRequestsInFlight, serverConfig.MaxMutatingRequestsInFlight)
+	klog.Infof("[DEBUG] Final values after override: MaxRequestsInFlight=%d, MaxMutatingRequestsInFlight=%d",
+		serverConfig.MaxRequestsInFlight, serverConfig.MaxMutatingRequestsInFlight)
 
 	config := &apiserver.Config{
 		GenericConfig: serverConfig,
@@ -420,7 +416,6 @@ func (o *PorchServerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&o.MaxConcurrentLists, "max-parallel-repo-lists", 10, "Maximum number of repositories to list in parallel.")
 	fs.DurationVar(&o.RepoSyncFrequency, "repo-sync-frequency", 10*time.Minute, "Frequency at which registered repository CRs will be synced.")
 	fs.IntVar(&o.RepoOperationRetryAttempts, "repo-operation-retry-attempts", 3, "Number of retry attempts for repository operations.")
-	fs.DurationVar(&o.RequestTimeout, "request-timeout", 290*time.Second, "An optional field indicating the duration a handler must keep a request open before timing it out.")
 	fs.StringSliceVar(&o.RetryableGitErrors, "retryable-git-errors", nil, "Additional retryable git error patterns. Can be specified multiple times or as comma-separated values.")
 	fs.BoolVar(&o.UseUserDefinedCaBundle, "use-user-cabundle", false, "Determine whether to use a user-defined CaBundle for TLS towards the repository system.")
 }

@@ -13,6 +13,7 @@ import (
 	mockrepo "github.com/nephio-project/porch/test/mockery/mocks/porch/pkg/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"golang.org/x/sync/semaphore"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,7 +56,8 @@ func TestBackgroundOptions(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for i := range tests {
+		tt := &tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			b := &background{}
 			for _, o := range tt.options {
@@ -219,6 +221,7 @@ func TestBackgroundHandleRepositoryEvent(t *testing.T) {
 				cache:                      mockCache,
 				listTimeoutPerRepo:         1 * time.Second,
 				repoOperationRetryAttempts: 3,
+				gitServerSemaphore:         semaphore.NewWeighted(20),
 			}
 
 			var repository *configapi.Repository

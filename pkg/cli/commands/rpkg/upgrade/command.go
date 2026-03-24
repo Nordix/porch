@@ -287,7 +287,7 @@ func (r *runner) findPackageRevision(prName string) *porchapi.PackageRevision {
 }
 
 func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *porchapi.PackageRevision {
-	// Use List with server-side filtering by revision when possible
+	// Use List with server-side filtering by package name, repo, and revision
 	if r.discover == "" {
 		fmt.Printf("[DEBUG] About to LIST PackageRevisions for %s/%s revision %d with server-side filtering at %v\n", repo, name, revision, time.Now())
 		list := &porchapi.PackageRevisionList{}
@@ -295,32 +295,34 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 		if r.cfg.Namespace != nil {
 			ns = *r.cfg.Namespace
 		}
-		
+
 		// Build list options with server-side filtering
 		listOpts := []client.ListOption{
 			client.InNamespace(ns),
 		}
-		
-		// Add field selector for revision to filter on server side
-		if revision > 0 {
-			fieldSelector := fmt.Sprintf("spec.revision=%d", revision)
-			listOpts = append(listOpts, client.MatchingFields{"spec.revision": fmt.Sprintf("%d", revision)})
-			fmt.Printf("[DEBUG] Using server-side field selector: %s\n", fieldSelector)
+
+		// Add field selectors for package name, repo, and revision
+		fields := make(map[string]string)
+		if name != "" {
+			fields["spec.packageName"] = name
 		}
-		
-		listStart := time.Now()
+		if repo != "" {
+			fields["spec.repositoryName"] = repo
+		}
+		if revision > 0 {
+			fields["spec.revision"] = fmt.Sprintf("%d", revision)
+		}
+		if len(fields) > 0 {
+			listOpts = append(listOpts, client.MatchingFields(fields))
+		}
+
 		if err := r.client.List(r.ctx, list, listOpts...); err != nil {
-			fmt.Printf("[DEBUG] LIST PackageRevisions with filtering failed after %v: %v\n", time.Since(listStart), err)
-			// Fallback to unfiltered list if field selector not supported
-			fmt.Printf("[DEBUG] Falling back to unfiltered LIST\n")
+			// Fallback to unfiltered list if field selectors not supported
 			if err := r.client.List(r.ctx, list, client.InNamespace(ns)); err != nil {
-				fmt.Printf("[DEBUG] Unfiltered LIST also failed after %v: %v\n", time.Since(listStart), err)
 				return nil
 			}
 		}
-		
-		fmt.Printf("[DEBUG] LIST PackageRevisions completed after %v, found %d items\n", time.Since(listStart), len(list.Items))
-		
+
 		// Search through results (should be much smaller with server-side filtering)
 		for i := range list.Items {
 			pr := &list.Items[i]
@@ -343,38 +345,66 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 }
 
 func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapi.PackageRevision {
-	// Use List for finding latest by package name/repo
-	if r.discover == "" {
-		fmt.Printf("[DEBUG] About to LIST PackageRevisions for latest %s/%s at %v\n", repo, name, time.Now())
-		list := &porchapi.PackageRevisionList{}
-		ns := ""
-		if r.cfg.Namespace != nil {
-			ns = *r.cfg.Namespace
-		}
-		listStart := time.Now()
-		if err := r.client.List(r.ctx, list, client.InNamespace(ns)); err != nil {
-			fmt.Printf("[DEBUG] LIST PackageRevisions failed after %v: %v\n", time.Since(listStart), err)
-			return nil
-		}
-		fmt.Printf("[DEBUG] LIST PackageRevisions completed after %v, found %d items\n", time.Since(listStart), len(list.Items))
+	// Discovery mode always uses cached list
+	if r.discover != "" {
 		latest := 0
 		var output *porchapi.PackageRevision
-		for i := range list.Items {
-			pr := &list.Items[i]
+		for _, pr := range r.prs {
 			if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision > latest {
 				latest = pr.Spec.Revision
-				output = pr
+				output = &pr
 			}
 		}
 		return output
 	}
-	// Discover mode uses cached list
+
+	// Non-discovery mode: try server-side filtering first, fallback to simple logic
+	list := &porchapi.PackageRevisionList{}
+	ns := ""
+	if r.cfg.Namespace != nil {
+		ns = *r.cfg.Namespace
+	}
+
+	// Build list options with server-side filtering
+	listOpts := []client.ListOption{
+		client.InNamespace(ns),
+	}
+
+	// Add field selectors for package name and repo
+	fields := make(map[string]string)
+	if name != "" {
+		fields["spec.packageName"] = name
+	}
+	if repo != "" {
+		fields["spec.repositoryName"] = repo
+	}
+	if len(fields) > 0 {
+		listOpts = append(listOpts, client.MatchingFields(fields))
+	}
+
+	if err := r.client.List(r.ctx, list, listOpts...); err != nil {
+		// Fallback to unfiltered list if field selectors not supported
+		if err := r.client.List(r.ctx, list, client.InNamespace(ns)); err != nil {
+			// If client operations fail (e.g., in tests), use simple cached approach
+			// This maintains backward compatibility
+			latest := 0
+			var output *porchapi.PackageRevision
+			for _, pr := range r.prs {
+				if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision > latest {
+					latest = pr.Spec.Revision
+					output = &pr
+				}
+			}
+			return output
+		}
+	}
 	latest := 0
 	var output *porchapi.PackageRevision
-	for _, pr := range r.prs {
+	for i := range list.Items {
+		pr := &list.Items[i]
 		if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision > latest {
 			latest = pr.Spec.Revision
-			output = &pr
+			output = pr
 		}
 	}
 	return output

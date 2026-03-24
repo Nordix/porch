@@ -70,6 +70,10 @@ func (f *fakePackageReader) listPackageRevisions(ctx context.Context, filter rep
 	return nil
 }
 
+func (f *fakePackageReader) streamPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter, callback func(ctx context.Context, p repository.PackageRevision) error) error {
+	return f.listPackageRevisions(ctx, filter, callback)
+}
+
 func TestWatcherClose(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancelFunc := context.WithCancel(ctx)
