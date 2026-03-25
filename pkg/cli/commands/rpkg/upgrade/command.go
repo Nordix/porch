@@ -284,7 +284,7 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 			fields["spec.packageName"] = name
 		}
 		if repo != "" {
-			fields["spec.repositoryName"] = repo
+			fields["spec.repository"] = repo
 		}
 		if revision > 0 {
 			fields["spec.revision"] = fmt.Sprintf("%d", revision)
@@ -294,6 +294,7 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 		}
 
 		if err := r.client.List(r.ctx, list, listOpts...); err != nil {
+			fmt.Printf("Error with filtered list %v", err)
 			// Fallback to unfiltered list if field selectors not supported
 			if err := r.client.List(r.ctx, list, client.InNamespace(ns)); err != nil {
 				return nil
@@ -351,7 +352,7 @@ func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapi.Pa
 		fields["spec.packageName"] = name
 	}
 	if repo != "" {
-		fields["spec.repositoryName"] = repo
+		fields["spec.repository"] = repo
 	}
 	if len(fields) > 0 {
 		listOpts = append(listOpts, client.MatchingFields(fields))
