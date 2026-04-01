@@ -63,12 +63,12 @@ type PorchServerOptions struct {
 	CacheType         string
 	DbCacheDriver     string
 	DbCacheDataSource string
-  DbPushDrafsToGit  bool
+	DbPushDrafsToGit  bool
 
 	DefaultImagePrefix       string
 	FunctionRunnerAddress    string
 	LocalStandaloneDebugging bool // Enables local standalone running/debugging of the apiserver.
-  
+
 	ListTimeoutPerRepository   time.Duration
 	MaxConcurrentLists         int
 	MaxRequestBodySize         int
