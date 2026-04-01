@@ -45,7 +45,7 @@ func WithCache(cache cachetypes.Cache) EngineOption {
 
 func WithBuiltinFunctionRuntime(imagePrefix string) EngineOption {
 	return EngineOptionFunc(func(engine *cadEngine) error {
-		runtime := newBuiltinRuntime(imagePrefix)
+		runtime := NewBuiltinRuntime(imagePrefix)
 		if engine.taskHandler.GetRuntime() == nil {
 			engine.taskHandler.SetRuntime(runtime)
 		} else if mr, ok := engine.taskHandler.GetRuntime().(*fn.MultiRuntime); ok {
@@ -59,7 +59,7 @@ func WithBuiltinFunctionRuntime(imagePrefix string) EngineOption {
 
 func WithGRPCFunctionRuntime(options GRPCRuntimeOptions) EngineOption {
 	return EngineOptionFunc(func(engine *cadEngine) error {
-		runtime, err := newGRPCFunctionRuntime(options)
+		runtime, err := NewGRPCFunctionRuntime(options)
 		if err != nil {
 			return fmt.Errorf("failed to create function runtime: %w", err)
 		}
