@@ -28,7 +28,7 @@ import (
 const gcrImagePrefix = ""
 
 func TestBuiltinRuntime(t *testing.T) {
-	br := newBuiltinRuntime(gcrImagePrefix)
+	br := NewBuiltinRuntime(gcrImagePrefix)
 	fn := &kptfilev1.Function{
 		Image: setNamespaceImageAliases[0],
 	}
@@ -71,7 +71,7 @@ functionConfig:
 }
 
 func TestBuiltinRuntimeNotFound(t *testing.T) {
-	br := newBuiltinRuntime(gcrImagePrefix)
+	br := NewBuiltinRuntime(gcrImagePrefix)
 	funct := &kptfilev1.Function{
 		Image: "ghcr.io/kptdev/krm-functions-catalog/not-exist:latest",
 	}
