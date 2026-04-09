@@ -113,4 +113,3 @@ func TestSetupDBCacheConn(t *testing.T) {
 	assert.Equal(t, "pgx", opts.DbCacheDriver)
 	assert.Equal(t, "postgres://db-user@db-host:db-port/db-name?sslmode=verify-full", opts.DbCacheDataSource)
 }
-
