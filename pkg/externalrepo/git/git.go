@@ -351,9 +351,7 @@ func (r *gitRepository) BranchCommitHash(ctx context.Context) (string, error) {
 }
 
 func (r *gitRepository) ListPackages(_ context.Context, _ repository.ListPackageFilter) ([]repository.Package, error) {
-
-	// TODO
-	return nil, fmt.Errorf("ListPackages() is only supported on repository caches")
+	panic("ListPackages() is only supported on repository caches")
 }
 
 func (r *gitRepository) ListPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error) {

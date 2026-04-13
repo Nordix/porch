@@ -427,9 +427,7 @@ func (g GitSuite) TestListPackagesTrivial(t *testing.T) {
 		t.Fatalf("Failed to open Git repository loaded from %q: %v", tarfile, err)
 	}
 
-	packageList, err := git.ListPackages(ctx, repository.ListPackageFilter{})
-	assert.Nil(t, packageList)
-	assert.Equal(t, "ListPackages() is only supported on repository caches", err.Error())
+	assert.Panics(t, func() { git.ListPackages(ctx, repository.ListPackageFilter{}) }, "The code did not panic")
 
 	revisions, err := git.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{})
 	if err != nil {
