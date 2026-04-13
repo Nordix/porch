@@ -15,12 +15,14 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
+	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -187,4 +189,23 @@ func PathsOverlap(path1, path2 string) bool {
 		return true
 	}
 	return false
+}
+
+func UpstreamPlaceholderCheck(ctx context.Context, namespace string, referenceResolver ReferenceResolver, upstreamRevision PackageRevision) error {
+	if upstreamRevision.Key().Revision != -1 {
+		return nil
+	}
+
+	var upstreamRepo configapi.Repository
+	err := referenceResolver.ResolveReference(ctx, namespace, upstreamRevision.Key().RKey().Name, &upstreamRepo)
+	if err != nil {
+		return fmt.Errorf("failed to resolve repository reference for %q when checking placeholder revision: %v", upstreamRevision.Key().RKey().Name, err)
+	}
+
+	if upstreamRepo.Spec.Git != nil && upstreamRevision.Key().WorkspaceName == upstreamRepo.Spec.Git.Branch {
+		// We only allow clone to create new revisions from non-placeholder package revisions
+		return fmt.Errorf("upstream revision may not be the placeholder package revision %s/%s", upstreamRevision.Key().RKey().Name, upstreamRevision.KubeObjectName())
+	}
+
+	return nil
 }
