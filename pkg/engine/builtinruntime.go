@@ -54,7 +54,7 @@ type builtinRuntime struct {
 	fnMapping map[string]fnsdk.ResourceListProcessor
 }
 
-func NewBuiltinRuntime(imagePrefix string) *builtinRuntime {
+func newBuiltinRuntime(imagePrefix string) *builtinRuntime {
 	fnMap := map[string]fnsdk.ResourceListProcessor{}
 
 	applyMappings := func(aliases []string, fn fnsdk.ResourceListProcessorFunc) {
