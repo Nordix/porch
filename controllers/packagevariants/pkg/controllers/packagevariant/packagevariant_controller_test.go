@@ -1317,7 +1317,7 @@ spec:
 		"add one validator with existing validators": {
 			initialPipeline: `
         validators:
-          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:V0.2
+          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:v0.2
             name: gatekeeper-validate`[1:],
 			pvPipeline: `
     validators:
@@ -1329,14 +1329,14 @@ spec:
         validators:
         - name: PackageVariant.my-pv.validate-name.0
           image: ghcr.io/kptdev/krm-functions-catalog/validate-name:undefined
-        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:V0.2
+        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:v0.2
           name: gatekeeper-validate
 `[1:],
 		},
 		"add two validators with existing validators": {
 			initialPipeline: `
         validators:
-          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:V0.2
+          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:v0.2
             name: gatekeeper-validate`[1:],
 			pvPipeline: `
     validators:
@@ -1348,21 +1348,21 @@ spec:
         validators:
         - name: PackageVariant.my-pv.validate-name.0
           image: ghcr.io/kptdev/krm-functions-catalog/validate-name:undefined
-        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:V0.2
+        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:v0.2
           name: gatekeeper-validate
 `[1:],
 		},
 		"add none with existing validator": {
 			initialPipeline: `
         validators:
-          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:V0.2
+          - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:v0.2
             name: gatekeeper-validate`[1:],
 			pvPipeline:  "",
 			expectedErr: "",
 			expectedPrr: prrBase + `
       pipeline:
         validators:
-        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:V0.2
+        - image: ghcr.io/kptdev/krm-functions-catalog/gatekeeper:v0.2
           name: gatekeeper-validate
 `[1:],
 		},
