@@ -163,7 +163,7 @@ func TestFunctionConfigReconciler(t *testing.T) {
 			objs:     []client.Object{sampleFunctionConfig},
 			requests: []string{"set-image"},
 			check: func(t *testing.T, r *FunctionConfigReconciler) {
-				expectedKey := "ghcr.io/kptdev/krm-functions-catalog/set-image:v0.2.2"
+				expectedKey := "ghcr.io/kptdev/krm-functions-catalog/set-image:v0.1.4"
 				expectedPath := "/functions/set-image"
 				binary, exists := r.FunctionConfigStore.GetBinaryFromCache(expectedKey)
 				assert.True(t, exists, "BinaryExecutorCache should have '%s'", expectedKey)
@@ -296,7 +296,7 @@ func TestGetProcessorFromCache(t *testing.T) {
 	store.UpdateExecCache(obj.Name, obj)
 
 	// Found with full prefix
-	processor, found := store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.5")
+	processor, found := store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1")
 	assert.True(t, found)
 	assert.NotNil(t, processor)
 
@@ -363,14 +363,14 @@ func TestPrePopulationPattern(t *testing.T) {
 	}
 
 	// Verify exec cache is populated
-	_, found := store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.5")
+	_, found := store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1")
 	assert.True(t, found, "set-namespace should be in exec cache after pre-population")
 
-	_, found = store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/apply-replacements:v0.1.5")
+	_, found = store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/apply-replacements:v0.1.1")
 	assert.True(t, found, "apply-replacements should be in exec cache after pre-population")
 
 	// Verify binary cache is populated
-	path, found := store.GetBinaryFromCache("ghcr.io/kptdev/krm-functions-catalog/set-image:v0.2.2")
+	path, found := store.GetBinaryFromCache("ghcr.io/kptdev/krm-functions-catalog/set-image:v0.1.4")
 	assert.True(t, found, "set-image should be in binary cache after pre-population")
 	assert.Equal(t, "/functions/set-image", path)
 
@@ -404,13 +404,13 @@ func TestConcurrentAccessSafety(t *testing.T) {
 
 	// Reader goroutine (concurrent with writer)
 	for i := 0; i < 100; i++ {
-		store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.5")
+		store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1")
 	}
 
 	<-done
 
 	// After all writes complete, the entry should be present
-	_, found := store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.5")
+	_, found := store.GetProcessorFromCache("ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1")
 	assert.True(t, found)
 }
 
