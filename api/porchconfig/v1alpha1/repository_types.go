@@ -148,7 +148,7 @@ type SecretRef struct {
 }
 
 type FunctionEval struct {
-	// `Image` specifies the function image, such as `ghcr.io/kptdev/krm-functions-catalog/gatekeeper:v0.2`.
+	// `Image` specifies the function image, such as `ghcr.io/kptdev/krm-functions-catalog/apply-replacements:v0.1`.
 	Image string `json:"image,omitempty"`
 	// `ConfigMap` specifies the function config (https://kpt.dev/reference/cli/fn/eval/).
 	ConfigMap map[string]string `json:"configMap,omitempty"`
