@@ -343,6 +343,7 @@ func (h *commitHelper) storeTrees(treePath string) (plumbing.Hash, error) {
 	if !ok {
 		return plumbing.Hash{}, fmt.Errorf("failed to find a tree %q", treePath)
 	}
+
 	entries := tree.Entries
 	sort.Slice(entries, func(i, j int) bool {
 		return entrySortKey(&entries[i]) < entrySortKey(&entries[j])
@@ -365,18 +366,15 @@ func (h *commitHelper) storeTrees(treePath string) (plumbing.Hash, error) {
 		if h.pruneEmptyChild(tree, childTree, childPath, &entries, &i) {
 			continue
 		}
-
 		hash, err := h.storeTrees(childPath)
 		if err != nil {
 			return plumbing.Hash{}, err
 		}
-
 		// After recursion, the child may have become empty if all its
 		// children were pruned. Check again and remove if so.
 		if h.pruneEmptyChild(tree, childTree, childPath, &entries, &i) {
 			continue
 		}
-
 		e.Hash = hash
 	}
 
