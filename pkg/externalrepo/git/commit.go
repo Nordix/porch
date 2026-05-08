@@ -382,7 +382,6 @@ func (h *commitHelper) storeTrees(treePath string) (plumbing.Hash, error) {
 
 		e.Hash = hash
 	}
-	tree.Entries = pruned
 
 	treeHash, err := storeTree(h.repository, tree)
 	if err != nil {
