@@ -36,9 +36,6 @@ const (
 	porchSignatureEmail = "porch@kpt.dev"
 )
 
-// emptyGitTreeHash is the well-known git hash for an empty tree object.
-var emptyGitTreeHash = plumbing.NewHash("4b825dc642cb6eb9a060e54bf8d69288fbee4904")
-
 type commitHelper struct {
 	repository *git.Repository
 
