@@ -350,8 +350,7 @@ func (h *commitHelper) storeTrees(treePath string) (plumbing.Hash, error) {
 	})
 
 	// Store all child trees and get their hashes.
-	// Remove empty child directories to avoid leaving behind empty
-	// subdirectories when a package is deleted from a repo subdirectory.
+	// Remove empty child directories to avoid leaving behind empty subdirectories
 	for i := 0; i < len(entries); i++ {
 		e := &entries[i]
 		if e.Mode != filemode.Dir {
