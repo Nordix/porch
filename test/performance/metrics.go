@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -40,8 +41,19 @@ func init() {
 	utilruntime.Must(configapi.AddToScheme(scheme))
 }
 
+const defaultGiteaLBIP = "172.18.255.200"
+
+// getGiteaBaseURL returns the Gitea base URL, using GITEA_LB_IP env var if set.
+func getGiteaBaseURL() string {
+	ip := os.Getenv("GITEA_LB_IP")
+	if ip == "" {
+		ip = defaultGiteaLBIP
+	}
+	return "http://" + ip + ":3000"
+}
+
 func createGiteaRepo(repoName string) error {
-	giteaURL := "http://172.18.255.200:3000/api/v1/user/repos"
+	giteaURL := getGiteaBaseURL() + "/api/v1/user/repos"
 	payload := map[string]interface{}{
 		"name":        repoName,
 		"description": "Test repository for Porch metrics",
@@ -110,7 +122,7 @@ func debugPackageStatus(t *testing.T, c client.Client, ctx context.Context, name
 // ... existing imports and code ...
 
 func deleteGiteaRepo(repoName string) error {
-	giteaURL := fmt.Sprintf("http://172.18.255.200:3000/api/v1/repos/nephio/%s", repoName)
+	giteaURL := fmt.Sprintf("%s/api/v1/repos/nephio/%s", getGiteaBaseURL(), repoName)
 
 	req, err := http.NewRequest("DELETE", giteaURL, nil)
 	if err != nil {

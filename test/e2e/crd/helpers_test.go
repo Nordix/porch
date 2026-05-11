@@ -15,18 +15,19 @@
 package crd
 
 import (
-	"maps"
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
-	. "github.com/onsi/gomega"
 	porchv1alpha1 "github.com/nephio-project/porch/api/porch/v1alpha1"
 	porchv1alpha2 "github.com/nephio-project/porch/api/porch/v1alpha2"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -37,19 +38,47 @@ const (
 	giteaUser     = "nephio"
 	giteaPassword = "secret"
 
-	giteaLBIP         = "172.18.255.200"
-	giteaClusterHost  = "gitea.gitea.svc.cluster.local:3000"
-	giteaLBHost       = giteaLBIP + ":3000"
+	defaultGiteaLBIP = "172.18.255.200"
+	giteaClusterHost = "gitea.gitea.svc.cluster.local:3000"
 
 	defaultTimeout  = 120 * time.Second
 	defaultInterval = 50 * time.Millisecond
 )
 
+// getGiteaLBIP returns the Gitea LoadBalancer IP, preferring the GITEA_LB_IP env var.
+// If not set, it discovers the IP dynamically from the gitea-lb Service in the cluster.
+// Falls back to the hardcoded default only if discovery fails.
+func getGiteaLBIP() string {
+	if ip := os.Getenv("GITEA_LB_IP"); ip != "" {
+		return ip
+	}
+
+	// Discover from the running service
+	if k8sClient != nil {
+		svc := &corev1.Service{}
+		err := k8sClient.Get(context.Background(), client.ObjectKey{
+			Namespace: "gitea",
+			Name:      "gitea-lb",
+		}, svc)
+		if err == nil && len(svc.Status.LoadBalancer.Ingress) > 0 {
+			if ip := svc.Status.LoadBalancer.Ingress[0].IP; ip != "" {
+				return ip
+			}
+		}
+	}
+
+	return defaultGiteaLBIP
+}
+
+func giteaLBHost() string {
+	return getGiteaLBIP() + ":3000"
+}
+
 func giteaBaseURL() string {
 	if allInCluster {
 		return "http://" + giteaClusterHost
 	}
-	return "http://" + giteaLBHost
+	return "http://" + giteaLBHost()
 }
 
 func giteaRepoURL(name string) string {
@@ -57,8 +86,9 @@ func giteaRepoURL(name string) string {
 }
 
 func giteaAPIBaseURL() string {
-	// API calls always go via LoadBalancer (from test runner)
-	return "http://" + giteaLBHost
+	// API calls from the test runner always go via LoadBalancer IP
+	// because the test runner runs outside the cluster.
+	return "http://" + giteaLBHost()
 }
 
 // --- Gitea helpers ---
