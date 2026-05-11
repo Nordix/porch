@@ -1,4 +1,4 @@
-// Copyright 2022, 2025 The kpt and Nephio Authors
+// Copyright 2022 The kpt and Nephio Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,48 +16,233 @@ package engine
 
 import (
 	"bytes"
-	"context"
-	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
 	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/fn"
-	"github.com/kptdev/kpt/pkg/lib/runneroptions"
 	fnsdk "github.com/kptdev/krm-functions-sdk/go/fn"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
 	"github.com/nephio-project/porch/controllers/functionconfigs/reconciler"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/nephio-project/porch/pkg/util"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 )
 
 const (
-	defaultKRMImagePrefix = runneroptions.GHCRImagePrefix
+	customImagePrefix     = "test.io/kptdev/krm-functions-catalog"
+	defaultKRMImagePrefix = "ghcr.io/kptdev/krm-functions-catalog"
+	testImageName         = "test-image"
 
-	setNamespaceFunction = "set-namespace"
+	setNamespaceFunction      = "set-namespace"
+	applyReplacementsFunction = "apply-replacements"
 )
 
-func TestBuiltinRuntime(t *testing.T) {
-	functionConfig := configapi.FunctionConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: setNamespaceFunction,
-		},
-		Spec: configapi.FunctionConfigSpec{
-			GoExecutor: &configapi.GoExecutorConfig{
-				Tags: []string{"v0.4.1"},
+func TestNewBuiltinRuntime(t *testing.T) {
+	t.Run("custom image prefix specified", func(t *testing.T) {
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: applyReplacementsFunction,
 			},
-		},
-	}
-	functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
-	functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
-	br := newBuiltinRuntime(functionConfigStore)
-	fn := &kptfilev1.Function{
-		Image: filepath.Join(defaultKRMImagePrefix, setNamespaceFunction) + ":v0.4.1",
-	}
-	fr, err := br.GetRunner(context.Background(), fn)
-	if err != nil {
-		t.Fatalf("unexpected error when getting the runner: %v", err)
-	}
-	reader := bytes.NewReader([]byte(`apiVersion: config.kubernetes.io/v1alpha1
+			Spec: configapi.FunctionConfigSpec{
+				Prefixes: []string{
+					"",
+					customImagePrefix,
+				},
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.1.1"},
+				},
+			},
+		}
+
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(applyReplacementsFunction, &functionConfig)
+
+		br := newBuiltinRuntime(functionConfigStore)
+
+		assert.NotNil(t, br)
+		assert.NotNil(t, br.store)
+
+		// Verify that functions are registered with the custom image prefix
+		processor, exists := functionConfigStore.GetProcessorFromCache(customImagePrefix + "/" + applyReplacementsFunction + ":v0.1.1")
+		assert.True(t, exists,
+			"Expected function to be registered with custom image prefix: %s", customImagePrefix)
+		assert.NotNil(t, processor)
+
+		// Verify that functions are also registered with default GHCR prefix
+		processor, exists = functionConfigStore.GetProcessorFromCache(defaultKRMImagePrefix + "/" + applyReplacementsFunction + ":v0.1.1")
+		assert.True(t, exists,
+			"Expected function to be registered with default GHCR prefix")
+		assert.NotNil(t, processor)
+	})
+	t.Run("custom image prefix is not specified", func(t *testing.T) {
+		functionConfig := configapi.FunctionConfig{
+
+			ObjectMeta: v1.ObjectMeta{
+				Name: applyReplacementsFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				Prefixes: []string{
+					"",
+				},
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.1.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(applyReplacementsFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+
+		assert.NotNil(t, br)
+		assert.NotNil(t, br.store)
+
+		// Verify that functions are not registered with the custom image prefix
+		processor, exists := functionConfigStore.GetProcessorFromCache(customImagePrefix + applyReplacementsFunction + ":v0.1.1")
+		assert.False(t, exists,
+			"Expected function to not be registered with custom image prefix: %s", customImagePrefix)
+		assert.Nil(t, processor)
+
+		// Verify that functions are registered with default GHCR prefix
+		processor, exists = functionConfigStore.GetProcessorFromCache(defaultKRMImagePrefix + "/" + applyReplacementsFunction + ":v0.1.1")
+		assert.True(t, exists,
+			"Expected function to be registered with default GHCR prefix")
+		assert.NotNil(t, processor)
+	})
+}
+
+func TestBuiltinRuntime(t *testing.T) {
+	t.Run("invalid semver constraint syntax", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: setNamespaceFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.4.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		funct := &kptfilev1.Function{
+			Image: filepath.Join(defaultKRMImagePrefix, testImageName),
+			// Invalid semver constraint, '>>' is not a valid operator
+			// -> will cause a function not found error
+			Tag: ">> 0.4.0 < 0.5.0",
+		}
+		_, err := br.GetRunner(ctx, funct)
+		assert.Equal(t, &fn.NotFoundError{
+			Function: kptfilev1.Function{Image: funct.Image},
+		}, err)
+	})
+	t.Run("builtinrutime not found", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: setNamespaceFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.4.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		funct := &kptfilev1.Function{
+			Image: filepath.Join(defaultKRMImagePrefix, testImageName),
+			// The semver constraint is valid, however, there is no function with
+			// the name 'test-image' -> will cause a function not found error
+			Tag: ">= 0.4.0 < 0.5.0",
+		}
+		_, err := br.GetRunner(ctx, funct)
+		assert.Equal(t, &fn.NotFoundError{
+			Function: kptfilev1.Function{Image: funct.Image},
+		}, err)
+	})
+	t.Run("function does not match the semantic version constraints", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: setNamespaceFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.4.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		funct := &kptfilev1.Function{
+			Image: filepath.Join(defaultKRMImagePrefix, setNamespaceFunction),
+			// The semver constraint is valid, however, there is no function with
+			// the name 'apply-replacements' that matches the specified semver constraint
+			// -> will cause a function not found error
+			Tag: "> 0.2.0 < 0.3.0",
+		}
+		_, err := br.GetRunner(ctx, funct)
+		assert.Equal(t, &fn.NotFoundError{
+			Function: kptfilev1.Function{Image: funct.Image},
+		}, err)
+	})
+	t.Run("function not found using explicit tagging", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: setNamespaceFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.4.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		funct := &kptfilev1.Function{
+			Image: util.ImageJoin(defaultKRMImagePrefix, setNamespaceFunction) + ":v0.4.2",
+			// Image is explicitly tagged with v0.4.2, however,
+			// there is no function with this explicit tag in the cache
+		}
+		_, err := br.GetRunner(ctx, funct)
+		assert.Equal(t, &fn.NotFoundError{
+			Function: kptfilev1.Function{Image: funct.Image},
+		}, err)
+	})
+	t.Run("function execution error", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: applyReplacementsFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.1.0"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(applyReplacementsFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		fn := &kptfilev1.Function{
+			// Wrong function is specified for namespace setting,
+			// which will cause an execution error when the function tries to run
+			Image: filepath.Join(defaultKRMImagePrefix, applyReplacementsFunction),
+			Tag:   ">= 0.1.0 < 0.2.0",
+		}
+		fr, err := br.GetRunner(ctx, fn)
+		assert.Nil(t, err)
+		reader := bytes.NewReader([]byte(`apiVersion: config.kubernetes.io/v1alpha1
 kind: ResourceList
 items:
   - apiVersion: v1
@@ -73,44 +258,217 @@ functionConfig:
   data:
     namespace: test-ns
 `))
-	var buf bytes.Buffer
-	err = fr.Run(reader, &buf)
-	if err != nil {
-		t.Fatalf("unexpected error when running the function runner: %v", err)
-	}
-	rl, err := fnsdk.ParseResourceList(buf.Bytes())
-	if err != nil {
-		t.Fatalf("can't parse the updated resource list: %v", err)
-	}
-	if len(rl.Items) != 1 {
-		t.Fatalf("expect the updated resource list to have 1 object in items, but got %d", len(rl.Items))
-	}
-	ns := rl.Items[0].GetNamespace()
-	if ns != "test-ns" {
-		t.Fatalf("expect the updated namespace to be %v, but got %v", "test-ns", "ns")
-	}
-}
-
-func TestBuiltinRuntimeNotFound(t *testing.T) {
-	functionConfig := configapi.FunctionConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: setNamespaceFunction,
-		},
-		Spec: configapi.FunctionConfigSpec{
-			GoExecutor: &configapi.GoExecutorConfig{
-				Tags: []string{"v0.4.1"},
+		var buf bytes.Buffer
+		err = fr.Run(reader, &buf)
+		assert.Equal(t, "error: function failure", err.Error())
+	})
+	t.Run("successful execution with semantic versioning", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: setNamespaceFunction,
 			},
-		},
-	}
-	functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
-	functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
-	br := newBuiltinRuntime(functionConfigStore)
-	funct := &kptfilev1.Function{
-		Image: "ghcr.io/kptdev/krm-functions-catalog/not-exist:latest",
-	}
-	_, err := br.GetRunner(context.Background(), funct)
-	var fnNotFoundErr *fn.NotFoundError
-	if !errors.As(err, &fnNotFoundErr) {
-		t.Fatalf("expect error to be %T, but got %T %v", fnNotFoundErr, err, err)
-	}
+			Spec: configapi.FunctionConfigSpec{
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.4.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		fn := &kptfilev1.Function{
+			Image: filepath.Join(defaultKRMImagePrefix, setNamespaceFunction),
+			// This semver constraint matches the version of the apply-replacements function in builtin runtime,
+			// so it should successfully find the function and run it
+			Tag: ">= 0.4.0 < 0.5.0",
+		}
+
+		// Capture klog output by redirecting stderr
+		oldStderr := os.Stderr
+		r, w, _ := os.Pipe()
+		os.Stderr = w
+
+		fr, err := br.GetRunner(ctx, fn)
+		assert.Nil(t, err)
+
+		// Flush klog and restore stderr
+		klog.Flush()
+		w.Close()
+		os.Stderr = oldStderr
+
+		// Read captured output
+		var logBuffer bytes.Buffer
+		logBuffer.ReadFrom(r)
+		logOutput := logBuffer.String()
+
+		// Verify the klog message contains the expected version selection
+		assert.Contains(t, logOutput, `Selected image "ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1"`)
+		assert.Contains(t, logOutput, `version "0.4.1"`)
+		assert.Contains(t, logOutput, `for request "ghcr.io/kptdev/krm-functions-catalog/set-namespace"`)
+
+		reader := bytes.NewReader([]byte(`apiVersion: config.kubernetes.io/v1alpha1
+kind: ResourceList
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: my-cm
+      namespace: old
+    data:
+      foo: bar
+functionConfig:
+  apiVersion: v1
+  kind: ConfigMap
+  data:
+    namespace: test-ns
+`))
+
+		var buf bytes.Buffer
+		err = fr.Run(reader, &buf)
+		require.NoError(t, err)
+		rl, err := fnsdk.ParseResourceList(buf.Bytes())
+		require.NoError(t, err)
+		require.Len(t, rl.Items, 1)
+		ns := rl.Items[0].GetNamespace()
+		assert.Equal(t, "test-ns", ns)
+	})
+	t.Run("successful execution with explicit tagging", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: setNamespaceFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				Prefixes: []string{
+					"",
+				},
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.4.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		fn := &kptfilev1.Function{
+			Image: filepath.Join(defaultKRMImagePrefix, setNamespaceFunction) + ":v0.4.1",
+		}
+
+		// Capture klog output by redirecting stderr
+		oldStderr := os.Stderr
+		r, w, _ := os.Pipe()
+		os.Stderr = w
+
+		fr, err := br.GetRunner(ctx, fn)
+		require.NoError(t, err)
+
+		// Flush klog and restore stderr
+		klog.Flush()
+		w.Close()
+		os.Stderr = oldStderr
+
+		// Read captured output
+		var logBuffer bytes.Buffer
+		logBuffer.ReadFrom(r)
+		logOutput := logBuffer.String()
+
+		// Verify the klog message contains the expected version selection
+		assert.Contains(t, logOutput, `Image tag is empty, using the image with explicit tag: "ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1"`)
+
+		reader := bytes.NewReader([]byte(`apiVersion: config.kubernetes.io/v1alpha1
+kind: ResourceList
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: my-cm
+      namespace: old
+    data:
+      foo: bar
+functionConfig:
+  apiVersion: v1
+  kind: ConfigMap
+  data:
+    namespace: test-ns
+`))
+
+		var buf bytes.Buffer
+		err = fr.Run(reader, &buf)
+		require.NoError(t, err)
+		rl, err := fnsdk.ParseResourceList(buf.Bytes())
+		require.NoError(t, err)
+		require.Len(t, rl.Items, 1)
+		ns := rl.Items[0].GetNamespace()
+		assert.Equal(t, "test-ns", ns)
+	})
+	t.Run("successful execution with explicit tagging + Tag field set", func(t *testing.T) {
+		ctx := t.Context()
+		functionConfig := configapi.FunctionConfig{
+			ObjectMeta: v1.ObjectMeta{
+				Name: setNamespaceFunction,
+			},
+			Spec: configapi.FunctionConfigSpec{
+				GoExecutor: &configapi.GoExecutorConfig{
+					Tags: []string{"v0.4.1"},
+				},
+			},
+		}
+		functionConfigStore := reconciler.NewFunctionConfigStore(defaultKRMImagePrefix, "")
+		functionConfigStore.UpdateExecCache(setNamespaceFunction, &functionConfig)
+		br := newBuiltinRuntime(functionConfigStore)
+		fn := &kptfilev1.Function{
+			Image: filepath.Join(defaultKRMImagePrefix, setNamespaceFunction) + ":v0.3.0",
+			Tag:   ">= 0.4.0 < 0.5.0",
+		}
+
+		// Capture klog output by redirecting stderr
+		oldStderr := os.Stderr
+		r, w, _ := os.Pipe()
+		os.Stderr = w
+
+		fr, err := br.GetRunner(ctx, fn)
+		require.NoError(t, err)
+
+		// Flush klog and restore stderr
+		klog.Flush()
+		w.Close()
+		os.Stderr = oldStderr
+
+		// Read captured output
+		var logBuffer bytes.Buffer
+		logBuffer.ReadFrom(r)
+		logOutput := logBuffer.String()
+
+		// Verify the klog message contains the expected version selection
+		assert.Contains(t, logOutput, `Selected image "ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1"`)
+		assert.Contains(t, logOutput, `(version "0.4.1")`)
+		assert.Contains(t, logOutput, `for request "ghcr.io/kptdev/krm-functions-catalog/set-namespace"`)
+
+		reader := bytes.NewReader([]byte(`apiVersion: config.kubernetes.io/v1alpha1
+kind: ResourceList
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: my-cm
+      namespace: old
+    data:
+      foo: bar
+functionConfig:
+  apiVersion: v1
+  kind: ConfigMap
+  data:
+    namespace: test-ns
+`))
+
+		var buf bytes.Buffer
+		err = fr.Run(reader, &buf)
+		require.NoError(t, err)
+		rl, err := fnsdk.ParseResourceList(buf.Bytes())
+		require.NoError(t, err)
+		require.Len(t, rl.Items, 1)
+		ns := rl.Items[0].GetNamespace()
+		assert.Equal(t, "test-ns", ns)
+	})
 }

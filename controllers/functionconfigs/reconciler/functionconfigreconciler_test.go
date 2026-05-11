@@ -175,7 +175,7 @@ func TestFunctionConfigReconciler(t *testing.T) {
 			objs:     []client.Object{builtInSetNamespace, builtInApplyReplacements, builtInStarlarkWithId},
 			requests: []string{"apply-replacements", "set-namespace", "starlark"},
 			check: func(t *testing.T, r *FunctionConfigReconciler) {
-				expectedStarlarkKey := "ghcr.io/kptdev/krm-functions-catalog/starlark-id:v0.4.3"
+				expectedStarlarkKey := "starlark-id"
 				execFunctions := r.FunctionConfigStore.GetExecCache()
 
 				got, ok := execFunctions[expectedStarlarkKey]
