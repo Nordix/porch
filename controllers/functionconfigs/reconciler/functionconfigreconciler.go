@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kptdev/kpt/pkg/lib/runneroptions"
 	"github.com/kptdev/krm-functions-catalog/functions/go/apply-replacements/replacements"
 	setNamespace "github.com/kptdev/krm-functions-catalog/functions/go/set-namespace/transformer"
 	"github.com/kptdev/krm-functions-catalog/functions/go/starlark/starlark"
@@ -48,12 +47,18 @@ type BinaryCacheEntry struct {
 	Tags        map[string]string
 }
 
+type BuiltInCacheEntry struct {
+	PrefixRegex string
+	Process     fnsdk.ResourceListProcessor
+	Tags        []string
+}
+
 type FunctionConfigStore struct {
 	mu sync.RWMutex
 
 	functionConfigurations map[string]*configapi.FunctionConfig
 	binaryExecutorCache    map[string]BinaryCacheEntry
-	builtInExecutorCache   map[string]fnsdk.ResourceListProcessor
+	builtInExecutorCache   map[string]BuiltInCacheEntry
 
 	defaultImagePrefix string
 	defaultBinaryDir   string
@@ -63,7 +68,7 @@ func NewFunctionConfigStore(defaultImagePrefix, defaultBinaryDir string) *Functi
 	return &FunctionConfigStore{
 		functionConfigurations: make(map[string]*configapi.FunctionConfig),
 		binaryExecutorCache:    make(map[string]BinaryCacheEntry),
-		builtInExecutorCache:   make(map[string]fnsdk.ResourceListProcessor),
+		builtInExecutorCache:   make(map[string]BuiltInCacheEntry),
 		defaultImagePrefix:     strings.TrimRight(defaultImagePrefix, "/"),
 		defaultBinaryDir:       strings.TrimRight(defaultBinaryDir, "/"),
 	}
@@ -85,7 +90,7 @@ func (s *FunctionConfigStore) generateRegexPattern(prefixes []string, imageName 
 		}
 	}
 
-	return "^(?:" + strings.Join(preparedPrefixes, "|") + ")"
+	return "^(?:" + strings.Join(preparedPrefixes, "|") + ")$"
 
 }
 
@@ -128,41 +133,34 @@ func (s *FunctionConfigStore) UpdateExecCache(name string, functionConfig *confi
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	functionAliases := map[string][]string{}
-
 	id := name
 	if functionConfig.Spec.GoExecutor.ID != nil {
 		id = *functionConfig.Spec.GoExecutor.ID
 	}
-	for _, tag := range functionConfig.Spec.GoExecutor.Tags {
-		image := id + ":" + tag
-		functionAliases[name] = append(functionAliases[name], image)
-	}
 
-	applyMappings := func(aliases []string, fn fnsdk.ResourceListProcessorFunc) {
+	applyMappings := func(id string, fn fnsdk.ResourceListProcessorFunc) {
 		//Clear previous entries for the actual function
 		for img := range s.builtInExecutorCache {
 			if strings.Contains(img, name) {
 				delete(s.builtInExecutorCache, img)
 			}
 		}
-		for _, img := range aliases {
-			s.builtInExecutorCache[img] = fn
-			s.builtInExecutorCache[runneroptions.GHCRImagePrefix+img] = fn
-			if s.defaultImagePrefix != "" && s.defaultImagePrefix != runneroptions.GHCRImagePrefix {
-				s.builtInExecutorCache[s.defaultImagePrefix+"/"+img] = fn
-			}
+
+		s.builtInExecutorCache[id] = BuiltInCacheEntry{
+			Process:     fn,
+			Tags:        functionConfig.Spec.GoExecutor.Tags,
+			PrefixRegex: s.generateRegexPattern(functionConfig.Spec.Prefixes, functionConfig.Spec.Image),
 		}
 	}
 
-	if _, exists := functionAliases["apply-replacements"]; exists {
-		applyMappings(functionAliases["apply-replacements"], replacements.ApplyReplacements)
+	if functionConfig.Name == "apply-replacements" {
+		applyMappings(id, replacements.ApplyReplacements)
 	}
-	if _, exists := functionAliases["set-namespace"]; exists {
-		applyMappings(functionAliases["set-namespace"], setNamespace.Run)
+	if functionConfig.Name == "set-namespace" {
+		applyMappings(id, setNamespace.Run)
 	}
-	if _, exists := functionAliases["starlark"]; exists {
-		applyMappings(functionAliases["starlark"], starlark.Process)
+	if functionConfig.Name == "starlark" {
+		applyMappings(id, starlark.Process)
 	}
 }
 
@@ -198,7 +196,37 @@ func (s *FunctionConfigStore) GetBinaryFromCache(image string) (string, bool) {
 	return "", false
 }
 
-func (s *FunctionConfigStore) GetExecCache() map[string]fnsdk.ResourceListProcessor {
+func (s *FunctionConfigStore) GetBinaryFromCacheByConstraint(image, tag string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	baseName := util.GetImageName(image)
+	cacheEntry := s.binaryExecutorCache[baseName]
+
+	cacheKeys := make([]string, 0, len(s.binaryExecutorCache))
+	for k := range cacheEntry.Tags {
+		cacheKeys = append(cacheKeys, k)
+	}
+
+	selectedKey, err := util.FindBestSemverMatch(tag, image, cacheKeys)
+	if err != nil {
+		return "", false
+	}
+	selectedBinary := cacheEntry.Tags[selectedKey]
+
+	prefixToCheck, tag := splitImage(image)
+	regex := regexp.MustCompile(cacheEntry.PrefixRegex)
+	if regex.MatchString(prefixToCheck) {
+		binaryPath, tagExists := cacheEntry.Tags[tag]
+		if tagExists {
+			return binaryPath, true
+		}
+	}
+
+	return selectedBinary, true
+}
+
+func (s *FunctionConfigStore) GetExecCache() map[string]BuiltInCacheEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.builtInExecutorCache
@@ -208,8 +236,21 @@ func (s *FunctionConfigStore) GetExecCache() map[string]fnsdk.ResourceListProces
 func (s *FunctionConfigStore) GetProcessorFromCache(image string) (fnsdk.ResourceListProcessor, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	processor, found := s.builtInExecutorCache[image]
-	return processor, found
+	baseName := util.GetImageName(image)
+	tag := util.GetImageTag(image)
+	entry, found := s.builtInExecutorCache[baseName]
+	prefixToCheck := util.GetImageRepository(image)
+	if prefixToCheck == "" {
+		prefixToCheck = s.defaultImagePrefix
+	}
+	if slices.Contains(entry.Tags, tag) {
+		regex := regexp.MustCompile(entry.PrefixRegex)
+		if regex.MatchString(prefixToCheck) {
+			return entry.Process, found
+		}
+	}
+	return nil, false
+
 }
 
 func (s *FunctionConfigStore) List() []*configapi.FunctionConfig {

@@ -43,7 +43,7 @@ cd "${deployment_config_dir}"
 
 # expose function-runner to local processes
 kpt fn eval \
-  --image ghcr.io/kptdev/krm-functions-catalog/starlark:v0.5.0 \
+  --image ghcr.io/kptdev/krm-functions-catalog/starlark:v0.5.5 \
   --match-kind Service \
   --match-name function-runner \
   --match-namespace porch-system \
@@ -56,7 +56,7 @@ for resource in ctx.resource_list["items"]:
 
 # remove porch-controllers Deployment from package
 kpt fn eval \
-  --image ghcr.io/kptdev/krm-functions-catalog/starlark:v0.5.0 \
+  --image ghcr.io/kptdev/krm-functions-catalog/starlark:v0.5.5 \
   --match-kind Deployment \
   --match-name porch-controllers \
   --match-namespace porch-system \

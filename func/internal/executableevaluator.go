@@ -1,4 +1,4 @@
-// Copyright 2022 The kpt and Nephio Authors
+// Copyright 2022, 2026 The kpt and Nephio Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@ package internal
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 
 	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/fn"
 	"github.com/nephio-project/porch/controllers/functionconfigs/reconciler"
 	pb "github.com/nephio-project/porch/func/evaluator"
+	regclientref "github.com/regclient/regclient/types/ref"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
@@ -46,17 +48,37 @@ func NewExecutableEvaluator(FunctionConfigStore *reconciler.FunctionConfigStore)
 }
 
 func (e *executableEvaluator) EvaluateFunction(ctx context.Context, req *pb.EvaluateFunctionRequest) (*pb.EvaluateFunctionResponse, error) {
-	binary, exists := e.FunctionConfigStore.GetBinaryFromCache(req.Image)
-
-	if !exists {
-		return nil, &fn.NotFoundError{
-			Function: kptfilev1.Function{Image: req.Image},
+	var selectedBinary string
+	if req.Tag != "" {
+		ref, err := regclientref.New(req.Image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse image %q as reference: %w", req.Image, err)
 		}
+		ref.Tag = ""
+		ref.Digest = ""
+		req.Image = ref.CommonName()
+
+		binary, exists := e.FunctionConfigStore.GetBinaryFromCacheByConstraint(req.Image, req.Tag)
+		if !exists {
+			return nil, &fn.NotFoundError{
+				Function: kptfilev1.Function{Image: req.Image},
+			}
+		}
+		selectedBinary = binary
+	} else {
+		klog.Infof("Image tag is empty, using the image with explicit tag: %q", req.Image)
+		binary, exists := e.FunctionConfigStore.GetBinaryFromCache(req.Image)
+		if !exists {
+			return nil, &fn.NotFoundError{
+				Function: kptfilev1.Function{Image: req.Image},
+			}
+		}
+		selectedBinary = binary
 	}
 
 	klog.Infof("Evaluating %q in executable mode", req.Image)
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, binary) // #nosec G204 -- variables controlled internally
+	cmd := exec.CommandContext(ctx, selectedBinary) // #nosec G204 -- variables controlled internally
 	cmd.Stdin = bytes.NewReader(req.ResourceList)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

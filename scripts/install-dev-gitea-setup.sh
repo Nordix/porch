@@ -125,7 +125,7 @@ else
   # Only pin a specific IP if one was explicitly provided; otherwise let MetalLB assign from pool
   if [[ -n "${gitea_ip}" ]]; then
     kpt fn eval \
-      --image ghcr.io/kptdev/krm-functions-catalog/set-annotations:v0.1.4 \
+      --image ghcr.io/kptdev/krm-functions-catalog/set-annotations:v0.1.7 \
       --match-kind Service \
       --match-name gitea-lb \
       --match-namespace gitea \

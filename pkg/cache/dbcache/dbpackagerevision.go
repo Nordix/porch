@@ -75,20 +75,20 @@ func extractFromKptfile(resources map[string]string) (kptfileStatus, []porchapi.
 }
 
 type dbPackageRevision struct {
-	repo          *dbRepository
-	pkgRevKey     repository.PackageRevisionKey
-	meta          metav1.ObjectMeta
-	spec          *porchapi.PackageRevisionSpec
-	updated       time.Time
-	updatedBy     string
-	lifecycle     porchapi.PackageRevisionLifecycle
-	extPRID       kptfile.Locator
-	latest        bool
-	deployment    bool
-	tasks         []porchapi.Task
-	resources     map[string]string
+	repo           *dbRepository
+	pkgRevKey      repository.PackageRevisionKey
+	meta           metav1.ObjectMeta
+	spec           *porchapi.PackageRevisionSpec
+	updated        time.Time
+	updatedBy      string
+	lifecycle      porchapi.PackageRevisionLifecycle
+	extPRID        kptfile.Locator
+	latest         bool
+	deployment     bool
+	tasks          []porchapi.Task
+	resources      map[string]string
 	resourcesDirty bool
-	kptfileStatus kptfileStatus
+	kptfileStatus  kptfileStatus
 
 	// gitDraftPR maintains the draft in the external git repository during editing (when pushDraftsToGit is true)
 	gitPRDraft repository.PackageRevisionDraft

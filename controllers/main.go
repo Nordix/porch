@@ -348,7 +348,6 @@ func prePopulateFunctionConfigStore(reader client.Reader, store *reconciler.Func
 	klog.Infof("FunctionConfig store pre-populated with %d configs", len(fcList.Items))
 }
 
-
 // --- Helpers ---
 
 func buildReconcilerMap(reconcilers ...Reconciler) map[string]Reconciler {
