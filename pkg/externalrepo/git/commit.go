@@ -36,6 +36,9 @@ const (
 	porchSignatureEmail = "porch@kpt.dev"
 )
 
+// emptyGitTreeHash is the well-known git hash for an empty tree object.
+var emptyGitTreeHash = plumbing.NewHash("4b825dc642cb6eb9a060e54bf8d69288fbee4904")
+
 type commitHelper struct {
 	repository *git.Repository
 
@@ -349,33 +352,23 @@ func (h *commitHelper) storeTrees(treePath string) (plumbing.Hash, error) {
 		return entrySortKey(&entries[i]) < entrySortKey(&entries[j])
 	})
 
-	// Store all child trees and get their hashes.
-	// Remove empty child directories to avoid leaving behind empty subdirectories
-	for i := 0; i < len(entries); i++ {
+	// Store all child trees, pruning any that resolve to empty
+	remaining := entries[:0]
+	for i := range entries {
 		e := &entries[i]
-		if e.Mode != filemode.Dir {
-			continue
+		if e.Mode == filemode.Dir && e.Hash.IsZero() {
+			hash, err := h.storeTrees(path.Join(treePath, e.Name))
+			if err != nil {
+				return plumbing.Hash{}, err
+			}
+			if hash == emptyGitTreeHash {
+				continue
+			}
+			e.Hash = hash
 		}
-		if !e.Hash.IsZero() {
-			continue
-		}
-
-		childPath := path.Join(treePath, e.Name)
-		childTree := h.trees[childPath]
-		if h.pruneEmptyChild(tree, childTree, childPath, &entries, &i) {
-			continue
-		}
-		hash, err := h.storeTrees(childPath)
-		if err != nil {
-			return plumbing.Hash{}, err
-		}
-		// After recursion, the child may have become empty if all its
-		// children were pruned. Check again and remove if so.
-		if h.pruneEmptyChild(tree, childTree, childPath, &entries, &i) {
-			continue
-		}
-		e.Hash = hash
+		remaining = append(remaining, *e)
 	}
+	tree.Entries = remaining
 
 	treeHash, err := storeTree(h.repository, tree)
 	if err != nil {
@@ -392,19 +385,6 @@ func entrySortKey(e *object.TreeEntry) string {
 		return e.Name + "/"
 	}
 	return e.Name
-}
-
-// pruneEmptyChild removes a child directory from the parent tree if it has no entries.
-// Returns true if the child was pruned.
-func (h *commitHelper) pruneEmptyChild(parent *object.Tree, child *object.Tree, childPath string, entries *[]object.TreeEntry, i *int) bool {
-	if child == nil || len(child.Entries) != 0 {
-		return false
-	}
-	*entries = append((*entries)[:*i], (*entries)[*i+1:]...)
-	parent.Entries = *entries
-	delete(h.trees, childPath)
-	*i--
-	return true
 }
 
 // storeCommit creates and writes a commit object to git.
