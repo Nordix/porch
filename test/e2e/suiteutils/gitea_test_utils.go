@@ -1,4 +1,4 @@
-// Copyright 2025 The Nephio Authors
+// Copyright 2025 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,12 +27,12 @@ import (
 )
 
 const (
-	GiteaClusterURL        = "http://gitea.gitea.svc.cluster.local:3000/nephio/"
-	GiteaUser              = "nephio"
+	GiteaClusterURL        = "http://gitea.gitea.svc.cluster.local:3000/porch/"
+	GiteaUser              = "porch"
 	GiteaPassword          = "secret"
 	PorchTestRepoName      = "porch-test"
 	TestBlueprintsRepoName = "test-blueprints"
-	GiteaRepoAPi           = "http://localhost:3000/api/v1/repos/nephio/" + PorchTestRepoName
+	GiteaRepoAPi           = "http://localhost:3000/api/v1/repos/porch/" + PorchTestRepoName
 
 	defaultGiteaLBIP = "172.18.255.200"
 )
@@ -73,7 +73,7 @@ func (t *TestSuite) getGiteaURL() string {
 	if t.IsPorchServerInCluster() && t.IsRepoControllerInCluster() {
 		return GiteaClusterURL
 	}
-	return "http://" + t.getGiteaLBIP() + ":3000/nephio/"
+	return "http://" + t.getGiteaLBIP() + ":3000/porch/"
 }
 
 // GetPorchTestRepoURL returns the dynamic PorchTestRepo URL

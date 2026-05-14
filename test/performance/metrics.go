@@ -1,4 +1,4 @@
-// Copyright 2024, 2026 The Nephio Authors
+// Copyright 2024, 2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
-	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -109,7 +109,7 @@ func createGiteaRepo(repoName string) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth("nephio", "secret")
+	req.SetBasicAuth("porch", "secret")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -159,14 +159,14 @@ func debugPackageStatus(t *testing.T, c client.Client, ctx context.Context, name
 // ... existing imports and code ...
 
 func deleteGiteaRepo(repoName string) error {
-	giteaURL := fmt.Sprintf("%s/api/v1/repos/nephio/%s", getGiteaBaseURL(), repoName)
+	giteaURL := fmt.Sprintf("%s/api/v1/repos/porch/%s", getGiteaBaseURL(), repoName)
 
 	req, err := http.NewRequest("DELETE", giteaURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %v", err)
 	}
 
-	req.SetBasicAuth("nephio", "secret")
+	req.SetBasicAuth("porch", "secret")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
