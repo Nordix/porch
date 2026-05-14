@@ -46,24 +46,28 @@ const (
 )
 
 // getGiteaLBIP returns the Gitea LoadBalancer IP, preferring the GITEA_LB_IP env var.
-// If not set, it discovers the IP dynamically from the gitea-lb Service in the cluster.
-// Falls back to the hardcoded default only if discovery fails.
+// If not set, it polls the gitea-lb Service until the LoadBalancer IP is allocated
+// (with a timeout). Falls back to the hardcoded default only if discovery times out.
 func getGiteaLBIP() string {
 	if ip := os.Getenv("GITEA_LB_IP"); ip != "" {
 		return ip
 	}
 
-	// Discover from the running service
+	// Poll the service for up to 30 seconds waiting for MetalLB to assign an IP
 	if k8sClient != nil {
-		svc := &corev1.Service{}
-		err := k8sClient.Get(context.Background(), client.ObjectKey{
-			Namespace: "gitea",
-			Name:      "gitea-lb",
-		}, svc)
-		if err == nil && len(svc.Status.LoadBalancer.Ingress) > 0 {
-			if ip := svc.Status.LoadBalancer.Ingress[0].IP; ip != "" {
-				return ip
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			svc := &corev1.Service{}
+			err := k8sClient.Get(context.Background(), client.ObjectKey{
+				Namespace: "gitea",
+				Name:      "gitea-lb",
+			}, svc)
+			if err == nil && len(svc.Status.LoadBalancer.Ingress) > 0 {
+				if ip := svc.Status.LoadBalancer.Ingress[0].IP; ip != "" {
+					return ip
+				}
 			}
+			time.Sleep(1 * time.Second)
 		}
 	}
 

@@ -20,15 +20,18 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
 	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 var (
@@ -43,13 +46,47 @@ func init() {
 
 const defaultGiteaLBIP = "172.18.255.200"
 
-// getGiteaBaseURL returns the Gitea base URL, using GITEA_LB_IP env var if set.
+var (
+	giteaBaseURLOnce sync.Once
+	giteaBaseURLVal  string
+)
+
+// getGiteaBaseURL returns the Gitea base URL. It prefers the GITEA_LB_IP env var,
+// then attempts to discover the IP from the gitea-lb Service in the cluster,
+// and falls back to the hardcoded default only if both are unavailable.
 func getGiteaBaseURL() string {
-	ip := os.Getenv("GITEA_LB_IP")
-	if ip == "" {
-		ip = defaultGiteaLBIP
+	giteaBaseURLOnce.Do(func() {
+		ip := os.Getenv("GITEA_LB_IP")
+		if ip == "" {
+			ip = discoverGiteaLBIP()
+		}
+		if ip == "" {
+			ip = defaultGiteaLBIP
+		}
+		giteaBaseURLVal = "http://" + ip + ":3000"
+	})
+	return giteaBaseURLVal
+}
+
+// discoverGiteaLBIP attempts to read the gitea-lb Service LoadBalancer IP from the cluster.
+func discoverGiteaLBIP() string {
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return ""
 	}
-	return "http://" + ip + ":3000"
+	c, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return ""
+	}
+	svc := &corev1.Service{}
+	err = c.Get(context.Background(), client.ObjectKey{Namespace: "gitea", Name: "gitea-lb"}, svc)
+	if err != nil {
+		return ""
+	}
+	if len(svc.Status.LoadBalancer.Ingress) > 0 {
+		return svc.Status.LoadBalancer.Ingress[0].IP
+	}
+	return ""
 }
 
 func createGiteaRepo(repoName string) error {

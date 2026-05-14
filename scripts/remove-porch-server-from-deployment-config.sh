@@ -35,7 +35,7 @@ else
   }
 fi
 
-deployment_config_dir="${DEPLOYPORCHCONFIGDIR:-${git_root}/.build/deploy)}"
+deployment_config_dir="${DEPLOYPORCHCONFIGDIR:-${git_root}/.build/deploy}"
 cd "${deployment_config_dir}"
 
 # expose function-runner to local processes

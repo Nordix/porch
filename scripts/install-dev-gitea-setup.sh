@@ -20,11 +20,10 @@ set -o pipefail # Check errors in piped commands
  
 self_dir="$(dirname "$(readlink -f "$0")")"
 git_repo_name=${1:-porch-test}
-gitea_ip=${2:-}  # If not provided, will be discovered dynamically from the LoadBalancer service after deployment
+gitea_ip=${2:-}  # If provided, pins the Gitea LoadBalancer to this IP; otherwise MetalLB assigns from pool
  
 git_root="$(readlink -f "${self_dir}/..")"
 TEST_BLUEPRINTS_PATH="${git_root}/test/pkgs/test-pkgs/test-blueprints.bundle"
-source "${git_root}/scripts/get-kind-metallb-subnet.sh"
 cd "${git_root}"
  
 function h1() {

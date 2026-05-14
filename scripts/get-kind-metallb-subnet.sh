@@ -25,7 +25,11 @@
 #   get_service_lb_ip <svc> <ns> -> prints the LoadBalancer IP of a service
 #   wait_for_service_lb_ip <svc> <ns> [timeout] -> waits for and prints the LB IP
 
-set -euo pipefail
+# Only set strict mode when executed directly, not when sourced.
+# This avoids changing the caller's shell options unexpectedly.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  set -euo pipefail
+fi
 
 # Get the subnet of the kind Docker network and derive a MetalLB-suitable IP range.
 # The range is placed at the top of the subnet's last octet range (x.x.255.200 - x.x.255.250)
@@ -51,12 +55,32 @@ get_metallb_ip_range() {
     return 1
   fi
 
-  # Extract the first two octets from the subnet (e.g. "172.18" from "172.18.0.0/16")
-  local prefix
-  prefix="$(echo "$subnet" | cut -d'.' -f1-2)"
+  # Parse the subnet base address and CIDR mask to compute a valid range.
+  # We place the MetalLB pool at the high end of the subnet to avoid conflicts
+  # with container IPs assigned by Docker.
+  local base_ip cidr_mask
+  base_ip="${subnet%%/*}"
+  cidr_mask="${subnet##*/}"
 
-  METALLB_IP_RANGE_START="${prefix}.255.200"
-  METALLB_IP_RANGE_END="${prefix}.255.250"
+  # Convert base IP to integer for arithmetic
+  local IFS='.'
+  # shellcheck disable=SC2086
+  set -- $base_ip
+  local ip_int=$(( ($1 << 24) + ($2 << 16) + ($3 << 8) + $4 ))
+  IFS=' '
+
+  # Calculate the number of host addresses in the subnet
+  local host_bits=$(( 32 - cidr_mask ))
+  local subnet_size=$(( 1 << host_bits ))
+
+  # Place the pool near the top of the subnet: last 51 addresses before broadcast
+  # (broadcast = base + subnet_size - 1, so we use base + subnet_size - 52 to base + subnet_size - 2)
+  local start_int=$(( ip_int + subnet_size - 52 ))
+  local end_int=$(( ip_int + subnet_size - 2 ))
+
+  # Convert integers back to dotted-quad
+  METALLB_IP_RANGE_START="$(( (start_int >> 24) & 255 )).$(( (start_int >> 16) & 255 )).$(( (start_int >> 8) & 255 )).$(( start_int & 255 ))"
+  METALLB_IP_RANGE_END="$(( (end_int >> 24) & 255 )).$(( (end_int >> 16) & 255 )).$(( (end_int >> 8) & 255 )).$(( end_int & 255 ))"
 
   export METALLB_IP_RANGE_START
   export METALLB_IP_RANGE_END
