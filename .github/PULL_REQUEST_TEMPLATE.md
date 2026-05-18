@@ -56,10 +56,8 @@
 ---
 
 ## AI Disclosure
-[ ] I have used AI in the creation of this PR.
 
-Examples:
-
-- Microsoft Copilot to analyse the code
-- Claude code to generate the function someNewFunctionIAdded()
-- Amazon Q to generate unit tests
+- [ ] I have used AI in the creation of this PR.
+  - E.g. Microsoft Copilot to analyse the code.
+  - E.g. Claude code to generate the function someNewFunctionIAdded().
+  - E.g. Kiro to generate unit tests.
