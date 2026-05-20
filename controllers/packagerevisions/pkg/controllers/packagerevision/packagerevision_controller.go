@@ -175,7 +175,7 @@ func resultOrDefault(result *ctrl.Result) ctrl.Result {
 func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
 	resources, creationSource, err := r.applySource(ctx, pr)
 	if err != nil {
-		return nil, r.setSourceFailed(ctx, pr, err)
+		return nil, r.setOperationFailed(ctx, pr, "source", err)
 	}
 	if resources == nil {
 		return nil, nil
@@ -187,34 +187,10 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 	// TODO: CreateNewDraft always receives lifecycle=Draft — consider removing the lifecycle parameter from the interface.
 	draft, err := r.ContentCache.CreateNewDraft(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, string(porchv1alpha2.PackageRevisionLifecycleDraft))
 	if err != nil {
-		return nil, r.setSourceFailed(ctx, pr, fmt.Errorf("create draft: %w", err))
+		return nil, r.setOperationFailed(ctx, pr, "source", fmt.Errorf("create draft: %w", err))
 	}
 
-	if err := draft.UpdateResources(ctx, resources, creationSource); err != nil {
-		return nil, r.setSourceFailed(ctx, pr, fmt.Errorf("update resources: %w", err))
-	}
-
-	if err := r.ContentCache.CloseDraft(ctx, repoKey, draft, 0); err != nil {
-		return nil, r.setSourceFailed(ctx, pr, fmt.Errorf("close draft: %w", err))
-	}
-
-	// Read back the created package to get lock info for status.
-	content, err := r.ContentCache.GetPackageContent(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
-	if err != nil {
-		log.Error(err, "failed to read back package content after source execution")
-	}
-
-	r.updateStatus(ctx, pr, content, creationSource,
-		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"),
-	)
-	// Set Rendered=Unknown via the render field manager.
-	r.updateRenderStatus(ctx, pr, "", "",
-		renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"),
-	)
-	r.ensureLatestRevisionLabel(ctx, pr)
-
-	result := ctrl.Result{Requeue: true}
-	return &result, nil
+	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, creationSource, "subpackage")
 }
 
 // reconcileSubpackageOperation handles one-time package creation from spec.source.
@@ -222,29 +198,44 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 // Returns (result, nil) if source was applied and status was updated.
 // Returns (nil, err) on failure.
 func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
-	resources, creationSource, err := r.applySource(ctx, pr)
+	resources, subpackageOperation, err := r.applySubpackageOperaiton(ctx, pr)
 	if err != nil {
-		return nil, r.setSourceFailed(ctx, pr, err)
+		return nil, r.setOperationFailed(ctx, pr, "subpackage", err)
 	}
 	if resources == nil {
 		return nil, nil
 	}
 
 	log := log.FromContext(ctx)
-	log.Info("applying source", "type", creationSource, "name", pr.Name)
+	log.Info("executing subpackage operation", "type", subpackageOperation, "name", pr.Name)
 
-	// TODO: CreateNewDraft always receives lifecycle=Draft — consider removing the lifecycle parameter from the interface.
-	draft, err := r.ContentCache.CreateNewDraft(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, string(porchv1alpha2.PackageRevisionLifecycleDraft))
+	draft, err := r.ContentCache.CreateDraftFromExisting(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 	if err != nil {
-		return nil, r.setSourceFailed(ctx, pr, fmt.Errorf("create draft: %w", err))
+		return nil, r.setOperationFailed(ctx, pr, "subpackage", fmt.Errorf("create draft on existing package revision: %w", err))
 	}
 
-	if err := draft.UpdateResources(ctx, resources, creationSource); err != nil {
-		return nil, r.setSourceFailed(ctx, pr, fmt.Errorf("update resources: %w", err))
+	// TODO: Invoke the subpackage magic from here.
+
+	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, subpackageOperation, "subpackage")
+}
+
+// finalizeDraftAndUpdateStatus completes the draft operation by updating resources,
+// closing the draft, and updating the package revision status.
+func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
+	ctx context.Context,
+	pr *porchv1alpha2.PackageRevision,
+	repoKey repository.RepositoryKey,
+	draft repository.PackageRevisionDraftSlim,
+	resources map[string]string,
+	operation, operationType string) (*ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	if err := draft.UpdateResources(ctx, resources, operation); err != nil {
+		return nil, r.setOperationFailed(ctx, pr, operationType, fmt.Errorf("update resources: %w", err))
 	}
 
 	if err := r.ContentCache.CloseDraft(ctx, repoKey, draft, 0); err != nil {
-		return nil, r.setSourceFailed(ctx, pr, fmt.Errorf("close draft: %w", err))
+		return nil, r.setOperationFailed(ctx, pr, operationType, fmt.Errorf("close draft: %w", err))
 	}
 
 	// Read back the created package to get lock info for status.
@@ -253,13 +244,9 @@ func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Con
 		log.Error(err, "failed to read back package content after source execution")
 	}
 
-	r.updateStatus(ctx, pr, content, creationSource,
-		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"),
-	)
+	r.updateStatus(ctx, pr, content, operation, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"))
 	// Set Rendered=Unknown via the render field manager.
-	r.updateRenderStatus(ctx, pr, "", "",
-		renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"),
-	)
+	r.updateRenderStatus(ctx, pr, "", "", renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"))
 	r.ensureLatestRevisionLabel(ctx, pr)
 
 	result := ctrl.Result{Requeue: true}
