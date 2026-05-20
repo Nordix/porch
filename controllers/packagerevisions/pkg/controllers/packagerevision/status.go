@@ -114,28 +114,11 @@ func (r *PackageRevisionReconciler) updateRenderStatus(ctx context.Context, pr *
 	}
 }
 
-// refreshRenderedGeneration bumps the Rendered condition's observedGeneration
-// when no render is needed but the condition is stale (e.g. after lifecycle patch).
-// It preserves all other condition fields (reason, message, lastTransitionTime)
-// to avoid misleading status churn.
-func (r *PackageRevisionReconciler) refreshRenderedGeneration(ctx context.Context, pr *porchv1alpha2.PackageRevision) {
-	for _, c := range pr.Status.Conditions {
-		if c.Type == porchv1alpha2.ConditionRendered && c.Status == metav1.ConditionTrue && c.ObservedGeneration < pr.Generation {
-			// Only bump observedGeneration — preserve existing reason, message, and transition time.
-			c.ObservedGeneration = pr.Generation
-			r.updateRenderStatus(ctx, pr, pr.Status.RenderingPrrResourceVersion, "",
-				c,
-			)
-			return
-		}
-	}
-}
-
-// setSourceFailed logs the error and sets Ready=False and Rendered=False.
+// setOperationFailed logs the error and sets Ready=False and Rendered=False.
 // Rendered is set even though rendering was never attempted — the package
 // content didn't land successfully, so "not rendered" is accurate.
-func (r *PackageRevisionReconciler) setSourceFailed(ctx context.Context, pr *porchv1alpha2.PackageRevision, err error) error {
-	log.FromContext(ctx).Error(err, "source execution failed")
+func (r *PackageRevisionReconciler) setOperationFailed(ctx context.Context, pr *porchv1alpha2.PackageRevision, operation string, err error) error {
+	log.FromContext(ctx).Error(err, operation+" execution failed")
 	r.updateStatus(ctx, pr, nil, "",
 		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
 		renderedCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
