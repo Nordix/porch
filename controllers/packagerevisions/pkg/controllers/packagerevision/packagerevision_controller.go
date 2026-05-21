@@ -175,7 +175,7 @@ func resultOrDefault(result *ctrl.Result) ctrl.Result {
 func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
 	resources, creationSource, err := r.applySource(ctx, pr)
 	if err != nil {
-		return nil, r.setOperationFailed(ctx, pr, "source", err)
+		return nil, r.setFailedConditionsAndLog(ctx, pr, "source execution failed", err)
 	}
 	if resources == nil {
 		return nil, nil
@@ -187,7 +187,7 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 	// TODO: CreateNewDraft always receives lifecycle=Draft — consider removing the lifecycle parameter from the interface.
 	draft, err := r.ContentCache.CreateNewDraft(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, string(porchv1alpha2.PackageRevisionLifecycleDraft))
 	if err != nil {
-		return nil, r.setOperationFailed(ctx, pr, "source", fmt.Errorf("create draft: %w", err))
+		return nil, r.setFailedConditionsAndLog(ctx, pr, creationSource+" source execution failed", fmt.Errorf("create draft: %w", err))
 	}
 
 	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, creationSource, "subpackage")
@@ -198,25 +198,33 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 // Returns (result, nil) if source was applied and status was updated.
 // Returns (nil, err) on failure.
 func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
-	resources, subpackageOperation, err := r.applySubpackageOperaiton(ctx, pr)
+	subpackageResources, subpackageOperation, err := r.applySubpackageOperaiton(ctx, pr)
 	if err != nil {
-		return nil, r.setOperationFailed(ctx, pr, "subpackage", err)
+		return nil, r.setFailedConditionsAndLog(ctx, pr, "subpackage execution failed", err)
 	}
-	if resources == nil {
+	if subpackageResources == nil {
 		return nil, nil
 	}
 
 	log := log.FromContext(ctx)
 	log.Info("executing subpackage operation", "type", subpackageOperation, "name", pr.Name)
 
-	draft, err := r.ContentCache.CreateDraftFromExisting(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
+	parentResources, err := r.getPackageResources(ctx, pr)
 	if err != nil {
-		return nil, r.setOperationFailed(ctx, pr, "subpackage", fmt.Errorf("create draft on existing package revision: %w", err))
+		return nil, fmt.Errorf("failed to read parent resources: %w", err)
 	}
 
-	// TODO: Invoke the subpackage magic from here.
+	parentResources, err = r.upsertSubpackageResourcesInDraftResources(ctx, pr, parentResources, subpackageResources)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert subpackage resources into parent resources: %w", err)
+	}
 
-	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, subpackageOperation, "subpackage")
+	draft, err := r.ContentCache.CreateDraftFromExisting(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
+	if err != nil {
+		return nil, r.setFailedConditionsAndLog(ctx, pr, "subpackage execution failed", fmt.Errorf("create draft on existing package revision: %w", err))
+	}
+
+	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, parentResources, subpackageOperation, "subpackage")
 }
 
 // finalizeDraftAndUpdateStatus completes the draft operation by updating resources,
@@ -231,11 +239,11 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 	log := log.FromContext(ctx)
 
 	if err := draft.UpdateResources(ctx, resources, operation); err != nil {
-		return nil, r.setOperationFailed(ctx, pr, operationType, fmt.Errorf("update resources: %w", err))
+		return nil, r.setFailedConditionsAndLog(ctx, pr, operationType, fmt.Errorf("update resources: %w", err))
 	}
 
 	if err := r.ContentCache.CloseDraft(ctx, repoKey, draft, 0); err != nil {
-		return nil, r.setOperationFailed(ctx, pr, operationType, fmt.Errorf("close draft: %w", err))
+		return nil, r.setFailedConditionsAndLog(ctx, pr, operationType, fmt.Errorf("close draft: %w", err))
 	}
 
 	// Read back the created package to get lock info for status.

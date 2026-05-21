@@ -116,8 +116,8 @@ func (r *PackageRevisionReconciler) updateRenderStatus(ctx context.Context, pr *
 // setOperationFailed logs the error and sets Ready=False and Rendered=False.
 // Rendered is set even though rendering was never attempted — the package
 // content didn't land successfully, so "not rendered" is accurate.
-func (r *PackageRevisionReconciler) setOperationFailed(ctx context.Context, pr *porchv1alpha2.PackageRevision, operation string, err error) error {
-	log.FromContext(ctx).Error(err, operation+" execution failed")
+func (r *PackageRevisionReconciler) setFailedConditionsAndLog(ctx context.Context, pr *porchv1alpha2.PackageRevision, message string, err error) error {
+	log.FromContext(ctx).Error(err, message)
 	r.updateStatus(ctx, pr, nil, "",
 		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
 		renderedCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
