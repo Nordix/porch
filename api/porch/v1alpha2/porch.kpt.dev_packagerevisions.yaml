@@ -374,19 +374,24 @@ spec:
                   type: object
                 type: array
               publishedAt:
-                description: PublishedAt is the time when the packagerevision were
+                description: PublishedAt is the time when the package revision was
                   approved.
                 format: date-time
                 type: string
               publishedBy:
                 description: PublishedBy is the identity of the user who approved
-                  the packagerevision.
+                  the package revision.
                 type: string
               renderingPrrResourceVersion:
                 description: |-
                   RenderingPrrResourceVersion tracks the PRR resourceVersion currently being rendered.
                   Prevents concurrent renders.
                 type: string
+              resourcesSizeBytes:
+                description: ResourcesSizeBytes is the total file size, in bytes,
+                  of the package revision's resources.
+                format: int64
+                type: integer
               revision:
                 description: |-
                   Revision identifies the version of the package.
