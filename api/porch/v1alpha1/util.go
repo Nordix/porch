@@ -85,39 +85,14 @@ func IsPackageCreation(pkgRev *PackageRevision) bool {
 	return false
 }
 
-// GetSubpackageDir returns the SubpackageDir for a package revision,
-// or "" if there is no SubpackageDir set.
-func GetSubpackageDir(pkgRev *PackageRevision) (string, error) {
-	if len(pkgRev.Spec.Tasks) == 0 {
-		return "", fmt.Errorf("failed to get subpackage directory, task list must have at least one entry")
-	}
-
-	if len(pkgRev.Spec.Tasks) > 2 {
-		return "", fmt.Errorf("failed to get subpackage directory, task list may not have more than two entries")
-	}
-
-	if getSubpackageDir(pkgRev.Spec.Tasks[0]) != "" {
-		return "", fmt.Errorf("subpackage directory may not be specified as the first task on the task list")
-	}
-
-	if len(pkgRev.Spec.Tasks) < 2 {
-		return "", nil
-	}
-
-	subpackageDir := getSubpackageDir(pkgRev.Spec.Tasks[1])
-	if IsValidSubpackageDir(subpackageDir) {
-		return subpackageDir, nil
-	} else {
-		return "", fmt.Errorf("subpackage directory %q is invalid", subpackageDir)
-	}
-}
-
-// getSubpackageDir gets the SubpackageDir from a task or returns "" if it does not exist
-func getSubpackageDir(task Task) string {
-	switch task.Type {
-	case TaskTypeClone:
-		if task.Clone == nil {
-			return ""
+// GetSubpackageDir return the SubpackageDir for a package revision or "" if there is no SubpackageDir set.
+func GetSubpackageDir(pkgRev *PackageRevision) string {
+	for _, task := range pkgRev.Spec.Tasks {
+		if task.Type == TaskTypeClone {
+			if task.Clone == nil || task.Clone.SubpackageDir == "" {
+				continue
+			}
+			return task.Clone.SubpackageDir
 		}
 		return task.Clone.SubpackageDir
 	case TaskTypeUpgrade:

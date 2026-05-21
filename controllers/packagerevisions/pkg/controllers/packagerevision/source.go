@@ -48,16 +48,16 @@ func (r *PackageRevisionReconciler) applySource(ctx context.Context, pr *porchv1
 	switch {
 	case pr.Spec.Source.Init != nil:
 		resources, err := initPackage(ctx, pr.Spec.PackageName, pr.Spec.Source.Init)
-		return resources, "init", err
+		return resources, "source init", err
 	case pr.Spec.Source.CloneFrom != nil:
 		resources, err := r.clonePackage(ctx, pr)
-		return resources, "clone", err
+		return resources, "source clone", err
 	case pr.Spec.Source.CopyFrom != nil:
 		resources, err := r.copyPackage(ctx, pr)
-		return resources, "copy", err
+		return resources, "source copy", err
 	case pr.Spec.Source.Upgrade != nil:
 		resources, err := r.upgradePackage(ctx, pr)
-		return resources, "upgrade", err
+		return resources, "source upgrade", err
 	default:
 		return nil, "", fmt.Errorf("source has no fields set")
 	}

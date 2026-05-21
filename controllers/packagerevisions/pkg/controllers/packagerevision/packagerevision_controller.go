@@ -16,12 +16,12 @@ package packagerevision
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/controllers/functionconfigs/reconciler"
 	"github.com/kptdev/porch/pkg/repository"
+	pkgerrors "github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -128,13 +128,13 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 	content, err := r.ContentCache.GetPackageContent(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 	if err != nil {
 		log.Error(err, "failed to get package content")
-		r.updateStatus(ctx, pr, nil, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		r.updateStatus(ctx, pr, nil, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
 		return ctrl.Result{}, nil
 	}
 
 	current := content.Lifecycle(ctx)
 	if current == desired {
-		r.updateStatus(ctx, pr, content, "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
+		r.updateStatus(ctx, pr, content, readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
 		if porchv1alpha2.LifecycleIsPublished(porchv1alpha2.PackageRevisionLifecycle(desired)) {
 			r.updateLatestRevisionLabels(ctx, pr)
 		}
@@ -146,11 +146,11 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 	updated, err := r.ContentCache.UpdateLifecycle(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, desired)
 	if err != nil {
 		log.Error(err, "lifecycle transition failed")
-		r.updateStatus(ctx, pr, nil, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		r.updateStatus(ctx, pr, nil, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	r.updateStatus(ctx, pr, updated, "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
+	r.updateStatus(ctx, pr, updated, readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
 
 	if porchv1alpha2.LifecycleIsPublished(porchv1alpha2.PackageRevisionLifecycle(desired)) {
 		// Requeue so the informer cache indexes the new status.revision
@@ -173,24 +173,24 @@ func resultOrDefault(result *ctrl.Result) ctrl.Result {
 // Returns (result, nil) if source was applied and status was updated.
 // Returns (nil, err) on failure.
 func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
-	resources, creationSource, err := r.applySource(ctx, pr)
+	resources, sourceOperationType, err := r.applySource(ctx, pr)
 	if err != nil {
-		return nil, r.setFailedConditionsAndLog(ctx, pr, "source execution failed", err)
+		return nil, r.setFailedConditionsAndLog(ctx, pr, sourceOperationType, err)
 	}
 	if resources == nil {
 		return nil, nil
 	}
 
 	log := log.FromContext(ctx)
-	log.Info("applying source", "type", creationSource, "name", pr.Name)
+	log.Info("applying operation", "type", sourceOperationType, "name", pr.Name)
 
 	// TODO: CreateNewDraft always receives lifecycle=Draft — consider removing the lifecycle parameter from the interface.
 	draft, err := r.ContentCache.CreateNewDraft(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, string(porchv1alpha2.PackageRevisionLifecycleDraft))
 	if err != nil {
-		return nil, r.setFailedConditionsAndLog(ctx, pr, creationSource+" source execution failed", fmt.Errorf("create draft: %w", err))
+		return nil, r.setFailedConditionsAndLog(ctx, pr, sourceOperationType, pkgerrors.Wrapf(err, "create draft"))
 	}
 
-	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, creationSource, "subpackage")
+	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, sourceOperationType)
 }
 
 // reconcileSubpackageOperation handles one-time package creation from spec.source.
@@ -198,33 +198,33 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 // Returns (result, nil) if source was applied and status was updated.
 // Returns (nil, err) on failure.
 func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
-	subpackageResources, subpackageOperation, err := r.applySubpackageOperaiton(ctx, pr)
+	subpackageResources, subpackageOperationType, err := r.applySubpackageOperaiton(ctx, pr)
 	if err != nil {
-		return nil, r.setFailedConditionsAndLog(ctx, pr, "subpackage execution failed", err)
+		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, err)
 	}
 	if subpackageResources == nil {
 		return nil, nil
 	}
 
 	log := log.FromContext(ctx)
-	log.Info("executing subpackage operation", "type", subpackageOperation, "name", pr.Name)
+	log.Info("applying operation", "type", subpackageOperationType, "name", pr.Name)
 
 	parentResources, err := r.getPackageResources(ctx, pr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read parent resources: %w", err)
+		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, pkgerrors.Wrapf(err, "failed to read parent resources"))
 	}
 
 	parentResources, err = r.upsertSubpackageResourcesInDraftResources(ctx, pr, parentResources, subpackageResources)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upsert subpackage resources into parent resources: %w", err)
+		return nil, pkgerrors.Wrapf(err, "failed to upsert subpackage resources into parent resources")
 	}
 
 	draft, err := r.ContentCache.CreateDraftFromExisting(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 	if err != nil {
-		return nil, r.setFailedConditionsAndLog(ctx, pr, "subpackage execution failed", fmt.Errorf("create draft on existing package revision: %w", err))
+		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, pkgerrors.Wrapf(err, "create draft on existing package revision"))
 	}
 
-	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, parentResources, subpackageOperation, "subpackage")
+	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, parentResources, subpackageOperationType)
 }
 
 // finalizeDraftAndUpdateStatus completes the draft operation by updating resources,
@@ -235,15 +235,15 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 	repoKey repository.RepositoryKey,
 	draft repository.PackageRevisionDraftSlim,
 	resources map[string]string,
-	operation, operationType string) (*ctrl.Result, error) {
+	operationType string) (*ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	if err := draft.UpdateResources(ctx, resources, operation); err != nil {
-		return nil, r.setFailedConditionsAndLog(ctx, pr, operationType, fmt.Errorf("update resources: %w", err))
+	if err := draft.UpdateResources(ctx, resources, operationType); err != nil {
+		return nil, r.setFailedConditionsAndLog(ctx, pr, operationType, pkgerrors.Wrapf(err, "update resources"))
 	}
 
 	if err := r.ContentCache.CloseDraft(ctx, repoKey, draft, 0); err != nil {
-		return nil, r.setFailedConditionsAndLog(ctx, pr, operationType, fmt.Errorf("close draft: %w", err))
+		return nil, r.setFailedConditionsAndLog(ctx, pr, operationType, pkgerrors.Wrapf(err, "close draft"))
 	}
 
 	// Read back the created package to get lock info for status.
@@ -252,7 +252,7 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 		log.Error(err, "failed to read back package content after source execution")
 	}
 
-	r.updateStatus(ctx, pr, content, operation, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"))
+	r.updateStatus(ctx, pr, content, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"))
 	// Set Rendered=Unknown via the render field manager.
 	r.updateRenderStatus(ctx, pr, "", "", renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"))
 	r.ensureLatestRevisionLabel(ctx, pr)
@@ -314,7 +314,7 @@ func (r *PackageRevisionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	if err := setupFieldIndexes(mgr); err != nil {
-		return fmt.Errorf("failed to setup field indexes: %w", err)
+		return pkgerrors.Wrapf(err, "failed to setup field indexes")
 	}
 
 	err := ctrl.NewControllerManagedBy(mgr).
