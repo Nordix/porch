@@ -59,7 +59,7 @@ func (r *PackageRevisionReconciler) upsertSubpackageResourcesInDraftResources(ct
 }
 
 // insertSubpackageResourcesInDraftResources adds the resources of the independent subpackage to the parent package revision
-// at `SupackageDir`
+// at `SubpackageDir`
 func (r *PackageRevisionReconciler) insertSubpackageResourcesInDraftResources(ctx context.Context, pr *porchv1alpha2.PackageRevision, parentResources, subpackageResources map[string]string) (map[string]string, error) {
 	subpackageDir := pr.Spec.SubpackageOperation.SubpackageDir
 
@@ -81,7 +81,7 @@ func (r *PackageRevisionReconciler) insertSubpackageResourcesInDraftResources(ct
 }
 
 // upgradeSubpackageResourcesInDraftResources updates the resources of the independent subpackage in the parent package revision
-// at `SupackageDir`
+// at `SubpackageDir`
 func (r *PackageRevisionReconciler) upgradeSubpackageResourcesInDraftResources(ctx context.Context, pr *porchv1alpha2.PackageRevision, parentResources, subpackageResources map[string]string) (map[string]string, error) {
 	subpackageDir := pr.Spec.SubpackageOperation.SubpackageDir
 
