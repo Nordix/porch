@@ -49,7 +49,7 @@ func TestUpdateStatusBasic(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := basePR()
 
-	r.updateStatus(t.Context(), pr, nil, "clone",
+	r.updateStatus(t.Context(), pr, nil,
 		readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""),
 	)
 
@@ -66,7 +66,7 @@ func TestUpdateStatusPreservesCreationSource(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := basePR()
 
-	r.updateStatus(t.Context(), pr, nil, "",
+	r.updateStatus(t.Context(), pr, nil,
 		readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""),
 	)
 
@@ -93,7 +93,7 @@ func TestUpdateStatusWithPublishedContent(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := basePR()
 
-	r.updateStatus(t.Context(), pr, content, "",
+	r.updateStatus(t.Context(), pr, content,
 		readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""),
 	)
 
@@ -116,7 +116,7 @@ func TestUpdateStatusWithDraftContent(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := basePR()
 
-	r.updateStatus(t.Context(), pr, content, "")
+	r.updateStatus(t.Context(), pr, content)
 
 	assert.Equal(t, 0, captured.Revision)
 	assert.Empty(t, captured.PublishedBy)
