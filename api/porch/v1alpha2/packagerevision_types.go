@@ -169,10 +169,10 @@ type PackageRevisionStatus struct {
 	// SelfLock identifies the location of the current package's data
 	SelfLock *Locator `json:"selfLock,omitempty"`
 
-	// PublishedBy is the identity of the user who approved the packagerevision.
+	// PublishedBy is the identity of the user who approved the package revision.
 	PublishedBy string `json:"publishedBy,omitempty"`
 
-	// PublishedAt is the time when the packagerevision were approved.
+	// PublishedAt is the time when the package revision was approved.
 	// +optional
 	PublishedAt *metav1.Time `json:"publishedAt,omitempty"`
 
@@ -200,6 +200,9 @@ type PackageRevisionStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// ResourcesSizeBytes is the total file size, in bytes, of the package revision's resources.
+	ResourcesSizeBytes int64 `json:"resourcesSizeBytes,omitempty"`
 }
 
 // PackageSource specifies how a package was created.
