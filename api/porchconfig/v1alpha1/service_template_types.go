@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 package v1alpha1
 
 import (
@@ -20,6 +21,7 @@ import (
 )
 
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 // +kubebuilder:resource:path=servicetemplates,singular=servicetemplate
 type ServiceTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
