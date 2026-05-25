@@ -31,7 +31,6 @@ import (
 	"github.com/kptdev/krm-functions-sdk/go/fn"
 	"github.com/kptdev/porch/pkg/repository"
 
-	pkgerrors "github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
