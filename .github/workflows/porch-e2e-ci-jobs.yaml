@@ -168,6 +168,13 @@ jobs:
       - name: Deploy porch kpt pkg
         timeout-minutes: 10
         run: IMAGE_TAG=${{ needs.build.outputs.image-tag }} SKIP_IMG_BUILD=true make ${{ matrix.make_target }}
+      - name: ServiceTemplate generation details
+        if: always()
+        run: |
+          echo "=== ServiceTemplate CRs ==="
+          kubectl get servicetemplates.config.porch.kpt.dev -A -o yaml 2>/dev/null || echo "Not found"
+          echo "=== ServiceTemplate generation details ==="
+          kubectl get servicetemplates.config.porch.kpt.dev -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,GENERATION:.metadata.generation,OBSERVED_GEN:.status.observedGeneration,RESOURCE_VERSION:.metadata.resourceVersion' 2>/dev/null || echo "Not found"
       - name: Dump cluster state on deploy failure
         if: failure()
         run: |
