@@ -32,7 +32,7 @@ func (r *PackageRevisionReconciler) applySubpackageOperaiton(ctx context.Context
 
 	switch {
 	case pr.Spec.SubpackageOperation.CloneFrom != nil:
-		resources, err := r.clonePackage(ctx, pr)
+		resources, err := r.clonePackage(ctx, pr.GetNamespace(), pr.Spec.SubpackageOperation.SubpackageDir, pr.Spec.SubpackageOperation.CloneFrom)
 		return resources, "subpackage clone", err
 	case pr.Spec.SubpackageOperation.Upgrade != nil:
 		resources, err := r.upgradePackage(ctx, pr)
