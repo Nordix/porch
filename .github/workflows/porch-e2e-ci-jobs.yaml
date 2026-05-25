@@ -185,14 +185,6 @@ jobs:
           kubectl get pods -A
           echo "=== Events (porch-system) ==="
           kubectl get events -n porch-system --sort-by='.lastTimestamp' | tail -40
-          echo "=== Porch server logs (last 50 lines) ==="
-          kubectl logs -n porch-system -l app=porch-server --tail=50 2>/dev/null || true
-          echo "=== Porch controllers logs (last 50 lines) ==="
-          kubectl logs -n porch-system -l k8s-app=porch-controllers --tail=50 2>/dev/null || true
-          echo "=== FunctionConfig CR status ==="
-          kubectl get functionconfigs.config.porch.kpt.dev -n porch-system -o yaml 2>/dev/null | grep -A 5 "status:" || echo "No status found"
-          echo "=== ServiceTemplate CR status ==="
-          kubectl get servicetemplates.config.porch.kpt.dev -n porch-system -o yaml 2>/dev/null | grep -A 5 "status:" || echo "No status found"
           echo "=== Non-running pods details ==="
           kubectl get pods -A -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | "\n--- \(.metadata.namespace)/\(.metadata.name) (\(.status.phase)) ---"' 
           for pod in $(kubectl get pods -A -o json | jq -r '.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded") | "\(.metadata.namespace)/\(.metadata.name)"'); do
