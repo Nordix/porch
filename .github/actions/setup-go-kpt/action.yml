@@ -51,11 +51,15 @@ runs:
       if: inputs.install-kpt == 'true'
       id: kpt-version
       shell: bash
+      env:
+        GO_VERSION_FILE: ${{ inputs.go-version-file }}
+        KPT_FALLBACK: ${{ inputs.kpt-fallback-version }}
       run: |
-        KPT_VERSION=$(go list -m -f '{{.Version}}' github.com/kptdev/kpt 2>/dev/null)
+        GO_MOD_DIR=$(dirname -- "$GO_VERSION_FILE")
+        KPT_VERSION=$(cd "$GO_MOD_DIR" && go list -m -f '{{.Version}}' github.com/kptdev/kpt 2>/dev/null)
         if [ -z "$KPT_VERSION" ]; then
           echo "Warning: Could not resolve kpt version from go.mod, using fallback"
-          KPT_VERSION="${{ inputs.kpt-fallback-version }}"
+          KPT_VERSION="$KPT_FALLBACK"
         fi
         echo "version=${KPT_VERSION}" >> "$GITHUB_OUTPUT"
 
