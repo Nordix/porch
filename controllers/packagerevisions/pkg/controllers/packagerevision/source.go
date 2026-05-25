@@ -50,7 +50,7 @@ func (r *PackageRevisionReconciler) applySource(ctx context.Context, pr *porchv1
 		resources, err := initPackage(ctx, pr.Spec.PackageName, pr.Spec.Source.Init)
 		return resources, "source init", err
 	case pr.Spec.Source.CloneFrom != nil:
-		resources, err := r.clonePackage(ctx, pr)
+		resources, err := r.clonePackage(ctx, pr.GetNamespace(), pr.Spec.PackageName, pr.Spec.Source.CloneFrom)
 		return resources, "source clone", err
 	case pr.Spec.Source.CopyFrom != nil:
 		resources, err := r.copyPackage(ctx, pr)
@@ -119,22 +119,21 @@ func (r *PackageRevisionReconciler) copyPackage(ctx context.Context, pr *porchv1
 // clonePackage reads the source package referenced by CloneFrom and returns its resources
 // with Kptfile upstream/upstreamLock updated.
 // Currently only supports upstreamRef (registered repo). Raw git URL is not yet implemented.
-func (r *PackageRevisionReconciler) clonePackage(ctx context.Context, pr *porchv1alpha2.PackageRevision) (map[string]string, error) {
-	cloneFrom := pr.Spec.Source.CloneFrom
+func (r *PackageRevisionReconciler) clonePackage(ctx context.Context, namespace, packageName string, upstreamPackage *porchv1alpha2.UpstreamPackage) (map[string]string, error) {
 
-	if cloneFrom.UpstreamRef != nil {
-		return r.cloneFromUpstreamRef(ctx, pr, cloneFrom.UpstreamRef)
+	if upstreamPackage.UpstreamRef != nil {
+		return r.cloneFromUpstreamRef(ctx, namespace, packageName, upstreamPackage.UpstreamRef)
 	}
-	if cloneFrom.Git != nil {
-		return r.cloneFromGit(ctx, pr, cloneFrom.Git)
+	if upstreamPackage.Git != nil {
+		return r.cloneFromGit(ctx, namespace, packageName, upstreamPackage.Git)
 	}
 	return nil, fmt.Errorf("clone source must specify either upstreamRef or git")
 }
 
-func (r *PackageRevisionReconciler) cloneFromUpstreamRef(ctx context.Context, pr *porchv1alpha2.PackageRevision, ref *porchv1alpha2.PackageRevisionRef) (map[string]string, error) {
+func (r *PackageRevisionReconciler) cloneFromUpstreamRef(ctx context.Context, namespace, packageName string, ref *porchv1alpha2.PackageRevisionRef) (map[string]string, error) {
 	log := log.FromContext(ctx)
 	var sourcePR porchv1alpha2.PackageRevision
-	if err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: ref.Name}, &sourcePR); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, &sourcePR); err != nil {
 		return nil, fmt.Errorf("failed to get upstream package %q: %w", ref.Name, err)
 	}
 
@@ -144,7 +143,7 @@ func (r *PackageRevisionReconciler) cloneFromUpstreamRef(ctx context.Context, pr
 
 	log.V(1).Info("cloning from upstream ref", "upstream", ref.Name)
 
-	repoKey := repository.RepositoryKey{Namespace: pr.Namespace, Name: sourcePR.Spec.RepositoryName}
+	repoKey := repository.RepositoryKey{Namespace: namespace, Name: sourcePR.Spec.RepositoryName}
 	content, err := r.ContentCache.GetPackageContent(ctx, repoKey, sourcePR.Spec.PackageName, sourcePR.Spec.WorkspaceName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get upstream package content: %w", err)
@@ -160,21 +159,21 @@ func (r *PackageRevisionReconciler) cloneFromUpstreamRef(ctx context.Context, pr
 		return nil, fmt.Errorf("failed to get upstream lock for %q: %w", ref.Name, err)
 	}
 
-	if err := kptops.UpdateKptfileUpstream(pr.Spec.PackageName, resources, upstream, lock); err != nil {
+	if err := kptops.UpdateKptfileUpstream(packageName, resources, upstream, lock); err != nil {
 		return nil, fmt.Errorf("failed to update Kptfile upstream: %w", err)
 	}
 
 	return resources, nil
 }
 
-func (r *PackageRevisionReconciler) cloneFromGit(ctx context.Context, pr *porchv1alpha2.PackageRevision, gitSpec *porchv1alpha2.GitPackage) (map[string]string, error) {
+func (r *PackageRevisionReconciler) cloneFromGit(ctx context.Context, namespace, packageName string, gitSpec *porchv1alpha2.GitPackage) (map[string]string, error) {
 	log.FromContext(ctx).V(1).Info("cloning from git", "repo", gitSpec.Repo, "ref", gitSpec.Ref, "directory", gitSpec.Directory)
-	resources, lock, err := r.ExternalPackageFetcher.FetchExternalGitPackage(ctx, gitSpec, pr.Namespace)
+	resources, lock, err := r.ExternalPackageFetcher.FetchExternalGitPackage(ctx, gitSpec, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch from git: %w", err)
 	}
 
-	if err := kptops.UpdateKptfileUpstream(pr.Spec.PackageName, resources, kptfilev1.Upstream{
+	if err := kptops.UpdateKptfileUpstream(packageName, resources, kptfilev1.Upstream{
 		Type: kptfilev1.GitOrigin,
 		Git: &kptfilev1.Git{
 			Repo:      lock.Repo,
