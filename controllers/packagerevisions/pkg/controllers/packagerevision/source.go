@@ -27,6 +27,7 @@ import (
 	"github.com/kptdev/kpt/pkg/lib/kptops"
 	"github.com/kptdev/kpt/pkg/printer"
 	"github.com/kptdev/kpt/pkg/printer/fake"
+	"github.com/kptdev/porch/api/porch/v1alpha2"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/pkg/repository"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,7 +57,7 @@ func (r *PackageRevisionReconciler) applySource(ctx context.Context, pr *porchv1
 		resources, err := r.copyPackage(ctx, pr)
 		return resources, "source copy", err
 	case pr.Spec.Source.Upgrade != nil:
-		resources, err := r.upgradePackage(ctx, pr)
+		resources, err := r.upgradePackage(ctx, pr.GetNamespace(), pr.Spec.PackageName, pr.Spec.Source.Upgrade)
 		return resources, "source upgrade", err
 	default:
 		return nil, "", fmt.Errorf("source has no fields set")
@@ -193,9 +194,8 @@ func (r *PackageRevisionReconciler) cloneFromGit(ctx context.Context, namespace,
 // upgradePackage performs a 3-way merge between the old upstream, new upstream,
 // and current local package, then updates the Kptfile upstream/upstreamLock to
 // point at the new upstream.
-func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, pr *porchv1alpha2.PackageRevision) (map[string]string, error) {
+func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, namespace, packageName string, upgrade *v1alpha2.PackageUpgradeSpec) (map[string]string, error) {
 	log := log.FromContext(ctx)
-	upgrade := pr.Spec.Source.Upgrade
 	log.V(1).Info("upgrading package", "oldUpstream", upgrade.OldUpstream.Name,
 		"newUpstream", upgrade.NewUpstream.Name, "current", upgrade.CurrentPackage.Name)
 
@@ -205,15 +205,15 @@ func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, pr *porc
 	}
 
 	// Look up all three package revisions.
-	oldUpstreamPR, err := r.getPublishedPackageRevision(ctx, pr.Namespace, upgrade.OldUpstream.Name)
+	oldUpstreamPR, err := r.getPublishedPackageRevision(ctx, namespace, upgrade.OldUpstream.Name)
 	if err != nil {
 		return nil, fmt.Errorf("old upstream: %w", err)
 	}
-	newUpstreamPR, err := r.getPublishedPackageRevision(ctx, pr.Namespace, upgrade.NewUpstream.Name)
+	newUpstreamPR, err := r.getPublishedPackageRevision(ctx, namespace, upgrade.NewUpstream.Name)
 	if err != nil {
 		return nil, fmt.Errorf("new upstream: %w", err)
 	}
-	currentPR, err := r.getPublishedPackageRevision(ctx, pr.Namespace, upgrade.CurrentPackage.Name)
+	currentPR, err := r.getPublishedPackageRevision(ctx, namespace, upgrade.CurrentPackage.Name)
 	if err != nil {
 		return nil, fmt.Errorf("current package: %w", err)
 	}
@@ -257,7 +257,7 @@ func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, pr *porc
 	if err != nil {
 		return nil, fmt.Errorf("failed to get new upstream lock: %w", err)
 	}
-	if err := kptops.UpdateKptfileUpstream(pr.Spec.PackageName, updated.Contents, newUpstream, newUpstreamLock); err != nil {
+	if err := kptops.UpdateKptfileUpstream(packageName, updated.Contents, newUpstream, newUpstreamLock); err != nil {
 		return nil, fmt.Errorf("failed to update Kptfile upstream: %w", err)
 	}
 
