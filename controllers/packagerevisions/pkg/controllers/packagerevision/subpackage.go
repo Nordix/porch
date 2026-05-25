@@ -35,7 +35,7 @@ func (r *PackageRevisionReconciler) applySubpackageOperaiton(ctx context.Context
 		resources, err := r.clonePackage(ctx, pr.GetNamespace(), pr.Spec.SubpackageOperation.SubpackageDir, pr.Spec.SubpackageOperation.CloneFrom)
 		return resources, "subpackage clone", err
 	case pr.Spec.SubpackageOperation.Upgrade != nil:
-		resources, err := r.upgradePackage(ctx, pr)
+		resources, err := r.upgradePackage(ctx, pr.GetNamespace(), pr.Spec.SubpackageOperation.SubpackageDir, pr.Spec.SubpackageOperation.Upgrade)
 		return resources, "subpackage upgrade", err
 	default:
 		return nil, "", fmt.Errorf("subpackageOperation has no fields set")
