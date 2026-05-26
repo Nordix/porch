@@ -36,10 +36,10 @@ const (
 // (revision, publishedBy, publishedAt) is included in the apply.
 func (r *PackageRevisionReconciler) updateStatus(ctx context.Context, pr *porchv1alpha2.PackageRevision, content repository.PackageContent, conditions ...metav1.Condition) {
 	status := porchv1alpha2.PackageRevisionStatus{
-		ObservedGeneration:      pr.Generation,
-		Conditions:              conditions,
-		CreationSource:          porchv1alpha2.GetSourceName(pr),
-		LastSubpackageOperation: pr.Spec.SubpackageOperation,
+		ObservedGeneration:          pr.Generation,
+		Conditions:                  conditions,
+		CreationSource:              porchv1alpha2.GetSourceName(pr),
+		LastSubpackageOperationHash: r.getSubpackageOperationHash(pr),
 	}
 
 	if content != nil {
