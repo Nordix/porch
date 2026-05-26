@@ -171,10 +171,28 @@ jobs:
       - name: ServiceTemplate generation details
         if: always()
         run: |
+          echo "=== ServiceTemplate CRD subresources ==="
+          kubectl get crd servicetemplates.config.porch.kpt.dev -o jsonpath='{.spec.versions[0].subresources}' 2>/dev/null && echo "" || echo "No subresources field"
+          echo "=== FunctionConfig CRD subresources ==="
+          kubectl get crd functionconfigs.config.porch.kpt.dev -o jsonpath='{.spec.versions[0].subresources}' 2>/dev/null && echo "" || echo "No subresources field"
+          echo "=== ServiceTemplate CRD full spec.versions[0] ==="
+          kubectl get crd servicetemplates.config.porch.kpt.dev -o jsonpath='{.spec.versions[0].name} served={.spec.versions[0].served} storage={.spec.versions[0].storage} subresources={.spec.versions[0].subresources}' 2>/dev/null && echo "" || echo "CRD not found"
+          echo "=== Deployed ServiceTemplate CRD YAML (subresources section) ==="
+          kubectl get crd servicetemplates.config.porch.kpt.dev -o yaml 2>/dev/null | grep -A5 "subresources" || echo "No subresources in CRD"
           echo "=== ServiceTemplate CRs ==="
           kubectl get servicetemplates.config.porch.kpt.dev -A -o yaml 2>/dev/null || echo "Not found"
           echo "=== ServiceTemplate generation details ==="
           kubectl get servicetemplates.config.porch.kpt.dev -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,GENERATION:.metadata.generation,OBSERVED_GEN:.status.observedGeneration,RESOURCE_VERSION:.metadata.resourceVersion' 2>/dev/null || echo "Not found"
+          echo "=== FunctionConfig generation details (first 3) ==="
+          kubectl get functionconfigs.config.porch.kpt.dev -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,GENERATION:.metadata.generation,OBSERVED_GEN:.status.observedGeneration,RESOURCE_VERSION:.metadata.resourceVersion' 2>/dev/null | head -5 || echo "Not found"
+          echo "=== Source CRD file content (last 10 lines) ==="
+          tail -10 api/porchconfig/v1alpha1/config.porch.kpt.dev_servicetemplates.yaml 2>/dev/null || echo "File not found"
+          echo "=== Deployed CRD file content (last 10 lines) ==="
+          tail -10 .build/deploy/0-servicetemplates.yaml 2>/dev/null || echo "File not found"
+          echo "=== Namespace resource generation comparison ==="
+          kubectl get ns porch-fn-system -o jsonpath='porch-fn-system generation={.metadata.generation}' 2>/dev/null && echo "" || true
+          echo "=== PodTemplate generation ==="
+          kubectl get podtemplate base-pod-template -n porch-fn-system -o jsonpath='generation={.metadata.generation}' 2>/dev/null && echo "" || true
       - name: Dump cluster state on deploy failure
         if: failure()
         run: |
