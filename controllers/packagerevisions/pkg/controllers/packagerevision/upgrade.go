@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/kptdev/kpt/pkg/lib/kptops"
+	"github.com/kptdev/porch/api/porch/v1alpha2"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/pkg/repository"
 	pkgerrors "github.com/pkg/errors"
@@ -30,9 +31,8 @@ import (
 // and current local package, then updates the Kptfile upstream/upstreamLock to
 // point at the new upstream.
 func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, pr *porchv1alpha2.PackageRevision) (map[string]string, error) {
-	upgrade := r.getUpgrade(pr)
-
 	log := log.FromContext(ctx)
+	upgrade := pr.Spec.Source.Upgrade
 	log.V(1).Info("upgrading package", "oldUpstream", upgrade.OldUpstream.Name,
 		"newUpstream", upgrade.NewUpstream.Name, "current", upgrade.CurrentPackage.Name)
 
@@ -50,6 +50,7 @@ func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, pr *porc
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "new upstream")
 	}
+
 	currentPR, err := r.getPackageRevisionForUpgrade(ctx, pr)
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "current package")
@@ -111,8 +112,8 @@ func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, pr *porc
 
 // getUpgrade returns the upstream package for a clone in the case of a source upgrade or a subpackage
 // operation upgrade
-func (r *PackageRevisionReconciler) getUpgrade(pr *porchv1alpha2.PackageRevision) *porchv1alpha2.PackageUpgradeSpec {
-	if pr.Status.CreationSource != "" && pr.Spec.SubpackageOperation != nil && pr.Spec.SubpackageOperation.Upgrade != nil {
+func (r *PackageRevisionReconciler) getUpgrade(pr *porchv1alpha2.PackageRevision) *v1alpha2.PackageUpgradeSpec {
+	if pr.Spec.SubpackageOperation.Upgrade != nil {
 		return pr.Spec.SubpackageOperation.Upgrade
 	}
 	return pr.Spec.Source.Upgrade
@@ -121,8 +122,8 @@ func (r *PackageRevisionReconciler) getUpgrade(pr *porchv1alpha2.PackageRevision
 // getUpgrade returns the upstream package for a clone in the case of a source upgrade or a subpackage
 // operation upgrade
 func (r *PackageRevisionReconciler) getPackageRevisionForUpgrade(ctx context.Context, pr *porchv1alpha2.PackageRevision) (*porchv1alpha2.PackageRevision, error) {
-	if pr.Status.CreationSource != "" && pr.Spec.SubpackageOperation != nil && pr.Spec.SubpackageOperation.Upgrade != nil {
-		return r.getDraftPackageRevision(ctx, pr.Namespace, pr.Spec.SubpackageOperation.Upgrade.CurrentPackage.Name)
+	if pr.Spec.SubpackageOperation.Upgrade != nil {
+		return r.getDraftPackageRevision(ctx, pr.Namespace, pr.Spec.Source.Upgrade.CurrentPackage.Name)
 	}
 	return r.getPublishedPackageRevision(ctx, pr.Namespace, pr.Spec.Source.Upgrade.CurrentPackage.Name)
 }
@@ -134,7 +135,7 @@ func (r *PackageRevisionReconciler) getPackageResourcesForUpgrade(ctx context.Co
 		return nil, pkgerrors.Wrapf(err, "failed to read current resources")
 	}
 
-	if pr.Status.CreationSource == "" || pr.Spec.SubpackageOperation == nil || pr.Spec.SubpackageOperation.Upgrade == nil {
+	if pr.Spec.SubpackageOperation.Upgrade == nil {
 		return currentResources, nil
 	}
 

@@ -53,6 +53,10 @@ func IsPackageCreation(pkgRev *PackageRevision) bool {
 
 // GetSource return the SubpackageDir for a package revision or "" if there is no SubpackageDir set.
 func GetSourceName(pkgRev *PackageRevision) string {
+	if pkgRev.Spec.Source == nil {
+		return ""
+	}
+
 	switch {
 	case pkgRev.Spec.Source.Init != nil:
 		return "init"
@@ -61,6 +65,22 @@ func GetSourceName(pkgRev *PackageRevision) string {
 	case pkgRev.Spec.Source.CopyFrom != nil:
 		return "copy"
 	case pkgRev.Spec.Source.Upgrade != nil:
+		return "upgrade"
+	default:
+		return ""
+	}
+}
+
+// GetSource return the SubpackageDir for a package revision or "" if there is no SubpackageDir set.
+func GetSubpackageOperationName(pkgRev *PackageRevision) string {
+	if pkgRev.Spec.SubpackageOperation == nil {
+		return ""
+	}
+
+	switch {
+	case pkgRev.Spec.SubpackageOperation.CloneFrom != nil:
+		return "clone"
+	case pkgRev.Spec.SubpackageOperation.Upgrade != nil:
 		return "upgrade"
 	default:
 		return ""

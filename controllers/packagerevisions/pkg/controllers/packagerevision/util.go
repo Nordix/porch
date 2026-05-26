@@ -21,7 +21,7 @@ import (
 	"maps"
 	"strings"
 
-	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/kptfile/kptfileutil"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/pkg/repository"
@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
-// getDraftPackageRevision looks up a PackageRevision CRD and validates it is a draft.
+// getDraftPackageRevision looks up a PackageRevision CRD and validates it is published.
 func (r *PackageRevisionReconciler) getDraftPackageRevision(ctx context.Context, namespace, name string) (*porchv1alpha2.PackageRevision, error) {
 	var pr porchv1alpha2.PackageRevision
 	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &pr); err != nil {
