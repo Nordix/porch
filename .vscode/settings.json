@@ -6,5 +6,10 @@
     "go.testEnvVars": {
       "RUN_E2E_LOCALLY": "false",
       "PORCH_SQL_SCHEMA": "${workspaceFolder}/api/sql/porch-db.sql"
+    },
+    "workbench.colorCustomizations": {
+        "editorOverviewRuler.errorForeground": "#ff0000",
+        "editorOverviewRuler.warningForeground": "#ff4500",
+        "editorOverviewRuler.infoForeground": "#ffff00"
     }
 }
