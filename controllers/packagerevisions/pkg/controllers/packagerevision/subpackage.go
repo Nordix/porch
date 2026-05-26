@@ -16,11 +16,14 @@ package packagerevision
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 // applySubpackageOperation executes the independent subpackage operation and returns the resulting resources.
@@ -114,8 +117,31 @@ func (r *PackageRevisionReconciler) shouldSkipSubpackageOperation(pr *porchv1alp
 	if pr.Spec.SubpackageOperation == nil {
 		return true
 	}
-	if pr.Status.LastSubpackageOperation != nil && pr.Status.LastSubpackageOperation == pr.Spec.SubpackageOperation {
+
+	subpackageOperationHash := r.getSubpackageOperationHash(pr)
+
+	if subpackageOperationHash == "" {
+		return false
+	}
+
+	if subpackageOperationHash == pr.Status.LastSubpackageOperationHash {
 		return true
 	}
+
 	return false
+}
+
+// GetSource return the SubpackageDir for a package revision or "" if there is no SubpackageDir set.
+func (r *PackageRevisionReconciler) getSubpackageOperationHash(pr *porchv1alpha2.PackageRevision) string {
+	if pr.Spec.SubpackageOperation == nil {
+		return pr.Status.LastSubpackageOperationHash
+	}
+
+	subpackageOperationBytes, err := yaml.Marshal(pr.Spec.SubpackageOperation)
+	if err != nil {
+		return ""
+	}
+
+	subpackageOperationHash := sha256.Sum256(subpackageOperationBytes)
+	return "sha256:" + hex.EncodeToString(subpackageOperationHash[:])
 }
