@@ -126,7 +126,11 @@ load-images-to-kind:## Build porch images and load them into a kind cluster
 .PHONY: deploy-current-config
 deploy-current-config:## Deploy the configuration that is currently in $(DEPLOYPORCHCONFIGDIR)
 	kpt live init $(DEPLOYPORCHCONFIGDIR) --name porch --namespace porch-system --inventory-id porch || true
-	./scripts/run-with-timeout.sh 300 kpt live apply --inventory-policy=adopt --server-side --force-conflicts $(DEPLOYPORCHCONFIGDIR)
+	@# Apply CRDs first to avoid cli-utils informer race condition where the status
+	@# watcher misses CRD registration if its retry loop races with the onCRDAdd event.
+	@kubectl apply --server-side --force-conflicts -f $(DEPLOYPORCHCONFIGDIR)/0-functionconfigs.yaml -f $(DEPLOYPORCHCONFIGDIR)/0-servicetemplates.yaml 2>/dev/null || true
+	@kubectl wait --for=condition=Established crds --all --timeout=30s 2>/dev/null || true
+	./scripts/run-with-timeout.sh 300 kpt live apply --inventory-policy=adopt --server-side --show-status-events --force-conflicts -v=5 $(DEPLOYPORCHCONFIGDIR)
 	kubectl rollout status deployment function-runner --namespace porch-system --timeout=180s
 ifeq ($(PORCH_CACHE_TYPE),DB)
 	kubectl rollout status statefulset porch-postgresql --namespace porch-system --timeout=180s
