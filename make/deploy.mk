@@ -126,7 +126,13 @@ load-images-to-kind:## Build porch images and load them into a kind cluster
 .PHONY: deploy-current-config
 deploy-current-config:## Deploy the configuration that is currently in $(DEPLOYPORCHCONFIGDIR)
 	kpt live init $(DEPLOYPORCHCONFIGDIR) --name porch --namespace porch-system --inventory-id porch || true
-	./scripts/run-with-timeout.sh 300 kpt live apply --inventory-policy=adopt --server-side --show-status-events --force-conflicts -v=5 $(DEPLOYPORCHCONFIGDIR)
+	@# Move resources with status subresources that lack standard observedGeneration out of kpt package
+	@# to avoid kpt live apply waiting indefinitely for reconciliation that never completes.
+	@mkdir -p $(DEPLOYPORCHCONFIGDIR)/../post-apply
+	@mv $(DEPLOYPORCHCONFIGDIR)/22-function-templates.yaml $(DEPLOYPORCHCONFIGDIR)/../post-apply/ 2>/dev/null || true
+	@mv $(DEPLOYPORCHCONFIGDIR)/23-function-configurations.yaml $(DEPLOYPORCHCONFIGDIR)/../post-apply/ 2>/dev/null || true
+	./scripts/run-with-timeout.sh 300 kpt live apply --inventory-policy=adopt --server-side --force-conflicts $(DEPLOYPORCHCONFIGDIR)
+	kubectl apply --server-side --force-conflicts -f $(DEPLOYPORCHCONFIGDIR)/../post-apply/
 	kubectl rollout status deployment function-runner --namespace porch-system --timeout=180s
 ifeq ($(PORCH_CACHE_TYPE),DB)
 	kubectl rollout status statefulset porch-postgresql --namespace porch-system --timeout=180s

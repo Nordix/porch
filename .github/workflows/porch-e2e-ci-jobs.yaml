@@ -171,7 +171,7 @@ jobs:
       - name: ServiceTemplate generation details
         if: always()
         run: |
-          echo "=== ServiceTemplate CRD subresources ===="
+          echo "=== ServiceTemplate CRD subresources ==="
           kubectl get crd servicetemplates.config.porch.kpt.dev -o jsonpath='{.spec.versions[0].subresources}' 2>/dev/null && echo "" || echo "No subresources field"
           echo "=== FunctionConfig CRD subresources ==="
           kubectl get crd functionconfigs.config.porch.kpt.dev -o jsonpath='{.spec.versions[0].subresources}' 2>/dev/null && echo "" || echo "No subresources field"
