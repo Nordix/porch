@@ -1,4 +1,4 @@
-// Copyright 2022 The kpt Authors
+// Copyright 2022-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -148,5 +148,5 @@ func createRESTMapper() meta.RESTMapper {
 }
 
 func Apply(ctx context.Context, api client.Client, obj client.Object) error {
-	return api.Patch(ctx, obj, client.Apply, client.FieldOwner("kubectl"))
+	return api.Patch(ctx, obj, client.Apply, client.FieldOwner("kubectl")) //nolint:staticcheck // requires apply-configuration types
 }

@@ -73,7 +73,7 @@ func TestLatestPackages(t *testing.T) {
 			}
 
 			if existing, ok := gotLatest[rev.Spec.PackageName]; ok {
-				t.Errorf("Multiple latest package revisions for package %q: %q and %q",
+				t.Errorf("Multiple latest package revisions for package %q: %d and %d",
 					rev.Spec.PackageName, rev.Spec.Revision, existing)
 			}
 

@@ -1,4 +1,4 @@
-// Copyright 2023 The kpt Authors
+// Copyright 2023-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ import (
 	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	pkgvarapi "github.com/kptdev/porch/controllers/packagevariants/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // +kubebuilder:object:root=true
@@ -223,5 +224,8 @@ type PackageVariantSetList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PackageVariantSet{}, &PackageVariantSetList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(GroupVersion, &PackageVariantSet{}, &PackageVariantSetList{})
+		return nil
+	})
 }

@@ -18,6 +18,7 @@ import (
 	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	pkgvarapi "github.com/kptdev/porch/controllers/packagevariants/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // +kubebuilder:object:root=true
@@ -147,5 +148,8 @@ type PackageVariantSetList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PackageVariantSet{}, &PackageVariantSetList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(GroupVersion, &PackageVariantSet{}, &PackageVariantSetList{})
+		return nil
+	})
 }

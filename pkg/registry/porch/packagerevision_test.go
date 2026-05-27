@@ -1,4 +1,4 @@
-// Copyright 2022 The kpt Authors
+// Copyright 2022-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -295,7 +295,7 @@ func TestCreate(t *testing.T) {
 	result, err = packagerevisions.Create(ctx, newPkgRev, nil, &metav1.CreateOptions{})
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.True(t, apierrors.IsGone(err))
+	assert.True(t, apierrors.IsResourceExpired(err))
 	assert.ErrorContains(t, err, "managed by v1alpha2")
 }
 
@@ -468,12 +468,16 @@ func TestWatch(t *testing.T) {
 	mockWatcherManager := mockengine.NewMockWatcherManager(t)
 	mockEngine.On("ObjectCache").Return(mockWatcherManager).Maybe()
 	mockWatcherManager.On("WatchPackageRevisions", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("error starting watch")).Maybe()
+	mockEngine.On("ListPackageRevisions", mock.Anything, mock.Anything).Return([]repository.PackageRevision{}, nil).Maybe()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := packagerevisions.Watch(ctx, &internalversion.ListOptions{})
+	w, err := packagerevisions.Watch(ctx, &internalversion.ListOptions{})
 	require.NoError(t, err)
+	// Wait for the background goroutine to finish to avoid racing with subsequent tests.
+	for range w.ResultChan() {
+	}
 
 	//=========================================================================================
 

@@ -115,7 +115,7 @@ func (r *RepositoryReconciler) updateRepoStatusWithBackoff(ctx context.Context, 
 		Jitter:   0.1,
 		Steps:    2,
 	}, func() (bool, error) {
-		if err := r.Status().Patch(ctx, patch, client.Apply, client.FieldOwner("repository-controller"), client.ForceOwnership); err != nil {
+		if err := r.Status().Patch(ctx, patch, client.Apply, client.FieldOwner("repository-controller"), client.ForceOwnership); err != nil { //nolint:staticcheck // requires apply-configuration types
 			if errors.IsConflict(err) {
 				return false, nil // Retry
 			}

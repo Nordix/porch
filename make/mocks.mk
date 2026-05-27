@@ -14,7 +14,7 @@
 
 # Mock generation tools
 
-MOCKERY_VERSION=3.6.4
+MOCKERY_VERSION=3.7.0
 
 OS_ARCH ?= $(shell uname -m)
 OS ?= $(shell uname)
@@ -34,7 +34,7 @@ generate-mocks: clean-mocks
 ifeq ($(CONTAINER_RUNNABLE), 0)
 		find . -name .mockery.yaml \
 			-exec echo generating mocks specified in {} . . . \; \
-			-execdir $(CONTAINER_RUNTIME) run --rm --security-opt label=disable -v  .:/src -w /src docker.io/vektra/mockery:v${MOCKERY_VERSION} \; \
+			-execdir $(CONTAINER_RUNTIME) run --rm --security-opt label=disable -e GOTOOLCHAIN=auto -v  .:/src -w /src docker.io/vektra/mockery:v${MOCKERY_VERSION} \; \
 			-exec echo generated mocks specified in {} \;
 else
 		find . -name .mockery.yaml \

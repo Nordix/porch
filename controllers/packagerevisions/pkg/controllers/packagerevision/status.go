@@ -78,7 +78,7 @@ func (r *PackageRevisionReconciler) updateStatus(ctx context.Context, pr *porchv
 		Status: status,
 	}
 
-	if err := r.Status().Patch(ctx, applyObj, client.Apply, client.FieldOwner(fieldManagerPRController), client.ForceOwnership); err != nil {
+	if err := r.Status().Patch(ctx, applyObj, client.Apply, client.FieldOwner(fieldManagerPRController), client.ForceOwnership); err != nil { //nolint:staticcheck // TODO: migrate to SubResource().Apply() once apply-configuration types are generated
 		log.FromContext(ctx).Error(err, "failed to apply status")
 	}
 }
@@ -108,7 +108,7 @@ func (r *PackageRevisionReconciler) updateRenderStatus(ctx context.Context, pr *
 		Status: status,
 	}
 
-	if err := r.Status().Patch(ctx, applyObj, client.Apply, client.FieldOwner(fieldManagerPRControllerRender), client.ForceOwnership); err != nil {
+	if err := r.Status().Patch(ctx, applyObj, client.Apply, client.FieldOwner(fieldManagerPRControllerRender), client.ForceOwnership); err != nil { //nolint:staticcheck // TODO: migrate to SubResource().Apply() once apply-configuration types are generated
 		log.FromContext(ctx).Error(err, "failed to update render status")
 	}
 }
@@ -189,7 +189,7 @@ func (r *PackageRevisionReconciler) updateKptfileFields(ctx context.Context, pr 
 				PackageMetadata: meta,
 			},
 		}
-		if err := r.Patch(ctx, specObj, client.Apply, client.FieldOwner(fieldManagerPRControllerKptfile), client.ForceOwnership); err != nil {
+		if err := r.Patch(ctx, specObj, client.Apply, client.FieldOwner(fieldManagerPRControllerKptfile), client.ForceOwnership); err != nil { //nolint:staticcheck // requires apply-configuration types
 			log.FromContext(ctx).Error(err, "failed to update Kptfile-derived spec fields")
 		}
 	}
@@ -208,7 +208,7 @@ func (r *PackageRevisionReconciler) updateKptfileFields(ctx context.Context, pr 
 				PackageConditions: conds,
 			},
 		}
-		if err := r.Status().Patch(ctx, statusObj, client.Apply, client.FieldOwner(fieldManagerPRControllerKptfile), client.ForceOwnership); err != nil {
+		if err := r.Status().Patch(ctx, statusObj, client.Apply, client.FieldOwner(fieldManagerPRControllerKptfile), client.ForceOwnership); err != nil { //nolint:staticcheck // TODO: migrate to SubResource().Apply() once apply-configuration types are generated
 			log.FromContext(ctx).Error(err, "failed to update Kptfile-derived status fields")
 		}
 	}

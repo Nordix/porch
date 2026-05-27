@@ -126,7 +126,7 @@ func (r *RepositoryReconciler) applyPackageRevision(ctx context.Context, pr *por
 	savedStatus := pr.Status
 
 	opts := []client.PatchOption{client.FieldOwner(fieldManagerRepoController), client.ForceOwnership}
-	if err := r.Patch(ctx, pr, client.Apply, opts...); err != nil {
+	if err := r.Patch(ctx, pr, client.Apply, opts...); err != nil { //nolint:staticcheck // requires apply-configuration types
 		log.Error(err, "Failed to apply PackageRevision", "name", pr.Name)
 		return err
 	}
@@ -137,7 +137,7 @@ func (r *RepositoryReconciler) applyPackageRevision(ctx context.Context, pr *por
 		Status:     savedStatus,
 	}
 	statusOpts := []client.SubResourcePatchOption{client.FieldOwner(fieldManagerRepoController), client.ForceOwnership}
-	if err := r.Status().Patch(ctx, statusObj, client.Apply, statusOpts...); err != nil {
+	if err := r.Status().Patch(ctx, statusObj, client.Apply, statusOpts...); err != nil { //nolint:staticcheck // requires apply-configuration types
 		log.Error(err, "Failed to apply PackageRevision status", "name", pr.Name)
 		return err
 	}
@@ -165,7 +165,7 @@ func (r *RepositoryReconciler) applySeedFields(ctx context.Context, repo *config
 			PackageMetadata: porchv1alpha2.KptfileToPackageMetadata(kf),
 		},
 	}
-	if err := r.Patch(ctx, seedSpec, client.Apply, client.FieldOwner(fieldManagerRepoControllerSeed)); err != nil {
+	if err := r.Patch(ctx, seedSpec, client.Apply, client.FieldOwner(fieldManagerRepoControllerSeed)); err != nil { //nolint:staticcheck // requires apply-configuration types
 		log.V(3).Info("Seed spec apply skipped (fields likely already owned)", "name", crd.Name, "err", err)
 	}
 
@@ -187,7 +187,7 @@ func (r *RepositoryReconciler) applySeedFields(ctx context.Context, repo *config
 		ObjectMeta: metav1.ObjectMeta{Name: crd.Name, Namespace: crd.Namespace},
 		Status:     seedStatus,
 	}
-	if err := r.Status().Patch(ctx, statusObj, client.Apply, client.FieldOwner(fieldManagerRepoControllerSeed)); err != nil {
+	if err := r.Status().Patch(ctx, statusObj, client.Apply, client.FieldOwner(fieldManagerRepoControllerSeed)); err != nil { //nolint:staticcheck // requires apply-configuration types
 		log.V(3).Info("Seed status apply skipped (fields likely already owned)", "name", crd.Name, "err", err)
 	}
 }
