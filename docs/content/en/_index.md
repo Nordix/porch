@@ -1,7 +1,7 @@
 ---
 title: Porch
 description: Kubernetes-native package orchestration for KRM configuration packages
-menu: {main: {weight: 10}}
+menu: {main: {weight: 50}}
 ---
 {{< blocks/cover title="Porch" height="auto">}}
 <a class="btn btn-lg btn-primary me-3 mb-4" href="/docs">

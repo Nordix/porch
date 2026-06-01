@@ -205,10 +205,18 @@ enable = false
   url = "https://docs.porch.nephio.org/docs/"
 
 [[menu.main]]
-  name = "kpt Docs"
-  url = "https://kpt.dev/"
-  weight = 60
+  name = "Book"
+  url = "https://kpt.dev/book/"
+  weight = 10
+[[menu.main]]
+  name = "References"
+  url = "https://kpt.dev/reference/"
+  weight = 20
 [[menu.main]]
   name = "Functions Catalog"
   url = "https://catalog.kpt.dev/"
-  weight = 70
+  weight = 30
+[[menu.main]]
+  name = "Guides"
+  url = "https://kpt.dev/guides/"
+  weight = 40
