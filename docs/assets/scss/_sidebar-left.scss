@@ -1,12 +1,11 @@
 // Sidebar left.
 .td-sidebar {
 	padding-bottom: 20px;
-	@media (min-width: 768px) {
-		padding-top: 9rem;
-	}
+	padding-top: 1rem;
+	background-color: $td-sidebar-bg-color;
 	.td-sidebar__inner {
 		@media (min-width: 1200px) {
-			top: 9rem;
+			top: 4rem;
 		}
 	}
 
