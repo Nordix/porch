@@ -78,18 +78,18 @@ Porch is maintained by the [kpt](https://kpt.dev) community and continues to evo
 
 {{% blocks/section type="row" color="white"%}}
 
-{{% blocks/feature icon="fa-brands fa-slack" title="Slack" %}}
+{{% blocks/feature icon="fab fa-slack" title="Slack" %}}
 
 Join us in the [#kpt](https://kubernetes.slack.com/archives/C0155NSPJSZ) channel in the [Kubernetes Slack](https://communityinviter.com/apps/kubernetes/community)!
 
 {{% /blocks/feature %}}
-{{% blocks/feature icon="fa-solid fa-comments" title="Discussions" %}}
+{{% blocks/feature icon="fas fa-comments" title="Discussions" %}}
 
 Join the discussions in the [kptdev/kpt](https://github.com/kptdev/kpt/discussions) repo.
 
 {{% /blocks/feature %}}
 
-{{% blocks/feature icon="fa-solid fa-people-group" title="Community Meeting" %}}
+{{% blocks/feature icon="fas fa-people-group" title="Community Meeting" %}}
 
 Participate in our [community meetings](https://zoom-lfx.platform.linuxfoundation.org/meeting/98980817322?password=c09cdcc7-59c0-49c4-9802-ad4d50faafcd&invite=true)
 
