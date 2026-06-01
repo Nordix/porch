@@ -24,3 +24,17 @@ h6:hover .anchor-link {
   visibility: visible;
 
 }
+
+/* Hide sidebar content on homepage but keep column space */
+body.td-home .td-sidebar__inner {
+  display: none !important;
+}
+body.td-home .td-sidebar-toc {
+  visibility: hidden;
+}
+
+/* Homepage feature blocks: first section 2 per row, rest default 3 per row */
+body.td-home .td-box:first-of-type .col-lg-4 {
+  flex: 0 0 50%;
+  max-width: 50%;
+}
