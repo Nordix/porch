@@ -243,3 +243,12 @@ enable = false
 [[params.versions]]
   version = "latest"
   url = "https://docs.porch.nephio.org/docs/"
+
+[[menu.main]]
+  name = "kpt Docs"
+  url = "https://kpt.dev/"
+  weight = 60
+[[menu.main]]
+  name = "Functions Catalog"
+  url = "https://catalog.kpt.dev/"
+  weight = 70
