@@ -21,37 +21,29 @@ theme = ["github.com/google/docsy"]
 # Will give values to .Lastmod etc.
 enableGitInfo = true
 
+# Comment out to enable taxonomies in Docsy
+disableKinds = ["taxonomy"]
+
+# Highlighting config
+pygmentsFences = true
+pygmentsUseClasses = false
+pygmentsStyle = "tango"
+
 [markup]
-
- # Changing the depth of levels displayed in the right side page navigation menu
- # from: https://gohugo.io/methods/page/tableofcontents/
-
-  [markup.tableOfContents]
-  
-    endLevel = 5
-    ordered = true
-    startLevel = 2
-
-
   [markup.goldmark]
     [markup.goldmark.renderer]
       unsafe = true
-      headingAnchors = true
     [markup.goldmark.parser]
-      autoHeadingID = true
-    [markup.highlight]
+      [markup.goldmark.parser.attribute]
+        title = true
+    [markup.goldmark.renderer.headingAnchor]
+      enable = true
+      prefix = ""
+      suffix = ""
+      plainID = true
 
-      # Setting no default style; allows style to auto adjust between light and dark default markdown themes
-
-      noClasses = false
-
-      # Uncomment if you want your chosen highlight style used for code blocks without a specified language
-
-      guessSyntax = true
-
-      # Enable syntax highlighting and copy buttons on code blocks with Prism
-
-      prism_syntax_highlighting = true      
+  [markup.highlight]
+    style = "tango"
 
 [params]
 
