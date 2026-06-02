@@ -32,6 +32,9 @@ body.td-home .td-sidebar__inner {
 body.td-home .td-sidebar-toc {
   visibility: hidden;
 }
+body.td-home .breadcrumb {
+  display: none;
+}
 
 /* Homepage feature blocks: first section 2 per row, rest default 3 per row */
 body.td-home .td-box:first-of-type .col-lg-4 {

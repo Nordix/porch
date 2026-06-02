@@ -20,7 +20,7 @@
 
   {{ $gh_repo_path := printf "%s/content/en/%s" $gh_subdir $pathFormatted }}
   {{ $editURL := printf "%s/edit/main/%s" $gh_repo $gh_repo_path }}
-  {{ $issuesURL := printf "%s/issues/new?title=%s" $gh_repo (htmlEscape $.Title) }}
+  {{ $issuesURL := printf "%s/issues/new?title=%s" $gh_repo (urlquery $.Title) }}
 
   <div class="td-page-meta ms-2 pb-1 pt-2 mb-0">
     <a href="{{ $editURL }}" target="_blank">

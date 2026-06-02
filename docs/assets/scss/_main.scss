@@ -32,7 +32,7 @@ p {
 		section:first-child {
 			padding-top: 4rem;
 		}
-		section::last-child {
+		section:last-child {
 			padding-bottom: 4rem;
 		}
 	}

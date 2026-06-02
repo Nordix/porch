@@ -5,13 +5,6 @@ menu: {main: {weight: 50}}
 toc_hide: true
 ---
 
-<script>
-  document.addEventListener("DOMContentLoaded", function() {
-    if (window.location.pathname === "/") {
-      document.querySelector(".breadcrumb").style.display = "none";
-    }
-  });
-</script>
 
 <div class="row mt-5 mb-3">
     <div class="col-lg-6">
