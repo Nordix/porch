@@ -18,6 +18,9 @@ set -e # Exit on error
 set -u # Must predefine variables
 set -o pipefail # Check errors in piped commands
 
+# Source common configuration
+source "$(dirname "$0")/common.sh"
+
 self_dir="$(dirname "$(readlink -f "$0")")"
 git_root="$(readlink -f "${self_dir}/..")"
 source "${git_root}/scripts/get-kind-metallb-subnet.sh"
@@ -43,7 +46,7 @@ cd "${deployment_config_dir}"
 
 # expose function-runner to local processes
 kpt fn eval \
-  --image ghcr.io/kptdev/krm-functions-catalog/starlark:v0.5.5 \
+  --image "${PORCH_GHCR_PREFIX_URL}/starlark:v0.5.5" \
   --match-kind Service \
   --match-name function-runner \
   --match-namespace porch-system \
@@ -56,7 +59,7 @@ for resource in ctx.resource_list["items"]:
 
 # remove porch-controllers Deployment from package
 kpt fn eval \
-  --image ghcr.io/kptdev/krm-functions-catalog/starlark:v0.5.5 \
+  --image "${PORCH_GHCR_PREFIX_URL}/starlark:v0.5.5" \
   --match-kind Deployment \
   --match-name porch-controllers \
   --match-namespace porch-system \
