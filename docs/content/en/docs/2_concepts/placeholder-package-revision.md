@@ -3,8 +3,7 @@ title: "Placeholder Package Revision"
 type: docs
 weight: 4
 description: |
-  The placeholder package revision tracks the configured Git branch for a package. This page explains
-  its behaviour, lifecycle interactions, and how it relates to GitOps workflows.
+  The placeholder package revision tracks the configured Git branch for a package. This page explains its behaviour, lifecycle interactions, and how it relates to GitOps workflows.
 ---
 
 ## Overview
