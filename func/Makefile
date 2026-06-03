@@ -1,4 +1,4 @@
-# Copyright 2019,2026 The kpt and Nephio Authors
+# Copyright 2019,2026 The kpt Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 IMAGE_TAG  ?= latest
-IMAGE_REPO ?= docker.io/nephio
+IMAGE_REPO ?= ghcr.io/kptdev
 IMAGE_NAME ?= function-runner
 WRAPPER_SERVER_IMAGE_NAME ?= wrapper-server
 COMPILED_PROTO=evaluator/evaluator_grpc.pb.go evaluator/evaluator.pb.go

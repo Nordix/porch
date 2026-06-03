@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/nephio-project/porch/pkg/externalrepo/fake"
-	"github.com/nephio-project/porch/pkg/repository"
+	"github.com/kptdev/porch/pkg/externalrepo/fake"
+	"github.com/kptdev/porch/pkg/repository"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/watch"
 )

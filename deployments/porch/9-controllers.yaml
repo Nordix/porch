@@ -1,4 +1,4 @@
-# Copyright 2022-2026 The kpt and Nephio Authors
+# Copyright 2022-2026 The kpt Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ spec:
       containers:
       - name: porch-controllers
         # Update to the image of your porch-controllers build.
-        image: docker.io/nephio/porch-controllers:latest
+        image: ghcr.io/kptdev/porch-controllers:latest
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsNonRoot: true

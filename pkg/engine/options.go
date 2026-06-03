@@ -1,4 +1,4 @@
-// Copyright 2022, 2024-2026 The kpt and Nephio Authors
+// Copyright 2022, 2024-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ import (
 
 	"github.com/kptdev/kpt/pkg/fn"
 	"github.com/kptdev/kpt/pkg/lib/runneroptions"
-	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
-	"github.com/nephio-project/porch/pkg/repository"
+	cachetypes "github.com/kptdev/porch/pkg/cache/types"
+	"github.com/kptdev/porch/pkg/repository"
 )
 
 type EngineOption interface {

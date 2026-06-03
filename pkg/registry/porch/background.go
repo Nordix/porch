@@ -1,4 +1,4 @@
-// Copyright 2022,2025 The kpt and Nephio Authors
+// Copyright 2022,2025 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	configapi "github.com/nephio-project/porch/api/porchconfig/v1alpha1"
-	cachetypes "github.com/nephio-project/porch/pkg/cache/types"
-	"github.com/nephio-project/porch/pkg/util"
+	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
+	cachetypes "github.com/kptdev/porch/pkg/cache/types"
+	"github.com/kptdev/porch/pkg/util"
 	"golang.org/x/sync/semaphore"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"

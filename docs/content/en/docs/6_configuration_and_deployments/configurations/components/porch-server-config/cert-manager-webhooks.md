@@ -16,18 +16,18 @@ Porch uses two validating webhooks:
 
 ## Using the Catalog Package
 
-The Nephio catalog provides a ready-to-use package for Porch with cert-manager integration:
+The porch catalog provides a ready-to-use package for Porch with cert-manager integration:
 
 ```bash
 # Register the catalog repository (if not already done)
 porchctl repo register \
   --namespace default \
-  https://github.com/nephio-project/catalog.git \
+  https://github.com/kptdev/catalog.git \
   --name=catalog
 
 # Clone the cert-manager webhook package
 porchctl rpkg clone \
-  catalog.nephio.optional.porch-cert-manager-webhook.main \
+  catalog.porch.optional.porch-cert-manager-webhook.main \
   porch-cert-manager \
   --repository=deployment-repo \
   --namespace=default

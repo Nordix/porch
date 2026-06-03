@@ -1,4 +1,4 @@
-// Copyright 2022, 2024-2025 The kpt and Nephio Authors
+// Copyright 2022, 2024-2025 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,9 +35,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/memory"
-	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
-	"github.com/nephio-project/porch/pkg/repository"
-	gitserver "github.com/nephio-project/porch/test/git/pkg"
+	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	"github.com/kptdev/porch/pkg/repository"
+	gitserver "github.com/kptdev/porch/test/git/pkg"
 )
 
 func createRepoWithContents(t *testing.T, contentDir string) *gogit.Repository {
