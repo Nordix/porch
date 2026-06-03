@@ -1,7 +1,7 @@
 package api
 
 import (
-	suiteutils "github.com/nephio-project/porch/test/e2e/suiteutils"
+	suiteutils "github.com/kptdev/porch/test/e2e/suiteutils"
 	"github.com/stretchr/testify/assert"
 )
 

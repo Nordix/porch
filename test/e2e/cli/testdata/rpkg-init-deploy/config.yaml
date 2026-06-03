@@ -7,8 +7,8 @@ commands:
       - --name=git
       - --deployment
       - --repo-basic-password=secret
-      - --repo-basic-username=nephio
-      - http://gitea.gitea.svc.cluster.local:3000/nephio/rpkg-init-deploy
+      - --repo-basic-username=porch
+      - http://gitea.gitea.svc.cluster.local:3000/porch/rpkg-init-deploy
   - args:
       - porchctl
       - repo
@@ -95,4 +95,4 @@ commands:
       - --namespace=rpkg-init-deploy
     stdout: |
       NAME   TYPE   CONTENT   SYNC SCHEDULE   DEPLOYMENT   READY   ADDRESS
-      git    git    Package                   true         True    http://gitea.gitea.svc.cluster.local:3000/nephio/rpkg-init-deploy
+      git    git    Package                   true         True    http://gitea.gitea.svc.cluster.local:3000/porch/rpkg-init-deploy

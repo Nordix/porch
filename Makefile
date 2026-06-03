@@ -1,4 +1,4 @@
-# Copyright 2022-2026 The kpt and Nephio Authors
+# Copyright 2022-2026 The kpt Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ export DEPLOYPORCHCONFIGDIR ?= $(BUILDDIR)/deploy
 DEPLOYKPTCONFIGDIR=$(BUILDDIR)/kpt_pkgs
 
 # Image configuration
-export IMAGE_REPO ?= docker.io/nephio
-export USER ?= nephio
+export IMAGE_REPO ?= ghcr.io/kptdev
+export USER ?= porch
 
 export IMAGE_TAG
 ifndef IMAGE_TAG

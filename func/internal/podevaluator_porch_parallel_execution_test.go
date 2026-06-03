@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/nephio-project/porch/func/evaluator"
+	pb "github.com/kptdev/porch/func/evaluator"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/utils/ptr"

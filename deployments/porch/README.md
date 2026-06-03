@@ -6,7 +6,7 @@ Porch deployment
 
 ### Checkout the repository
 ```
-git clone https://github.com/nephio-project/porch.git
+git clone https://github.com/kptdev/porch.git
 cd porch
 ```
 
@@ -36,7 +36,7 @@ make deployment-config
 #### Available flags
 - `PORCH_CACHE_TYPE`: Set cache type (`DB` or `CR`) (default: `CR`)
 - `IMAGE_TAG`: Set image tag (default: `{USER}-{git-hash}`)
-- `IMAGE_REPO`: Set image repository (default: `docker.io/nephio`)
+- `IMAGE_REPO`: Set image repository (default: `ghcr.io/kptdev`)
 - `ENABLED_RECONCILERS`: Comma-separated list of reconcilers (default: `packagevariants,packagevariantsets`)
 - `FN_RUNNER_WARM_UP_POD_CACHE`: Enable/disable pod cache warm-up (default: `true`)
 

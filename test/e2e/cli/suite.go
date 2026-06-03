@@ -1,4 +1,4 @@
-// Copyright 2024-2025 The kpt and Nephio Authors
+// Copyright 2024-2025 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ import (
 
 const (
 	updateGoldenFiles       = "UPDATE_GOLDEN_FILES"
-	testGitUserOrg          = "nephio"
+	testGitUserOrg          = "porch"
 	testGitPassword         = "secret"
 	defaultTestGitServerUrl = "http://gitea.gitea.svc.cluster.local:3000"
 )
@@ -468,8 +468,8 @@ func createRemoteTestRepo(t *testing.T, testcaseName string) {
 	}
 	_, err = wt.Commit("Initial commit", &git.CommitOptions{
 		Author: &object.Signature{
-			Name:  "Nephio O' Test",
-			Email: "nephiotest@example.com",
+			Name:  "porch O' Test",
+			Email: "porchtest@example.com",
 			When:  time.Now(),
 		},
 	})
@@ -525,8 +525,8 @@ func createRemoteTestRepo(t *testing.T, testcaseName string) {
 		}
 		_, err = wt2.Commit("Initial commit", &git.CommitOptions{
 			Author: &object.Signature{
-				Name:  "Nephio O' Test",
-				Email: "nephiotest@example.com",
+				Name:  "porch O' Test",
+				Email: "porchtest@example.com",
 				When:  time.Now(),
 			},
 		})

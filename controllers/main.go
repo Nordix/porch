@@ -1,4 +1,4 @@
-// Copyright 2022,2026 The kpt and Nephio Authors
+// Copyright 2022,2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,11 +38,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	porchapi "github.com/nephio-project/porch/api/porch/v1alpha1"
-	"github.com/nephio-project/porch/controllers/packagevariants/pkg/controllers/packagevariant"
-	"github.com/nephio-project/porch/controllers/packagevariantsets/pkg/controllers/packagevariantset"
-	porchotel "github.com/nephio-project/porch/internal/otel"
-	"github.com/nephio-project/porch/pkg/controllerrestmapper"
+	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	"github.com/kptdev/porch/controllers/packagevariants/pkg/controllers/packagevariant"
+	"github.com/kptdev/porch/controllers/packagevariantsets/pkg/controllers/packagevariantset"
+	porchotel "github.com/kptdev/porch/internal/otel"
+	"github.com/kptdev/porch/pkg/controllerrestmapper"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"

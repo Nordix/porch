@@ -1,4 +1,4 @@
-// Copyright 2025 The Nephio Authors.
+// Copyright 2025 The kpt Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	pb "github.com/nephio-project/porch/func/evaluator"
+	pb "github.com/kptdev/porch/func/evaluator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

@@ -1,4 +1,4 @@
-// Copyright 2022-2025 The kpt and Nephio Authors
+// Copyright 2022-2025 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nephio-project/porch/func/evaluator"
-	"github.com/nephio-project/porch/pkg/util"
+	"github.com/kptdev/porch/func/evaluator"
+	"github.com/kptdev/porch/pkg/util"
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"

@@ -1,4 +1,4 @@
-// Copyright 2022-2025 The kpt and Nephio Authors
+// Copyright 2022-2025 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,10 +23,10 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/nephio-project/porch/func/evaluator"
-	"github.com/nephio-project/porch/func/healthchecker"
-	"github.com/nephio-project/porch/func/internal"
-	porchotel "github.com/nephio-project/porch/internal/otel"
+	pb "github.com/kptdev/porch/func/evaluator"
+	"github.com/kptdev/porch/func/healthchecker"
+	"github.com/kptdev/porch/func/internal"
+	porchotel "github.com/kptdev/porch/internal/otel"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
