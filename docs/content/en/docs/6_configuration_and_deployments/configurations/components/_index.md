@@ -13,7 +13,6 @@ Configure each Porch component individually for optimal performance and security
 The main API server that handles package operations and Git repository interactions:
 - [Git Authentication]({{% relref "porch-server-config/git-authentication" %}}) - Repository authentication methods
 - [Cert Manager Webhooks]({{% relref "porch-server-config/cert-manager-webhooks" %}}) - Webhook certificate management
-- [Jaeger Tracing]({{% relref "porch-server-config/jaeger-tracing" %}}) - Distributed tracing
 
 ### [Porch Controllers]({{% relref "porch-controllers-config" %}})
 Manage the lifecycle of PackageVariants and PackageVariantSets.
