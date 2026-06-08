@@ -4,9 +4,9 @@ commands:
       - porchctl
       - repo
       - register
-      - --namespace=rpkg-init-deploy
+      - --namespace=rpkg-init
       - --name=git
-      - --deployment
+      - --v1alpha2
       - --repo-basic-password=secret
       - --repo-basic-username=porch
       - http://gitea.gitea.svc.cluster.local:3000/porch/porch-test
@@ -14,32 +14,36 @@ commands:
       - porchctl
       - repo
       - get
-      - --namespace=rpkg-init-deploy
-      - --output=custom-columns=NAME:.metadata.name,DEPLOYMENT:.spec.deployment
+      - --no-headers
+      - --namespace=rpkg-init
+      - --output=custom-columns=NAME:.metadata.name,ADDRESS:.spec.git.repo,BRANCH:.spec.git.branch,DIR:.spec.git.directory
     stdout: |
-      NAME   DEPLOYMENT
-      git    true
+      git   http://gitea.gitea.svc.cluster.local:3000/porch/porch-test   main   /
+    ignoreWhitespace: true
   - args:
       - porchctl
       - rpkg
       - init
-      - --namespace=rpkg-init-deploy
+      - --api-version=v1alpha2
+      - --namespace=rpkg-init
       - --description
       - Test Package Description
       - --keywords=test,package
       - --site
-      - http://kpt.dev/deploy-package
+      - http://kpt.dev/init-package
       - --repository=git
-      - --workspace=deploy
-      - deploy-package
+      - --workspace=init-1
+      - init-package
     stdout: |
-      git.deploy-package.deploy created
+      git.init-package.init-1 created
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - pull
-      - --namespace=rpkg-init-deploy
-      - git.deploy-package.deploy
+      - --api-version=v1alpha2
+      - --namespace=rpkg-init
+      - git.init-package.init-1
     stdout: |
       apiVersion: config.kubernetes.io/v1
       items:
@@ -51,15 +55,15 @@ commands:
             config.kubernetes.io/path: .KptRevisionMetadata
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: .KptRevisionMetadata
-          name: git.deploy-package.deploy
-          namespace: rpkg-init-deploy
+          name: git.init-package.init-1
+          namespace: rpkg-init
       - apiVersion: kpt.dev/v1
         info:
           description: Test Package Description
           keywords:
           - test
           - package
-          site: http://kpt.dev/deploy-package
+          site: http://kpt.dev/init-package
         kind: Kptfile
         metadata:
           annotations:
@@ -68,7 +72,7 @@ commands:
             config.kubernetes.io/path: Kptfile
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: Kptfile
-          name: deploy-package
+          name: init-package
         status:
           conditions:
           - reason: RenderSuccess
@@ -90,11 +94,14 @@ commands:
     yaml: true
   - args:
       - porchctl
-      - repo
-      - get
-      - --namespace=rpkg-init-deploy
-      - --output=custom-columns=NAME:.metadata.name,TYPE:.spec.type,DEPLOYMENT:.spec.deployment,READY:.status.conditions[?(@.type=='Ready')].status,ADDRESS:.spec.git.repo,BRANCH:.spec.git.branch
-    stdout: |
-      NAME   TYPE   DEPLOYMENT   READY   ADDRESS                                                       BRANCH
-      git    git    true         True    http://gitea.gitea.svc.cluster.local:3000/porch/porch-test   main
-    ignoreWhitespace: true
+      - rpkg
+      - init
+      - --api-version=v1alpha2
+      - --namespace=rpkg-init
+      - --repository=git
+      - --workspace=init-2
+      - init-package
+    stderr: |
+      cannot create a new revision for package "init-package" that already exists in repo "git"; make subsequent revisions using `copy`
+    containsErrorString: true
+    exitCode: 1

@@ -6,6 +6,7 @@ commands:
       - register
       - --namespace=rpkg-init-deploy
       - --name=git
+      - --v1alpha2
       - --deployment
       - --repo-basic-password=secret
       - --repo-basic-username=porch
@@ -23,6 +24,7 @@ commands:
       - porchctl
       - rpkg
       - init
+      - --api-version=v1alpha2
       - --namespace=rpkg-init-deploy
       - --description
       - Test Package Description
@@ -34,10 +36,12 @@ commands:
       - deploy-package
     stdout: |
       git.deploy-package.deploy created
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - pull
+      - --api-version=v1alpha2
       - --namespace=rpkg-init-deploy
       - git.deploy-package.deploy
     stdout: |

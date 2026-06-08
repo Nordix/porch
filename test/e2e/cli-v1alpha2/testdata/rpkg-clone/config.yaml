@@ -6,32 +6,10 @@ commands:
       - register
       - --namespace=rpkg-clone
       - --name=git
+      - --v1alpha2
       - --repo-basic-password=secret
       - --repo-basic-username=porch
       - http://gitea.gitea.svc.cluster.local:3000/porch/porch-test
-  - args:
-      - porchctl
-      - rpkg
-      - clone
-      - --namespace=rpkg-clone
-      - http://gitea.gitea.svc.cluster.local:3000/porch/test-blueprints.git/basens@basens/v1
-      - --repository=git
-      - --workspace=clone-2
-      - basens-clone
-    stdout: |
-      git.basens-clone.clone-2 created
-  - args:
-      - porchctl
-      - rpkg
-      - clone
-      - --namespace=rpkg-clone
-      - http://gitea.gitea.svc.cluster.local:3000/porch/test-blueprints.git/basens@basens/v1
-      - --repository=git
-      - --workspace=clone-3
-      - basens-clone
-    stderr: |
-      Error: Internal error occurred: `clone` cannot create a new revision for package "basens-clone" that already exists in repo "git"; make subsequent revisions using `copy` 
-    exitCode: 1
   - args:
       - porchctl
       - repo
@@ -41,21 +19,41 @@ commands:
       - http://gitea.gitea.svc.cluster.local:3000/porch/test-blueprints.git
       - --namespace=rpkg-clone
       - --name=test-blueprints
+      - --v1alpha2
       - --description
       - Test Blueprints
   - args:
       - porchctl
       - rpkg
-      - get
+      - clone
+      - --api-version=v1alpha2
       - --namespace=rpkg-clone
-      - --name=empty
-      - --revision=1
-      - --output=jsonpath={.metadata.name}
-    stdout: "test-blueprints.empty.v1\n"
+      - test-blueprints.basens.v1
+      - --repository=git
+      - --workspace=clone-1
+      - basens-clone
+    stdout: |
+      git.basens-clone.clone-1 created
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - clone
+      - --api-version=v1alpha2
+      - --namespace=rpkg-clone
+      - test-blueprints.basens.v1
+      - --repository=git
+      - --workspace=clone-2
+      - basens-clone
+    stderr: |
+      error: `clone` cannot create a new revision for package "basens-clone" that already exists in repo "git"; make subsequent revisions using `copy`
+    exitCode: 1
+    containsErrorString: true
+  - args:
+      - porchctl
+      - rpkg
+      - clone
+      - --api-version=v1alpha2
       - --namespace=rpkg-clone
       - test-blueprints.empty.v1
       - --repository=git
@@ -63,12 +61,14 @@ commands:
       - empty-clone
     stdout: |
       git.empty-clone.clone-1 created
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - pull
+      - --api-version=v1alpha2
       - --namespace=rpkg-clone
-      - git.basens-clone.clone-2
+      - git.basens-clone.clone-1
     stdout: |
       apiVersion: config.kubernetes.io/v1
       items:
@@ -80,7 +80,7 @@ commands:
             config.kubernetes.io/path: .KptRevisionMetadata
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: .KptRevisionMetadata
-          name: git.basens-clone.clone-2
+          name: git.basens-clone.clone-1
           namespace: rpkg-clone
       - apiVersion: kpt.dev/v1
         info:
@@ -92,7 +92,6 @@ commands:
             config.kubernetes.io/path: Kptfile
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: Kptfile
-            internal.kpt.dev/upstream-identifier: kpt.dev|Kptfile|default|basens-clone
           name: basens-clone
         status:
           conditions:
@@ -120,7 +119,6 @@ commands:
             config.kubernetes.io/path: namespace.yaml
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: namespace.yaml
-            internal.kpt.dev/upstream-identifier: '|Namespace|default|example'
           name: example
       kind: ResourceList
     yaml: true
@@ -128,6 +126,7 @@ commands:
       - porchctl
       - rpkg
       - pull
+      - --api-version=v1alpha2
       - --namespace=rpkg-clone
       - git.empty-clone.clone-1
     stdout: |
@@ -153,7 +152,6 @@ commands:
             config.kubernetes.io/path: Kptfile
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: Kptfile
-            internal.kpt.dev/upstream-identifier: kpt.dev|Kptfile|default|empty-clone
           name: empty-clone
         status:
           conditions:
