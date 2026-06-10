@@ -40,6 +40,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -812,8 +813,6 @@ func (pm *podManager) patchNewPodMetadata(pod *corev1.PodTemplateSpec, podId str
 func (pm *podManager) getServiceUrlOnceEndpointActive(ctx context.Context, serviceKey client.ObjectKey, podKey client.ObjectKey) (string, error) {
 	var service corev1.Service
 	var pod corev1.Pod
-	//nolint:staticcheck
-	var endpoint corev1.Endpoints
 	var podReady = false
 
 	if e := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, pm.podReadyTimeout, true, func(ctx context.Context) (done bool, err error) {
@@ -842,36 +841,37 @@ func (pm *podManager) getServiceUrlOnceEndpointActive(ctx context.Context, servi
 		}
 
 		// Wait till the service has an active endpoint
-		if err := pm.kubeClient.Get(ctx, serviceKey, &endpoint); err != nil {
+		addresses, err := pm.getEndpointSliceAddresses(ctx, serviceKey)
+		if err != nil {
 			return false, err
 		}
 
-		if len(endpoint.Subsets) == 0 || len(endpoint.Subsets[0].Addresses) == 0 {
+		if len(addresses) == 0 {
 			return false, nil
 		}
 
 		// Log warning if service has more than one endpoint; there should be just 1 function pod
-		if len(endpoint.Subsets[0].Addresses) != 1 {
-			klog.Warningf("Service %s/%s has more than one endpoint: %+v", serviceKey.Namespace, serviceKey.Name, endpoint.Subsets)
+		if len(addresses) != 1 {
+			klog.Warningf("Service %s/%s has more than one endpoint: %v", serviceKey.Namespace, serviceKey.Name, addresses)
 		}
 
 		// Try to detect if there are any stuck pods
-		if len(endpoint.Subsets[0].Addresses) > 1 {
+		if len(addresses) > 1 {
 			err = pm.removeStuckPod(ctx, &service, podIP)
 			if err != nil {
 				return false, err
 			}
-			// Re-fetch the endpoint after removing the stuck pod to get the updated endpoint list
-			if err := pm.kubeClient.Get(ctx, serviceKey, &endpoint); err != nil {
+			// Re-fetch the endpoints after removing the stuck pod
+			addresses, err = pm.getEndpointSliceAddresses(ctx, serviceKey)
+			if err != nil {
 				return false, err
 			}
-			// Check if endpoint still exists after cleanup
-			if len(endpoint.Subsets) == 0 || len(endpoint.Subsets[0].Addresses) == 0 {
+			if len(addresses) == 0 {
 				return false, nil
 			}
 		}
 
-		endpointIP := endpoint.Subsets[0].Addresses[0].IP
+		endpointIP := addresses[0]
 		if podIP != endpointIP {
 			klog.Warningf("pod IP %s does not match service endpoint IP %s", podIP, endpointIP)
 			return false, fmt.Errorf("pod IP %s does not match service endpoint IP %s", podIP, endpointIP)
@@ -919,8 +919,6 @@ func (pm *podManager) findPodsForService(ctx context.Context, svc *corev1.Servic
 }
 
 func (pm *podManager) removeStuckPod(ctx context.Context, service *corev1.Service, expectedIP string) error {
-	//nolint:staticcheck
-	var endpoint corev1.Endpoints
 	var err error
 	podList, err := pm.findPodsForService(ctx, service)
 	if err != nil {
@@ -938,15 +936,38 @@ func (pm *podManager) removeStuckPod(ctx context.Context, service *corev1.Servic
 		return fmt.Errorf("unable to delete stuck pod: %w", err)
 	}
 
+	serviceKey := client.ObjectKeyFromObject(service)
 	err = wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, pm.podReadyTimeout, true, func(ctx context.Context) (bool, error) {
-		err = pm.kubeClient.Get(ctx, client.ObjectKeyFromObject(service), &endpoint)
+		addresses, err := pm.getEndpointSliceAddresses(ctx, serviceKey)
 		if err != nil {
 			return false, err
 		}
-		if len(endpoint.Subsets) == 0 || len(endpoint.Subsets[0].Addresses) == 0 {
+		if len(addresses) == 0 {
 			return false, nil
 		}
-		return endpoint.Subsets[0].Addresses[0].IP == expectedIP, nil
+		return addresses[0] == expectedIP, nil
 	})
 	return err
+}
+
+// getEndpointSliceAddresses returns the list of ready endpoint addresses for a service
+// by looking up the EndpointSlice resources owned by the service.
+func (pm *podManager) getEndpointSliceAddresses(ctx context.Context, serviceKey client.ObjectKey) ([]string, error) {
+	var sliceList discoveryv1.EndpointSliceList
+	if err := pm.kubeClient.List(ctx, &sliceList,
+		client.InNamespace(serviceKey.Namespace),
+		client.MatchingLabels{discoveryv1.LabelServiceName: serviceKey.Name},
+	); err != nil {
+		return nil, err
+	}
+
+	var addresses []string
+	for _, slice := range sliceList.Items {
+		for _, ep := range slice.Endpoints {
+			if ep.Conditions.Ready != nil && *ep.Conditions.Ready && len(ep.Addresses) > 0 {
+				addresses = append(addresses, ep.Addresses[0])
+			}
+		}
+	}
+	return addresses, nil
 }

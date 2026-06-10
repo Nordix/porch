@@ -27,18 +27,19 @@ import (
 	"time"
 
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/klog/v2"
-
 	pb "github.com/kptdev/porch/func/evaluator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -232,21 +233,22 @@ func TestPodManager(t *testing.T) {
 		},
 	}
 
-	defaultEndpointObject := &corev1.Endpoints{
+	defaultEndpointSliceObject := &discoveryv1.EndpointSlice{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      defaultEndpointName,
+			Name:      defaultEndpointName + "-abc12",
 			Namespace: defaultNamespace,
+			Labels: map[string]string{
+				discoveryv1.LabelServiceName: defaultServiceName,
+			},
 		},
-		Subsets: []corev1.EndpointSubset{
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints: []discoveryv1.Endpoint{
 			{
-				Addresses: []corev1.EndpointAddress{
-					{
-						IP: defaultPodIP,
-						TargetRef: &corev1.ObjectReference{
-							Name:      defaultPodName,
-							Namespace: defaultNamespace,
-						},
-					},
+				Addresses:  []string{defaultPodIP},
+				Conditions: discoveryv1.EndpointConditions{Ready: ptr.To(true)},
+				TargetRef: &corev1.ObjectReference{
+					Name:      defaultPodName,
+					Namespace: defaultNamespace,
 				},
 			},
 		},
@@ -285,8 +287,8 @@ func TestPodManager(t *testing.T) {
 						return err
 					}
 
-					defaultEndpointObject.ResourceVersion = ""
-					err = kubeClient.Create(ctx, defaultEndpointObject)
+					defaultEndpointSliceObject.ResourceVersion = ""
+					err = kubeClient.Create(ctx, defaultEndpointSliceObject)
 					if err != nil {
 						return err
 					}
@@ -301,6 +303,7 @@ func TestPodManager(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	_ = configapi.AddToScheme(scheme)
+	_ = discoveryv1.AddToScheme(scheme)
 
 	tests := []struct {
 		name               string
@@ -320,10 +323,10 @@ func TestPodManager(t *testing.T) {
 			skip:          false,
 			expectFail:    false,
 			functionImage: defaultImageName,
-			kubeClient: fake.NewClientBuilder().WithObjects([]client.Object{
+			kubeClient: fake.NewClientBuilder().WithScheme(scheme).WithObjects([]client.Object{
 				deletionInProgressPodObject,
 				defaultServiceObject,
-				defaultEndpointObject,
+				defaultEndpointSliceObject,
 			}...).WithInterceptorFuncs(interceptor.Funcs{
 				Create: fakeClientCreateFixInterceptor,
 				Get:    withGetInterceptor(podStatusRunning),
@@ -356,12 +359,12 @@ func TestPodManager(t *testing.T) {
 			skip:          false,
 			expectFail:    false,
 			functionImage: defaultImageName,
-			kubeClient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+			kubeClient: fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
 				Create: fakeClientCreateFixInterceptor,
 				Get:    withGetInterceptor(podStatusRunning),
 			}).WithObjects([]client.Object{
 				defaultServiceObject,
-				defaultEndpointObject,
+				defaultEndpointSliceObject,
 			}...).Build(),
 			namespace:          defaultNamespace,
 			wrapperServerImage: defaultWrapperServerImage,
@@ -373,7 +376,7 @@ func TestPodManager(t *testing.T) {
 			skip:          false,
 			expectFail:    true,
 			functionImage: defaultImageName,
-			kubeClient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+			kubeClient: fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
 				Create: fakeClientCreateFixInterceptor,
 				Get:    withGetInterceptor(podStatusRunning),
 			}).WithObjects([]client.Object{
@@ -389,12 +392,12 @@ func TestPodManager(t *testing.T) {
 			skip:          false,
 			expectFail:    true,
 			functionImage: defaultImageName,
-			kubeClient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+			kubeClient: fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
 				Create: fakeClientCreateFixInterceptor,
 				Get:    withGetInterceptor(podStatusRunningDifferentIP),
 			}).WithObjects([]client.Object{
 				defaultServiceObject,
-				defaultEndpointObject,
+				defaultEndpointSliceObject,
 			}...).Build(),
 			namespace:          defaultNamespace,
 			wrapperServerImage: defaultWrapperServerImage,
@@ -451,19 +454,19 @@ func TestPodManager(t *testing.T) {
 			skip:          false,
 			expectFail:    false,
 			functionImage: "apply-replacements",
-			kubeClient: fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+			kubeClient: fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
 				Get: withGetInterceptor(podStatusRunning),
-				List: func(ctx context.Context, client client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
 					_, ok := list.(*corev1.PodList)
 					if ok {
 						return apierrors.NewInternalError(fmt.Errorf("Faked error"))
 					}
-					return nil
+					return c.List(ctx, list, opts...)
 				},
 			}).WithObjects([]client.Object{
 				defaultPodObject,
 				defaultServiceObject,
-				defaultEndpointObject,
+				defaultEndpointSliceObject,
 			}...).Build(),
 			namespace:          defaultNamespace,
 			wrapperServerImage: defaultWrapperServerImage,
@@ -514,7 +517,7 @@ func TestPodManager(t *testing.T) {
 				WithObjects(
 					basePodTemplate,
 					baseServiceTemplate,
-					defaultEndpointObject,
+					defaultEndpointSliceObject,
 				).
 				WithInterceptorFuncs(interceptor.Funcs{
 					Get: withGetInterceptor(podStatusRunning),
@@ -537,7 +540,7 @@ func TestPodManager(t *testing.T) {
 					basePodTemplate,
 					baseServiceTemplate,
 					defaultPodObject,
-					defaultEndpointObject,
+					defaultEndpointSliceObject,
 				).
 				WithInterceptorFuncs(interceptor.Funcs{
 					Get: withGetInterceptor(podStatusRunning),
@@ -554,10 +557,10 @@ func TestPodManager(t *testing.T) {
 			skip:          false,
 			expectFail:    false,
 			functionImage: defaultImageName,
-			kubeClient: fake.NewClientBuilder().WithObjects([]client.Object{
+			kubeClient: fake.NewClientBuilder().WithScheme(scheme).WithObjects([]client.Object{
 				failedPodObject,
 				defaultServiceObject,
-				defaultEndpointObject,
+				defaultEndpointSliceObject,
 			}...).WithInterceptorFuncs(interceptor.Funcs{
 				Create: fakeClientCreateFixInterceptor,
 				Get:    withGetInterceptor(podStatusRunning),
@@ -724,52 +727,58 @@ func TestMultipleEndpointsWithStuckPod(t *testing.T) {
 		},
 	}
 
-	endpoint := &corev1.Endpoints{
+	endpointSlice := &discoveryv1.EndpointSlice{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      defaultEndpointName,
+			Name:      defaultServiceName + "-abc12",
 			Namespace: defaultNamespace,
+			Labels: map[string]string{
+				discoveryv1.LabelServiceName: defaultServiceName,
+			},
 		},
-		Subsets: []corev1.EndpointSubset{
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints: []discoveryv1.Endpoint{
 			{
-				Addresses: []corev1.EndpointAddress{
-					{
-						IP: oldPodIP,
-						TargetRef: &corev1.ObjectReference{
-							Name:      oldPodName,
-							Namespace: defaultNamespace,
-						},
-					},
-					{
-						IP: newPodIP,
-						TargetRef: &corev1.ObjectReference{
-							Name:      newPodName,
-							Namespace: defaultNamespace,
-						},
-					},
+				Addresses:  []string{oldPodIP},
+				Conditions: discoveryv1.EndpointConditions{Ready: ptr.To(true)},
+				TargetRef: &corev1.ObjectReference{
+					Name:      oldPodName,
+					Namespace: defaultNamespace,
+				},
+			},
+			{
+				Addresses:  []string{newPodIP},
+				Conditions: discoveryv1.EndpointConditions{Ready: ptr.To(true)},
+				TargetRef: &corev1.ObjectReference{
+					Name:      newPodName,
+					Namespace: defaultNamespace,
 				},
 			},
 		},
 	}
 
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = discoveryv1.AddToScheme(scheme)
+
 	kubeClient := fake.NewClientBuilder().
-		WithObjects(newPod, oldPod, service, endpoint).
+		WithScheme(scheme).
+		WithObjects(newPod, oldPod, service, endpointSlice).
 		WithInterceptorFuncs(interceptor.Funcs{
 			Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
 				if pod, ok := obj.(*corev1.Pod); ok && pod.Name == oldPodName {
-					var ep corev1.Endpoints
-					epKey := client.ObjectKey{Namespace: defaultNamespace, Name: defaultEndpointName}
-					if err := c.Get(ctx, epKey, &ep); err == nil {
-						updated := ep.DeepCopy()
-						updated.Subsets = []corev1.EndpointSubset{
+					var sliceList discoveryv1.EndpointSliceList
+					if err := c.List(ctx, &sliceList,
+						client.InNamespace(defaultNamespace),
+						client.MatchingLabels{discoveryv1.LabelServiceName: defaultServiceName},
+					); err == nil && len(sliceList.Items) > 0 {
+						updated := sliceList.Items[0].DeepCopy()
+						updated.Endpoints = []discoveryv1.Endpoint{
 							{
-								Addresses: []corev1.EndpointAddress{
-									{
-										IP: newPodIP,
-										TargetRef: &corev1.ObjectReference{
-											Name:      newPodName,
-											Namespace: defaultNamespace,
-										},
-									},
+								Addresses:  []string{newPodIP},
+								Conditions: discoveryv1.EndpointConditions{Ready: ptr.To(true)},
+								TargetRef: &corev1.ObjectReference{
+									Name:      newPodName,
+									Namespace: defaultNamespace,
 								},
 							},
 						}
@@ -802,14 +811,17 @@ func TestMultipleEndpointsWithStuckPod(t *testing.T) {
 	err = kubeClient.Get(ctx, client.ObjectKey{Namespace: defaultNamespace, Name: oldPodName}, &deletedPod)
 	assert.Error(t, err, "Expected old pod to be deleted, but it still exists")
 
-	var finalEndpoint corev1.Endpoints
-	err = kubeClient.Get(ctx, client.ObjectKey{Namespace: defaultNamespace, Name: defaultEndpointName}, &finalEndpoint)
-	require.NoError(t, err, "Failed to get final endpoint")
+	var finalSliceList discoveryv1.EndpointSliceList
+	err = kubeClient.List(ctx, &finalSliceList,
+		client.InNamespace(defaultNamespace),
+		client.MatchingLabels{discoveryv1.LabelServiceName: defaultServiceName},
+	)
+	require.NoError(t, err, "Failed to list final endpoint slices")
 
-	if assert.NotEmpty(t, finalEndpoint.Subsets, "Expected endpoint to have subsets") &&
-		assert.NotEmpty(t, finalEndpoint.Subsets[0].Addresses, "Expected endpoint to have addresses") {
-		assert.Len(t, finalEndpoint.Subsets[0].Addresses, 1, "Expected endpoint to have exactly 1 address")
-		assert.Equal(t, newPodIP, finalEndpoint.Subsets[0].Addresses[0].IP, "Expected endpoint IP to match new pod IP")
+	if assert.NotEmpty(t, finalSliceList.Items, "Expected endpoint slice list to have items") &&
+		assert.NotEmpty(t, finalSliceList.Items[0].Endpoints, "Expected endpoint slice to have endpoints") {
+		assert.Len(t, finalSliceList.Items[0].Endpoints, 1, "Expected endpoint slice to have exactly 1 endpoint")
+		assert.Equal(t, newPodIP, finalSliceList.Items[0].Endpoints[0].Addresses[0], "Expected endpoint IP to match new pod IP")
 	}
 }
 

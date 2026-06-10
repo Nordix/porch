@@ -27,6 +27,7 @@ import (
 	fnconf "github.com/kptdev/porch/controllers/functionconfigs/reconciler"
 	"github.com/kptdev/porch/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
@@ -262,13 +263,24 @@ func (pcm *podCacheManager) retrieveFunctionPods(ctx context.Context) error {
 					}
 					serviceKey := client.ObjectKeyFromObject(serviceTemplate)
 
-					//nolint:staticcheck
-					var endpoint corev1.Endpoints
-					if err := pcm.podManager.kubeClient.Get(ctx, serviceKey, &endpoint); err != nil {
+					// Check EndpointSlice for multiple addresses indicating stuck pods
+					var sliceList discoveryv1.EndpointSliceList
+					if err := pcm.podManager.kubeClient.List(ctx, &sliceList,
+						client.InNamespace(serviceKey.Namespace),
+						client.MatchingLabels{discoveryv1.LabelServiceName: serviceKey.Name},
+					); err != nil {
 						return err
 					}
-					// Remove the pod if more than one address is found in the endpoint
-					if len(endpoint.Subsets[0].Addresses) > 1 {
+					var readyAddresses int
+					for _, slice := range sliceList.Items {
+						for _, ep := range slice.Endpoints {
+							if ep.Conditions.Ready != nil && *ep.Conditions.Ready {
+								readyAddresses++
+							}
+						}
+					}
+					// Remove the pod if more than one ready address is found
+					if readyAddresses > 1 {
 						err = pcm.deletePodAndWait(&pod)
 						if err != nil {
 							klog.Errorf("failed to delete pod %s/%s: %v", pod.Namespace, pod.Name, err)

@@ -36,6 +36,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -105,36 +106,37 @@ func TestPodCacheManager(t *testing.T) {
 		},
 	}
 
-	defaultEndpointObject := &corev1.Endpoints{
+	defaultEndpointSliceObject := &discoveryv1.EndpointSlice{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      defaultEndpointName,
+			Name:      defaultEndpointName + "-abc12",
 			Namespace: defaultNamespace,
+			Labels: map[string]string{
+				discoveryv1.LabelServiceName: defaultServiceName,
+			},
 		},
-		Subsets: []corev1.EndpointSubset{
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints: []discoveryv1.Endpoint{
 			{
-				Addresses: []corev1.EndpointAddress{
-					{
-						IP: defaultPodIP,
-						TargetRef: &corev1.ObjectReference{
-							Name:      defaultPodName,
-							Namespace: defaultNamespace,
-						},
-					},
+				Addresses:  []string{defaultPodIP},
+				Conditions: discoveryv1.EndpointConditions{Ready: ptr.To(true)},
+				TargetRef: &corev1.ObjectReference{
+					Name:      defaultPodName,
+					Namespace: defaultNamespace,
 				},
 			},
 		},
 	}
 
-	emptyEndpointObject := &corev1.Endpoints{
+	emptyEndpointSliceObject := &discoveryv1.EndpointSlice{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      defaultEndpointName,
+			Name:      defaultEndpointName + "-abc12",
 			Namespace: defaultNamespace,
-		},
-		Subsets: []corev1.EndpointSubset{
-			{
-				Addresses: []corev1.EndpointAddress{},
+			Labels: map[string]string{
+				discoveryv1.LabelServiceName: defaultServiceName,
 			},
 		},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints:   []discoveryv1.Endpoint{},
 	}
 
 	basePodTemplate := inlineBasePodTemplate.DeepCopy()
@@ -187,8 +189,8 @@ func TestPodCacheManager(t *testing.T) {
 						return err
 					}
 
-					defaultEndpointObject.ResourceVersion = ""
-					err = kubeClient.Create(ctx, defaultEndpointObject)
+					defaultEndpointSliceObject.ResourceVersion = ""
+					err = kubeClient.Create(ctx, defaultEndpointSliceObject)
 					if err != nil {
 						return err
 					}
@@ -208,12 +210,13 @@ func TestPodCacheManager(t *testing.T) {
 			return nil
 		}
 
-		return client.List(ctx, list, nil)
+		return client.List(ctx, list, opts...)
 	}
 
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	_ = configapi.AddToScheme(scheme)
+	_ = discoveryv1.AddToScheme(scheme)
 
 	buildKubeClient := func(objects ...client.Object) client.WithWatch {
 		return fake.NewClientBuilder().
@@ -274,7 +277,7 @@ func TestPodCacheManager(t *testing.T) {
 					basePodTemplate,
 					defaultPodObject,
 					defaultServiceObject,
-					defaultEndpointObject,
+					defaultEndpointSliceObject,
 				).
 				WithInterceptorFuncs(interceptor.Funcs{List: fakeClientListPodsInterceptor}).
 				Build(),
@@ -285,7 +288,7 @@ func TestPodCacheManager(t *testing.T) {
 			skip:         false,
 			expectFail:   false,
 			functions:    functionWithDefaultPod,
-			kubeClient:   buildKubeClient(basePodTemplate, defaultPodObject, defaultServiceObject, defaultEndpointObject),
+			kubeClient:   buildKubeClient(basePodTemplate, defaultPodObject, defaultServiceObject, defaultEndpointSliceObject),
 			expectedLog:  "Queuing request for apply-replacements on pod",
 			skipRetrieve: true,
 		},
@@ -313,7 +316,7 @@ func TestPodCacheManager(t *testing.T) {
 			skip:       false,
 			expectFail: false,
 			functions:  blankCache,
-			kubeClient: buildKubeClient(defaultServiceObject, defaultEndpointObject),
+			kubeClient: buildKubeClient(defaultServiceObject, defaultEndpointSliceObject),
 		},
 		{
 			name:       "Pod Exists but Service does not Exists and not in Cache",
@@ -444,7 +447,7 @@ func TestPodCacheManager(t *testing.T) {
 			name:                   "Garbage Collector - Expired Pod Exists and cleaned up",
 			expectFail:             false,
 			skip:                   false,
-			kubeClient:             buildKubeClient(oldPodObject, defaultServiceObject, emptyEndpointObject),
+			kubeClient:             buildKubeClient(oldPodObject, defaultServiceObject, emptyEndpointSliceObject),
 			functions:              functionWithExpiredPod,
 			podShouldBeDeleted:     true,
 			serviceShouldBeDeleted: true,
@@ -454,7 +457,7 @@ func TestPodCacheManager(t *testing.T) {
 			name:                   "Garbage Collector - New Pod Exists and not cleaned up",
 			expectFail:             false,
 			skip:                   false,
-			kubeClient:             buildKubeClient(newPodObject, defaultServiceObject, defaultEndpointObject),
+			kubeClient:             buildKubeClient(newPodObject, defaultServiceObject, defaultEndpointSliceObject),
 			functions:              functionWithDefaultPod,
 			podShouldBeDeleted:     false,
 			serviceShouldBeDeleted: false,
@@ -464,7 +467,7 @@ func TestPodCacheManager(t *testing.T) {
 			name:                   "Garbage Collector - Non Annotated Pod Exists and not cleaned up",
 			expectFail:             false,
 			skip:                   false,
-			kubeClient:             buildKubeClient(defaultPodObject, defaultServiceObject, defaultEndpointObject),
+			kubeClient:             buildKubeClient(defaultPodObject, defaultServiceObject, defaultEndpointSliceObject),
 			functions:              functionWithDefaultPod,
 			podShouldBeDeleted:     false,
 			serviceShouldBeDeleted: false,
@@ -474,7 +477,7 @@ func TestPodCacheManager(t *testing.T) {
 			name:                   "Garbage Collector - Annotated Pod Exists with invalid timestamp and not cleaned up",
 			expectFail:             false,
 			skip:                   false,
-			kubeClient:             buildKubeClient(podObjectInvalidRetentionTimestamp, defaultServiceObject, defaultEndpointObject),
+			kubeClient:             buildKubeClient(podObjectInvalidRetentionTimestamp, defaultServiceObject, defaultEndpointSliceObject),
 			functions:              functionWithDefaultPod,
 			podShouldBeDeleted:     false,
 			serviceShouldBeDeleted: false,

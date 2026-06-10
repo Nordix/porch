@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	contextsignal "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/rest"
@@ -216,6 +217,9 @@ func buildScheme() (*runtime.Scheme, error) {
 		return nil, err
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
+	if err := discoveryv1.AddToScheme(scheme); err != nil {
 		return nil, err
 	}
 
