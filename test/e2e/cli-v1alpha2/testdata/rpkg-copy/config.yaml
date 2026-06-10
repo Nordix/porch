@@ -8,49 +8,69 @@ commands:
       - --repo-basic-username=porch
       - --namespace=rpkg-copy
       - --name=git
+      - --v1alpha2
       - http://gitea.gitea.svc.cluster.local:3000/porch/porch-test
+  - args:
+      - porchctl
+      - repo
+      - register
+      - --repo-basic-password=secret
+      - --repo-basic-username=porch
+      - http://gitea.gitea.svc.cluster.local:3000/porch/test-blueprints.git
+      - --namespace=rpkg-copy
+      - --name=test-blueprints
+      - --v1alpha2
+      - --description
+      - Test Blueprints
   - args:
       - porchctl
       - rpkg
       - clone
+      - --api-version=v1alpha2
       - --namespace=rpkg-copy
-      - http://gitea.gitea.svc.cluster.local:3000/porch/test-blueprints.git
-      - --directory=basens
-      - --ref=basens/v1
+      - test-blueprints.basens.v1
       - --repository=git
       - --workspace=copy-1
       - basens-edit
     stdout: |
       git.basens-edit.copy-1 created
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - propose
+      - --api-version=v1alpha2
       - --namespace=rpkg-copy
       - git.basens-edit.copy-1
     stdout: |
       git.basens-edit.copy-1 proposed
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - approve
+      - --api-version=v1alpha2
       - --namespace=rpkg-copy
       - git.basens-edit.copy-1
     stdout: |
       git.basens-edit.copy-1 approved
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - copy
+      - --api-version=v1alpha2
       - --namespace=rpkg-copy
       - --workspace=copy-2
       - git.basens-edit.copy-1
     stdout: |
       git.basens-edit.copy-2 created
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - pull
+      - --api-version=v1alpha2
       - --namespace=rpkg-copy
       - git.basens-edit.copy-2
     stdout: |
@@ -76,7 +96,6 @@ commands:
             config.kubernetes.io/path: Kptfile
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: Kptfile
-            internal.kpt.dev/upstream-identifier: kpt.dev|Kptfile|default|basens-edit
           name: basens-edit
         status:
           conditions:
@@ -104,7 +123,6 @@ commands:
             config.kubernetes.io/path: namespace.yaml
             internal.config.kubernetes.io/index: "0"
             internal.config.kubernetes.io/path: namespace.yaml
-            internal.kpt.dev/upstream-identifier: '|Namespace|default|example'
           name: example
       kind: ResourceList
     yaml: true

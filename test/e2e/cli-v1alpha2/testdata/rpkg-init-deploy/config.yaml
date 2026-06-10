@@ -6,6 +6,7 @@ commands:
       - register
       - --namespace=rpkg-init-deploy
       - --name=git
+      - --v1alpha2
       - --deployment
       - --repo-basic-password=secret
       - --repo-basic-username=porch
@@ -15,14 +16,16 @@ commands:
       - repo
       - get
       - --namespace=rpkg-init-deploy
-      - --output=custom-columns=NAME:.metadata.name,DEPLOYMENT:.spec.deployment
     stdout: |
-      NAME   DEPLOYMENT
-      git    true
+      NAME   TYPE   CONTENT   SYNC SCHEDULE   DEPLOYMENT   READY   ADDRESS                                                       BRANCH
+      git    git    Package                    true         True    http://gitea.gitea.svc.cluster.local:3000/porch/porch-test   main
+    ignoreWhitespace: true
+    ignoreColumns: ["AGE"]
   - args:
       - porchctl
       - rpkg
       - init
+      - --api-version=v1alpha2
       - --namespace=rpkg-init-deploy
       - --description
       - Test Package Description
@@ -34,10 +37,12 @@ commands:
       - deploy-package
     stdout: |
       git.deploy-package.deploy created
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
       - pull
+      - --api-version=v1alpha2
       - --namespace=rpkg-init-deploy
       - git.deploy-package.deploy
     stdout: |
@@ -93,8 +98,8 @@ commands:
       - repo
       - get
       - --namespace=rpkg-init-deploy
-      - --output=custom-columns=NAME:.metadata.name,TYPE:.spec.type,DEPLOYMENT:.spec.deployment,READY:.status.conditions[?(@.type=='Ready')].status,ADDRESS:.spec.git.repo,BRANCH:.spec.git.branch
     stdout: |
-      NAME   TYPE   DEPLOYMENT   READY   ADDRESS                                                       BRANCH
-      git    git    true         True    http://gitea.gitea.svc.cluster.local:3000/porch/porch-test   main
+      NAME   TYPE   CONTENT   SYNC SCHEDULE   DEPLOYMENT   READY   ADDRESS                                                       BRANCH
+      git    git    Package                   true         True    http://gitea.gitea.svc.cluster.local:3000/porch/porch-test    main
     ignoreWhitespace: true
+    ignoreColumns: ["AGE"]
