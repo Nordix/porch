@@ -16,32 +16,15 @@
 
 MOCKERY_VERSION=3.7.0
 
-OS_ARCH ?= $(shell uname -m)
-OS ?= $(shell uname)
-
 ##@ Mocking
-
-.PHONY: install-mockery
-install-mockery:
-ifeq ($(CONTAINER_RUNNABLE), 0)
-		$(CONTAINER_RUNTIME) pull docker.io/vektra/mockery:v${MOCKERY_VERSION}
-else
-		wget -qO- https://github.com/vektra/mockery/releases/download/v${MOCKERY_VERSION}/mockery_${MOCKERY_VERSION}_${OS}_${OS_ARCH}.tar.gz | sudo tar -xvzf - -C /usr/local/bin
-endif
 
 .PHONY: generate-mocks
 generate-mocks: clean-mocks
-ifeq ($(CONTAINER_RUNNABLE), 0)
-		find . -name .mockery.yaml \
-			-exec echo generating mocks specified in {} . . . \; \
-			-execdir $(CONTAINER_RUNTIME) run --rm --security-opt label=disable -e GOTOOLCHAIN=auto -v  .:/src -w /src docker.io/vektra/mockery:v${MOCKERY_VERSION} \; \
-			-exec echo generated mocks specified in {} \;
-else
-		find . -name .mockery.yaml \
-			-exec echo generating mocks specified in {} . . . \; \
-			-execdir mockery \; \
-			-exec echo generated mocks specified in {} \;
-endif
+	@if command -v mockery >/dev/null 2>&1 && [ "$$(mockery version)" = "v$(MOCKERY_VERSION)" ]; then \
+		mockery; \
+	else \
+		go run github.com/vektra/mockery/v3@v$(MOCKERY_VERSION); \
+	fi
 
 .PHONY: clean-mocks
 clean-mocks:
