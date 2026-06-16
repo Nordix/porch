@@ -16,6 +16,8 @@ package task
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/kptdev/kpt/pkg/lib/kptops"
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
@@ -58,6 +60,7 @@ func (m *upgradePackageMutation) apply(ctx context.Context, _ repository.Package
 	if err != nil {
 		return repository.PackageResources{}, nil, pkgerrors.Wrapf(err, "error fetching revision for target upstream %q", targetUpstreamRef.Name)
 	}
+
 	targetUpstreamResources, err := targetUpstreamRevision.GetResources(ctx)
 	if err != nil {
 		return repository.PackageResources{}, nil, pkgerrors.Wrapf(err, "error fetching resources for target upstream %q", targetUpstreamRef.Name)
@@ -66,6 +69,26 @@ func (m *upgradePackageMutation) apply(ctx context.Context, _ repository.Package
 	localResources, err := packageFetcher.FetchResources(ctx, &localRef, m.namespace)
 	if err != nil {
 		return repository.PackageResources{}, nil, pkgerrors.Wrapf(err, "error fetching resources for local revision %q", localRef.Name)
+	}
+
+	if m.upgradeTask.Upgrade.SubpackageDir != "" {
+		subpackageLocalResources := make(map[string]string)
+
+		for localResourceKey, localResourceValue := range localResources.Spec.Resources {
+			if trimmed, found := strings.CutPrefix(localResourceKey, m.upgradeTask.Upgrade.SubpackageDir+"/"); found {
+				subpackageLocalResources[trimmed] = localResourceValue
+			}
+		}
+
+		if len(subpackageLocalResources) == 0 {
+			return repository.PackageResources{}, nil, fmt.Errorf("subpackage %q not found in package %q", m.upgradeTask.Upgrade.SubpackageDir, localRef.Name)
+		}
+
+		if _, ok := subpackageLocalResources["Kptfile"]; !ok {
+			return repository.PackageResources{}, nil, fmt.Errorf("subpackage %q in package %q is missing Kptfile", m.upgradeTask.Upgrade.SubpackageDir, localRef.Name)
+		}
+
+		localResources.Spec.Resources = subpackageLocalResources
 	}
 
 	klog.Infof("performing pkg upgrade operation for pkg %s resource counts local[%d] original[%d] upstream[%d]",

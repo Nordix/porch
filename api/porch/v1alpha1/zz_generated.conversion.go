@@ -623,6 +623,7 @@ func autoConvert_v1alpha1_PackageCloneTaskSpec_To_porch_PackageCloneTaskSpec(in 
 	if err := Convert_v1alpha1_UpstreamPackage_To_porch_UpstreamPackage(&in.Upstream, &out.Upstream, s); err != nil {
 		return err
 	}
+	out.SubpackageDir = in.SubpackageDir
 	return nil
 }
 
@@ -635,6 +636,7 @@ func autoConvert_porch_PackageCloneTaskSpec_To_v1alpha1_PackageCloneTaskSpec(in 
 	if err := Convert_porch_UpstreamPackage_To_v1alpha1_UpstreamPackage(&in.Upstream, &out.Upstream, s); err != nil {
 		return err
 	}
+	out.SubpackageDir = in.SubpackageDir
 	return nil
 }
 
@@ -664,7 +666,6 @@ func Convert_porch_PackageEditTaskSpec_To_v1alpha1_PackageEditTaskSpec(in *porch
 }
 
 func autoConvert_v1alpha1_PackageInitTaskSpec_To_porch_PackageInitTaskSpec(in *PackageInitTaskSpec, out *porch.PackageInitTaskSpec, s conversion.Scope) error {
-	out.Subpackage = in.Subpackage
 	out.Description = in.Description
 	out.Keywords = *(*[]string)(unsafe.Pointer(&in.Keywords))
 	out.Site = in.Site
@@ -677,7 +678,6 @@ func Convert_v1alpha1_PackageInitTaskSpec_To_porch_PackageInitTaskSpec(in *Packa
 }
 
 func autoConvert_porch_PackageInitTaskSpec_To_v1alpha1_PackageInitTaskSpec(in *porch.PackageInitTaskSpec, out *PackageInitTaskSpec, s conversion.Scope) error {
-	out.Subpackage = in.Subpackage
 	out.Description = in.Description
 	out.Keywords = *(*[]string)(unsafe.Pointer(&in.Keywords))
 	out.Site = in.Site
@@ -1011,6 +1011,7 @@ func autoConvert_v1alpha1_PackageUpgradeTaskSpec_To_porch_PackageUpgradeTaskSpec
 	if err := Convert_v1alpha1_PackageRevisionRef_To_porch_PackageRevisionRef(&in.LocalPackageRevisionRef, &out.LocalPackageRevisionRef, s); err != nil {
 		return err
 	}
+	out.SubpackageDir = in.SubpackageDir
 	out.Strategy = porch.PackageMergeStrategy(in.Strategy)
 	return nil
 }
@@ -1030,6 +1031,7 @@ func autoConvert_porch_PackageUpgradeTaskSpec_To_v1alpha1_PackageUpgradeTaskSpec
 	if err := Convert_porch_PackageRevisionRef_To_v1alpha1_PackageRevisionRef(&in.LocalPackageRevisionRef, &out.LocalPackageRevisionRef, s); err != nil {
 		return err
 	}
+	out.SubpackageDir = in.SubpackageDir
 	out.Strategy = PackageMergeStrategy(in.Strategy)
 	return nil
 }
