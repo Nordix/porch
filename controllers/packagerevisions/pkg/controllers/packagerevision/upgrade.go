@@ -136,7 +136,7 @@ func (r *PackageRevisionReconciler) getPackageResourcesForUpgrade(ctx context.Co
 		return nil, pkgerrors.Wrapf(err, "failed to read current resources")
 	}
 
-	if pr.Status.CreationSource == "" || pr.Spec.SubpackageOperation == nil && pr.Spec.SubpackageOperation.Upgrade == nil {
+	if pr.Status.CreationSource == "" || pr.Spec.SubpackageOperation == nil || pr.Spec.SubpackageOperation.Upgrade == nil {
 		return currentResources, nil
 	}
 

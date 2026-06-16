@@ -16,8 +16,12 @@ package packagerevision
 
 import (
 	"context"
+	"path"
 	"time"
 
+	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	"github.com/kptdev/krm-functions-sdk/go/fn/kptfileko"
+	porchapi "github.com/kptdev/porch/api/porch"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/controllers/functionconfigs/reconciler"
 	"github.com/kptdev/porch/pkg/repository"
@@ -204,6 +208,24 @@ func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Con
 	}
 	if subpackageResources == nil {
 		return nil, nil
+	}
+
+	kptFile, err := kptfileko.NewFromPackage(subpackageResources)
+	if err != nil {
+		return nil, pkgerrors.Wrap(err, "failed to parse subpackage Kptfile")
+	}
+
+	subpackageName, err := porchapi.ComposeSubpkgObjName(pr.Spec.SubpackageOperation.SubpackageDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := kptFile.SetName(subpackageName); err != nil {
+		return nil, pkgerrors.Wrapf(err, "failed to write package name %q to subpackage Kptfile", path.Base(pr.Spec.SubpackageOperation.SubpackageDir))
+	}
+
+	if err := kptFile.WriteToPackage(subpackageResources); err != nil {
+		return nil, pkgerrors.Wrapf(err, "failed to write to subpackage Kptfile %q", path.Join(pr.Spec.SubpackageOperation.SubpackageDir, kptfilev1.KptFileName))
 	}
 
 	log := log.FromContext(ctx)

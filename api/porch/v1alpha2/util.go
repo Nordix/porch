@@ -70,19 +70,3 @@ func GetSourceName(pkgRev *PackageRevision) string {
 		return ""
 	}
 }
-
-// GetSource return the SubpackageDir for a package revision or "" if there is no SubpackageDir set.
-func GetSubpackageOperationName(pkgRev *PackageRevision) string {
-	if pkgRev.Spec.SubpackageOperation == nil {
-		return ""
-	}
-
-	switch {
-	case pkgRev.Spec.SubpackageOperation.CloneFrom != nil:
-		return "clone"
-	case pkgRev.Spec.SubpackageOperation.Upgrade != nil:
-		return "upgrade"
-	default:
-		return ""
-	}
-}

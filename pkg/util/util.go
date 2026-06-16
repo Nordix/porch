@@ -30,7 +30,8 @@ import (
 	semver "github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
 	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
-	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	porchapi "github.com/kptdev/porch/api/porch"
+	porchapiv1a1 "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	pkgerrors "github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -77,7 +78,7 @@ func GetPorchApiServiceKey(ctx context.Context) (client.ObjectKey, error) {
 	}
 
 	apiSvc := registrationapi.APIService{}
-	apiSvcName := porchapi.SchemeGroupVersion.Version + "." + porchapi.SchemeGroupVersion.Group
+	apiSvcName := porchapiv1a1.SchemeGroupVersion.Version + "." + porchapiv1a1.SchemeGroupVersion.Group
 	err = c.Get(ctx, client.ObjectKey{
 		Name: apiSvcName,
 	}, &apiSvc)
@@ -284,7 +285,7 @@ func GenerateUid(prefix string, kubeNs string, kubeName string) types.UID {
 	space := uuid.MustParse(uuidSpace)
 	buff := bytes.Buffer{}
 	buff.WriteString(prefix)
-	buff.WriteString(strings.ToLower(porchapi.SchemeGroupVersion.Identifier()))
+	buff.WriteString(strings.ToLower(porchapiv1a1.SchemeGroupVersion.Identifier()))
 	buff.WriteString("/")
 	buff.WriteString(strings.ToLower(kubeNs))
 	buff.WriteString("/")
@@ -351,9 +352,8 @@ func RetryOnError(retries int, f func(retryNumber int) error) error {
 	return err
 }
 
-// FindBestSemverMatch selects the cache key whose semver tag best satisfies
-// the constraint for the given imageName. It returns the full cache key
-// (e.g. "ghcr.io/foo/bar:v1.2.3") of the highest matching version.
+// FindBestSemverMatch selects the highest semver tag from cachedTags that satisfies constraint.
+// It returns the selected tag (e.g. "v1.2.3") for the given imageName (used for logging only).
 func FindBestSemverMatch(constraint string, imageName string, cachedTags []string) (string, error) {
 	c, err := semver.NewConstraint(constraint)
 	if err != nil {
@@ -437,7 +437,6 @@ func ImageJoin(prefix, image string) string {
 }
 
 func GetRepoPackageRefFromUpstream(upstream *kptfilev1.Upstream) (upstreamRepoSpec *configapi.RepositorySpec, upstreamPackage, upstreamRef string, isManagedReference bool, err error) {
-
 	isManagedReference = false
 
 	if upstream == nil || upstream.Git == nil || upstream.Git.Repo == "" {
@@ -445,8 +444,8 @@ func GetRepoPackageRefFromUpstream(upstream *kptfilev1.Upstream) (upstreamRepoSp
 		return
 	}
 
-	if !porchapi.IsValidSubpackageDir(upstream.Git.Directory) {
-		err = pkgerrors.Errorf("git directory reference %q in upstream is invalid", upstream.Git.Directory)
+	if validationErr := porchapi.IsValidSubpackageDir(upstream.Git.Directory); validationErr != nil {
+		err = pkgerrors.Wrapf(validationErr, "git directory reference %q in upstream is invalid", upstream.Git.Directory)
 		return
 	}
 

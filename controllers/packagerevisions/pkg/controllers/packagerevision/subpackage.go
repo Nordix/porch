@@ -21,27 +21,38 @@ import (
 	"fmt"
 	"strings"
 
+	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	porchapi "github.com/kptdev/porch/api/porch"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
+	pkgerrors "github.com/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 // applySubpackageOperation executes the independent subpackage operation and returns the resulting resources.
 // Returns nil, nil if no source operation to be applied (subpackage operation already executed).
-func (r *PackageRevisionReconciler) applySubpackageOperaiton(ctx context.Context, pr *porchv1alpha2.PackageRevision) (map[string]string, string, error) {
+func (r *PackageRevisionReconciler) applySubpackageOperaiton(ctx context.Context, pr *porchv1alpha2.PackageRevision) (subpackageResources map[string]string, subpackageOperationType string, err error) {
 	if r.shouldSkipSubpackageOperation(pr) {
-		return nil, "", nil
+		return
+	}
+
+	if validationErr := porchapi.IsValidSubpackageDir(pr.Spec.SubpackageOperation.SubpackageDir); validationErr != nil {
+		err = pkgerrors.Wrapf(validationErr, "specified subpackage directory %q is invalid", pr.Spec.SubpackageOperation.SubpackageDir)
+		return
 	}
 
 	switch {
 	case pr.Spec.SubpackageOperation.CloneFrom != nil:
-		resources, err := r.clonePackage(ctx, pr)
-		return resources, "subpackage clone", err
+		subpackageResources, err = r.clonePackage(ctx, pr)
+		subpackageOperationType = "subpackage clone"
+		return
 	case pr.Spec.SubpackageOperation.Upgrade != nil:
-		resources, err := r.upgradePackage(ctx, pr)
-		return resources, "subpackage upgrade", err
+		subpackageResources, err = r.upgradePackage(ctx, pr)
+		subpackageOperationType = "subpackage upgrade"
+		return
 	default:
-		return nil, "", fmt.Errorf("subpackageOperation has no fields set")
+		err = pkgerrors.Errorf("subpackageOperation has no fields set")
+		return
 	}
 }
 
@@ -57,7 +68,7 @@ func (r *PackageRevisionReconciler) upsertSubpackageResourcesInDraftResources(ct
 	case pr.Spec.SubpackageOperation.Upgrade != nil:
 		return r.upgradeSubpackageResourcesInDraftResources(ctx, pr, parentResources, subpackageResources)
 	default:
-		return nil, fmt.Errorf("source has no fields set")
+		return nil, pkgerrors.Errorf("source has no fields set")
 	}
 }
 
@@ -66,20 +77,24 @@ func (r *PackageRevisionReconciler) upsertSubpackageResourcesInDraftResources(ct
 func (r *PackageRevisionReconciler) insertSubpackageResourcesInDraftResources(ctx context.Context, pr *porchv1alpha2.PackageRevision, parentResources, subpackageResources map[string]string) (map[string]string, error) {
 	subpackageDir := pr.Spec.SubpackageOperation.SubpackageDir
 
-	log := log.FromContext(ctx)
-	log.V(1).Info("cloning subpackage resources into parent at %q", subpackageDir)
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("cloning subpackage resources into parent at ", "subpackageDir", subpackageDir)
 
 	for resourceKey := range parentResources {
-		if strings.HasPrefix(resourceKey, subpackageDir) {
+		if parentSubpackageDir := r.parentSubpackageFound(subpackageDir, resourceKey); parentSubpackageDir != "" {
+			return nil, fmt.Errorf("cannot clone subpackage into another subpackage, parent already has a subpackage at %q (requested subpackageDir: %q)", parentSubpackageDir, subpackageDir)
+		}
+
+		if strings.HasPrefix(resourceKey, subpackageDir+"/") {
 			return nil, fmt.Errorf("cannot clone subpackage into parent, parent already has content at %q", subpackageDir)
 		}
 	}
 
-	for subpackaageResourceKey, subpackageResourceValue := range subpackageResources {
-		parentResources[subpackageDir+"/"+subpackaageResourceKey] = subpackageResourceValue
+	for subpackageResourceKey, subpackageResourceValue := range subpackageResources {
+		parentResources[subpackageDir+"/"+subpackageResourceKey] = subpackageResourceValue
 	}
 
-	log.V(1).Info("cloned subpackage resources into parent at %q", subpackageDir)
+	logger.V(1).Info("cloned subpackage resources into parent at ", "subpackageDir", subpackageDir)
 	return parentResources, nil
 }
 
@@ -88,26 +103,36 @@ func (r *PackageRevisionReconciler) insertSubpackageResourcesInDraftResources(ct
 func (r *PackageRevisionReconciler) upgradeSubpackageResourcesInDraftResources(ctx context.Context, pr *porchv1alpha2.PackageRevision, parentResources, subpackageResources map[string]string) (map[string]string, error) {
 	subpackageDir := pr.Spec.SubpackageOperation.SubpackageDir
 
-	log := log.FromContext(ctx)
-	log.V(1).Info("upgrading subpackage resources in parent at %q", subpackageDir)
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("upgrading subpackage resources in parent at ", "subpackageDir", subpackageDir)
 
 	subpackageFound := false
 	for resourceKey := range parentResources {
-		if strings.HasPrefix(resourceKey, subpackageDir) {
+		if resourceKey == subpackageDir {
+			return nil, fmt.Errorf("cannot upgrade subpackage in parent, parent already has content at %q", subpackageDir)
+		}
+
+		if strings.HasPrefix(resourceKey, subpackageDir+"/") {
 			subpackageFound = true
 			delete(parentResources, resourceKey)
+			continue
 		}
+
+		if parentSubpackageDir := r.parentSubpackageFound(subpackageDir, resourceKey); parentSubpackageDir != "" {
+			return nil, fmt.Errorf("cannot upgrade subpackage in another subpackage, parent already has a subpackage at %q (requested subpackageDir: %q)", parentSubpackageDir, subpackageDir)
+		}
+
 	}
 
 	if !subpackageFound {
-		return nil, fmt.Errorf("cannot subpackage subpackage in parent, parent does not have a subpackage at %q", subpackageDir)
+		return nil, fmt.Errorf("cannot find subpackage in parent, parent does not have a subpackage at %q", subpackageDir)
 	}
 
-	for subpackaageResourceKey, subpackageResourceValue := range subpackageResources {
-		parentResources[subpackageDir+"/"+subpackaageResourceKey] = subpackageResourceValue
+	for subpackageResourceKey, subpackageResourceValue := range subpackageResources {
+		parentResources[subpackageDir+"/"+subpackageResourceKey] = subpackageResourceValue
 	}
 
-	log.V(1).Info("upgraded subpackage resources in parent at %q", subpackageDir)
+	logger.V(1).Info("upgraded subpackage resources in parent at ", "subpackageDir", subpackageDir)
 	return parentResources, nil
 }
 
@@ -144,4 +169,18 @@ func (r *PackageRevisionReconciler) getSubpackageOperationHash(pr *porchv1alpha2
 
 	subpackageOperationHash := sha256.Sum256(subpackageOperationBytes)
 	return "sha256:" + hex.EncodeToString(subpackageOperationHash[:])
+}
+
+func (r *PackageRevisionReconciler) parentSubpackageFound(subpackageDir, resourceKey string) string {
+	if strings.HasSuffix(resourceKey, kptfilev1.KptFileName) {
+		resourceKey = strings.TrimSuffix(resourceKey, "/"+kptfilev1.KptFileName)
+	} else {
+		return ""
+	}
+
+	if subpackageDir == resourceKey || strings.HasPrefix(subpackageDir, resourceKey+"/") {
+		return resourceKey
+	}
+
+	return ""
 }

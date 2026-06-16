@@ -21,51 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsValidSubpackageDir(t *testing.T) {
-	tests := []struct {
-		name     string
-		dir      string
-		expected bool
-	}{
-		// Invalid cases
-		{name: "empty string", dir: "", expected: false},
-		{name: "leading slash", dir: "/subpkg", expected: false},
-		{name: "trailing slash", dir: "subpkg/", expected: false},
-		{name: "double dots at start", dir: "../subpkg", expected: false},
-		{name: "double dots in middle", dir: "sub/../pkg", expected: false},
-		{name: "double dots at end", dir: "subpkg/..", expected: false},
-		{name: "only double dots", dir: "..", expected: false},
-		{name: "dot segment at start", dir: "./subpkg", expected: false},
-		{name: "dot segment in middle", dir: "sub/./pkg", expected: false},
-		{name: "only dot", dir: ".", expected: false},
-		{name: "leading and trailing slash", dir: "/subpkg/", expected: false},
-		{name: "spaces in path", dir: "sub pkg", expected: false},
-		{name: "special characters", dir: "sub@pkg", expected: false},
-		{name: "backslash", dir: "sub\\pkg", expected: false},
-		{name: "colon in path", dir: "sub:pkg", expected: false},
-		{name: "empty segment (double slash)", dir: "sub//pkg", expected: false},
-
-		// Valid cases
-		{name: "simple directory", dir: "subpkg", expected: true},
-		{name: "nested directory", dir: "path/to/subpkg", expected: true},
-		{name: "two levels", dir: "sub/pkg", expected: true},
-		{name: "with hyphens", dir: "my-subpkg", expected: true},
-		{name: "with underscores", dir: "my_subpkg", expected: true},
-		{name: "with dots in name", dir: "my.subpkg", expected: true},
-		{name: "numeric name", dir: "123", expected: true},
-		{name: "mixed valid chars", dir: "my-sub_pkg.v1/nested-dir", expected: true},
-		{name: "deeply nested", dir: "a/b/c/d/e", expected: true},
-		{name: "single char segments", dir: "a/b/c", expected: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsValidSubpackageDir(tt.dir)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func Test_getSubpackageDir(t *testing.T) {
 	tests := []struct {
 		name     string

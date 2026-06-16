@@ -21,9 +21,11 @@ import (
 
 	"github.com/kptdev/kpt/pkg/lib/errors"
 	"github.com/kptdev/kpt/pkg/lib/util/parse"
-	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	porchapi "github.com/kptdev/porch/api/porch"
+	porchapiv1a1 "github.com/kptdev/porch/api/porch/v1alpha1"
 	cliutils "github.com/kptdev/porch/internal/cliutils"
 	"github.com/kptdev/porch/pkg/cli/commands/rpkg/docs"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -74,7 +76,7 @@ type runner struct {
 	client  client.Client
 	Command *cobra.Command
 
-	clone porchapi.PackageCloneTaskSpec
+	clone porchapiv1a1.PackageCloneTaskSpec
 
 	// Flags
 	directory     string
@@ -108,23 +110,21 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 		}
 
 	} else {
-		if !porchapi.IsValidSubpackageDir(r.subpackageDir) {
-			return errors.E(op, fmt.Errorf("invalid --subpackage-dir %q", r.subpackageDir))
+		if err = porchapi.IsValidSubpackageDir(r.subpackageDir); err != nil {
+			return errors.E(op, pkgerrors.Wrapf(err, "invalid --subpackage-dir %q", r.subpackageDir))
 		}
 
 		r.clone.SubpackageDir = r.subpackageDir
 
-		if r.repository != "" {
+		if r.Command.Flags().Changed("repository") {
 			return errors.E(op, fmt.Errorf("--repository may not be specified on subpackage clones"))
 		}
 
-		if !r.Command.Flags().Changed("workspace") {
-			r.workspace = ""
-		}
-
-		if r.workspace != "" {
+		if r.Command.Flags().Changed("workspace") {
 			return errors.E(op, fmt.Errorf("--workspace may not be specified on subpackage clones"))
 		}
+
+		r.workspace = ""
 	}
 
 	source := args[0]
@@ -132,8 +132,8 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 
 	switch {
 	case strings.HasPrefix(source, "oci://"):
-		r.clone.Upstream.Type = porchapi.RepositoryTypeOCI
-		r.clone.Upstream.Oci = &porchapi.OciPackage{
+		r.clone.Upstream.Type = porchapiv1a1.RepositoryTypeOCI
+		r.clone.Upstream.Oci = &porchapiv1a1.OciPackage{
 			Image: source,
 		}
 
@@ -167,18 +167,18 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 		if r.directory == "" {
 			r.directory = "/"
 		}
-		r.clone.Upstream.Type = porchapi.RepositoryTypeGit
-		r.clone.Upstream.Git = &porchapi.GitPackage{
+		r.clone.Upstream.Type = porchapiv1a1.RepositoryTypeGit
+		r.clone.Upstream.Git = &porchapiv1a1.GitPackage{
 			Repo:      source,
 			Ref:       r.ref,
 			Directory: r.directory,
-			SecretRef: porchapi.SecretRef{
+			SecretRef: porchapiv1a1.SecretRef{
 				Name: r.secretRef,
 			},
 		}
 
 	default:
-		r.clone.Upstream.UpstreamRef = &porchapi.PackageRevisionRef{
+		r.clone.Upstream.UpstreamRef = &porchapiv1a1.PackageRevisionRef{
 			Name: source,
 		}
 	}
@@ -198,21 +198,21 @@ func (r *runner) runE(cmd *cobra.Command, _ []string) error {
 func (r *runner) runPackageClone(cmd *cobra.Command) error {
 	const op errors.Op = command + ".runE"
 
-	pr := &porchapi.PackageRevision{
+	pr := &porchapiv1a1.PackageRevision{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PackageRevision",
-			APIVersion: porchapi.SchemeGroupVersion.Identifier(),
+			APIVersion: porchapiv1a1.SchemeGroupVersion.Identifier(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: *r.cfg.Namespace,
 		},
-		Spec: porchapi.PackageRevisionSpec{
+		Spec: porchapiv1a1.PackageRevisionSpec{
 			PackageName:    r.target,
 			WorkspaceName:  r.workspace,
 			RepositoryName: r.repository,
-			Tasks: []porchapi.Task{
+			Tasks: []porchapiv1a1.Task{
 				{
-					Type:  porchapi.TaskTypeClone,
+					Type:  porchapiv1a1.TaskTypeClone,
 					Clone: &r.clone,
 				},
 			},
@@ -229,7 +229,7 @@ func (r *runner) runPackageClone(cmd *cobra.Command) error {
 func (r *runner) runSubpackageClone(cmd *cobra.Command) error {
 	const op errors.Op = command + ".runE"
 
-	parentPR := &porchapi.PackageRevision{}
+	parentPR := &porchapiv1a1.PackageRevision{}
 	err := r.client.Get(r.ctx, types.NamespacedName{
 		Name:      r.target,
 		Namespace: *r.cfg.Namespace,
@@ -238,7 +238,7 @@ func (r *runner) runSubpackageClone(cmd *cobra.Command) error {
 		return errors.E(op, err)
 	}
 
-	if parentPR.Spec.Lifecycle != porchapi.PackageRevisionLifecycleDraft {
+	if parentPR.Spec.Lifecycle != porchapiv1a1.PackageRevisionLifecycleDraft {
 		return errors.E(op, fmt.Errorf("to clone an independent subpackage, its parent package must be in state draft, not %q", parentPR.Spec.Lifecycle))
 	}
 
@@ -246,8 +246,8 @@ func (r *runner) runSubpackageClone(cmd *cobra.Command) error {
 		return errors.E(op, fmt.Errorf("to clone an independent subpackage, parent package revision %q must have exactly 1 existing task (found %d)", parentPR.Name, len(parentPR.Spec.Tasks)))
 	}
 
-	parentPR.Spec.Tasks = append(parentPR.Spec.Tasks, porchapi.Task{
-		Type:  porchapi.TaskTypeClone,
+	parentPR.Spec.Tasks = append(parentPR.Spec.Tasks, porchapiv1a1.Task{
+		Type:  porchapiv1a1.TaskTypeClone,
 		Clone: &r.clone,
 	})
 

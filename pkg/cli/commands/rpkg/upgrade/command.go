@@ -25,7 +25,8 @@ import (
 	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/lib/errors"
 	"github.com/kptdev/krm-functions-sdk/go/fn/kptfileko"
-	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	porchapi "github.com/kptdev/porch/api/porch"
+	porchapiv1a1 "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	cliutils "github.com/kptdev/porch/internal/cliutils"
 	"github.com/kptdev/porch/pkg/cli/commands/rpkg/docs"
@@ -94,7 +95,7 @@ type runner struct {
 
 	// there are multiple places where we need access to all package revisions, so
 	// we store it in the runner
-	prs []porchapi.PackageRevision
+	prs []porchapiv1a1.PackageRevision
 }
 
 func (r *runner) preRunE(_ *cobra.Command, args []string) error {
@@ -121,8 +122,8 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 				return errors.E(op, fmt.Errorf("workspace is required"))
 			}
 		} else {
-			if !porchapi.IsValidSubpackageDir(r.subpackageDir) {
-				return errors.E(op, fmt.Errorf("invalid --subpackage-dir %q", r.subpackageDir))
+			if err = porchapi.IsValidSubpackageDir(r.subpackageDir); err != nil {
+				return errors.E(op, pkgerrors.Wrapf(err, "invalid --subpackage-dir %q", r.subpackageDir))
 			}
 
 			if r.workspace != "" {
@@ -130,14 +131,14 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 			}
 		}
 		if r.strategy != "" {
-			validStrategies := []string{string(porchapi.ResourceMerge), string(porchapi.FastForward), string(porchapi.ForceDeleteReplace), string(porchapi.CopyMerge)}
+			validStrategies := []string{string(porchapiv1a1.ResourceMerge), string(porchapiv1a1.FastForward), string(porchapiv1a1.ForceDeleteReplace), string(porchapiv1a1.CopyMerge)}
 			valid := slices.Contains(validStrategies, r.strategy)
 			if !valid {
 				return errors.E(op, fmt.Errorf("invalid strategy %q; must be one of: %v", r.strategy, validStrategies))
 			}
 		}
 	case upstream, downstream:
-		packageRevisionList := porchapi.PackageRevisionList{}
+		packageRevisionList := porchapiv1a1.PackageRevisionList{}
 		listOpts := []client.ListOption{}
 		if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
 			listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
@@ -168,7 +169,7 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		return errors.E(op, pkgerrors.Errorf("could not find package revision %s", args[0]))
 	}
 	key := client.ObjectKeyFromObject(pr)
-	var upgradedPR *porchapi.PackageRevision
+	var upgradedPR *porchapiv1a1.PackageRevision
 	var lastErr error
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() (err error) {
 		if err = r.client.Get(r.ctx, key, pr); err != nil {
@@ -209,7 +210,7 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func (r *runner) doUpgrade(pr *porchapi.PackageRevision) (*porchapi.PackageRevision, error) {
+func (r *runner) doUpgrade(pr *porchapiv1a1.PackageRevision) (*porchapiv1a1.PackageRevision, error) {
 	if !pr.IsPublished() {
 		return nil, pkgerrors.Errorf("to upgrade a package, it must be in a published state, not %q", pr.Spec.Lifecycle)
 	}
@@ -229,7 +230,7 @@ func (r *runner) doUpgrade(pr *porchapi.PackageRevision) (*porchapi.PackageRevis
 	}
 	upstreamPackageName := oldUpstreamPr.Spec.PackageName
 	upstreamRepoName := oldUpstreamPr.Spec.RepositoryName
-	var newUpstreamPr *porchapi.PackageRevision
+	var newUpstreamPr *porchapiv1a1.PackageRevision
 	if r.revision == 0 {
 		newUpstreamPr = r.findLatestPackageRevisionForRef(upstreamPackageName, upstreamRepoName)
 		if newUpstreamPr == nil {
@@ -246,19 +247,19 @@ func (r *runner) doUpgrade(pr *porchapi.PackageRevision) (*porchapi.PackageRevis
 		return nil, pkgerrors.Errorf("new upstream package revision %s is not published", newUpstreamPr.Name)
 	}
 
-	upgradeTask := &porchapi.Task{
-		Type: porchapi.TaskTypeUpgrade,
-		Upgrade: &porchapi.PackageUpgradeTaskSpec{
-			OldUpstream: porchapi.PackageRevisionRef{
+	upgradeTask := &porchapiv1a1.Task{
+		Type: porchapiv1a1.TaskTypeUpgrade,
+		Upgrade: &porchapiv1a1.PackageUpgradeTaskSpec{
+			OldUpstream: porchapiv1a1.PackageRevisionRef{
 				Name: oldUpstreamPr.Name,
 			},
-			NewUpstream: porchapi.PackageRevisionRef{
+			NewUpstream: porchapiv1a1.PackageRevisionRef{
 				Name: newUpstreamPr.Name,
 			},
-			LocalPackageRevisionRef: porchapi.PackageRevisionRef{
+			LocalPackageRevisionRef: porchapiv1a1.PackageRevisionRef{
 				Name: pr.Name,
 			},
-			Strategy: porchapi.PackageMergeStrategy(r.strategy),
+			Strategy: porchapiv1a1.PackageMergeStrategy(r.strategy),
 		},
 	}
 	newPr := makePackageRevision(pr, r.workspace, upgradeTask)
@@ -267,12 +268,12 @@ func (r *runner) doUpgrade(pr *porchapi.PackageRevision) (*porchapi.PackageRevis
 	return newPr, pkgerrors.Wrapf(err, "failed to do create package revision %q", newPr.Name)
 }
 
-func (r *runner) doSubpackageUpgrade(parentPR *porchapi.PackageRevision) (*porchapi.PackageRevision, error) {
-	if parentPR.Spec.Lifecycle != porchapi.PackageRevisionLifecycleDraft {
+func (r *runner) doSubpackageUpgrade(parentPR *porchapiv1a1.PackageRevision) (*porchapiv1a1.PackageRevision, error) {
+	if parentPR.Spec.Lifecycle != porchapiv1a1.PackageRevisionLifecycleDraft {
 		return nil, pkgerrors.Errorf("to upgrade an independent subpackage, its parent package must be in state draft, not %q", parentPR.Spec.Lifecycle)
 	}
 
-	var resources porchapi.PackageRevisionResources
+	var resources porchapiv1a1.PackageRevisionResources
 	if err := r.client.Get(r.ctx, client.ObjectKey{
 		Namespace: *r.cfg.Namespace,
 		Name:      parentPR.Name,
@@ -305,7 +306,7 @@ func (r *runner) doSubpackageUpgrade(parentPR *porchapi.PackageRevision) (*porch
 	upstreamPackageName := oldUpstreamPr.Spec.PackageName
 	upstreamRepoName := oldUpstreamPr.Spec.RepositoryName
 
-	var newUpstreamPr *porchapi.PackageRevision
+	var newUpstreamPr *porchapiv1a1.PackageRevision
 	if r.revision == 0 {
 		newUpstreamPr = r.findLatestPackageRevisionForRef(upstreamPackageName, upstreamRepoName)
 		if newUpstreamPr == nil {
@@ -322,19 +323,19 @@ func (r *runner) doSubpackageUpgrade(parentPR *porchapi.PackageRevision) (*porch
 		return nil, pkgerrors.Errorf("new upstream package revision %s is not published", newUpstreamPr.Name)
 	}
 
-	upgradeTask := porchapi.Task{
-		Type: porchapi.TaskTypeUpgrade,
-		Upgrade: &porchapi.PackageUpgradeTaskSpec{
-			OldUpstream: porchapi.PackageRevisionRef{
+	upgradeTask := porchapiv1a1.Task{
+		Type: porchapiv1a1.TaskTypeUpgrade,
+		Upgrade: &porchapiv1a1.PackageUpgradeTaskSpec{
+			OldUpstream: porchapiv1a1.PackageRevisionRef{
 				Name: oldUpstreamPr.Name,
 			},
-			NewUpstream: porchapi.PackageRevisionRef{
+			NewUpstream: porchapiv1a1.PackageRevisionRef{
 				Name: newUpstreamPr.Name,
 			},
-			LocalPackageRevisionRef: porchapi.PackageRevisionRef{
+			LocalPackageRevisionRef: porchapiv1a1.PackageRevisionRef{
 				Name: parentPR.Name,
 			},
-			Strategy:      porchapi.PackageMergeStrategy(r.strategy),
+			Strategy:      porchapiv1a1.PackageMergeStrategy(r.strategy),
 			SubpackageDir: r.subpackageDir,
 		},
 	}
@@ -349,28 +350,28 @@ func (r *runner) doSubpackageUpgrade(parentPR *porchapi.PackageRevision) (*porch
 
 }
 
-func makePackageRevision(oldLocal *porchapi.PackageRevision, workspace string, task *porchapi.Task) *porchapi.PackageRevision {
-	return &porchapi.PackageRevision{
+func makePackageRevision(oldLocal *porchapiv1a1.PackageRevision, workspace string, task *porchapiv1a1.Task) *porchapiv1a1.PackageRevision {
+	return &porchapiv1a1.PackageRevision{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: porchapi.SchemeGroupVersion.String(),
+			APIVersion: porchapiv1a1.SchemeGroupVersion.String(),
 			Kind:       "PackageRevision",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: oldLocal.Namespace,
 		},
-		Spec: porchapi.PackageRevisionSpec{
+		Spec: porchapiv1a1.PackageRevisionSpec{
 			PackageName:    oldLocal.Spec.PackageName,
 			RepositoryName: oldLocal.Spec.RepositoryName,
 			WorkspaceName:  workspace,
-			Tasks:          []porchapi.Task{*task},
+			Tasks:          []porchapiv1a1.Task{*task},
 		},
 	}
 }
 
-func (r *runner) findPackageRevision(prName string) *porchapi.PackageRevision {
+func (r *runner) findPackageRevision(prName string) *porchapiv1a1.PackageRevision {
 	// Use GET instead of searching through cached list
 	if r.discover == "" {
-		pr := &porchapi.PackageRevision{}
+		pr := &porchapiv1a1.PackageRevision{}
 		ns := ""
 		if r.cfg.Namespace != nil {
 			ns = *r.cfg.Namespace
@@ -390,10 +391,10 @@ func (r *runner) findPackageRevision(prName string) *porchapi.PackageRevision {
 	return nil
 }
 
-func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *porchapi.PackageRevision {
+func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *porchapiv1a1.PackageRevision {
 	// Use List with server-side filtering by package name, repo, and revision
 	if r.discover == "" {
-		list := &porchapi.PackageRevisionList{}
+		list := &porchapiv1a1.PackageRevisionList{}
 		ns := ""
 		if r.cfg.Namespace != nil {
 			ns = *r.cfg.Namespace
@@ -441,11 +442,11 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 	return nil
 }
 
-func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapi.PackageRevision {
+func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapiv1a1.PackageRevision {
 	// Discovery mode always uses cached list
 	if r.discover != "" {
 		latest := 0
-		var output *porchapi.PackageRevision
+		var output *porchapiv1a1.PackageRevision
 		for _, pr := range r.prs {
 			if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision > latest {
 				latest = pr.Spec.Revision
@@ -456,7 +457,7 @@ func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapi.Pa
 	}
 
 	// Non-discovery mode: list with server-side filtering
-	list := &porchapi.PackageRevisionList{}
+	list := &porchapiv1a1.PackageRevisionList{}
 	ns := ""
 	if r.cfg.Namespace != nil {
 		ns = *r.cfg.Namespace
@@ -483,7 +484,7 @@ func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapi.Pa
 		return nil
 	}
 	latest := 0
-	var output *porchapi.PackageRevision
+	var output *porchapiv1a1.PackageRevision
 	for i := range list.Items {
 		pr := &list.Items[i]
 		if pr.Spec.PackageName == name && pr.Spec.RepositoryName == repo && pr.IsPublished() && pr.Spec.Revision > latest {
@@ -494,7 +495,7 @@ func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapi.Pa
 	return output
 }
 
-func (r *runner) findPackageRevisionFromUpstream(upstream *kptfilev1.Upstream) (*porchapi.PackageRevision, error) {
+func (r *runner) findPackageRevisionFromUpstream(upstream *kptfilev1.Upstream) (*porchapiv1a1.PackageRevision, error) {
 	upstreamRepo, upstreamPkg, upstreamRef, isManaged, err := util.GetRepoPackageRefFromUpstream(upstream)
 
 	if err != nil {
@@ -554,11 +555,11 @@ func (r *runner) findPackageRevisionFromUpstream(upstream *kptfilev1.Upstream) (
 	return foundPR, nil
 }
 
-func (r *runner) findUpstreamName(pr *porchapi.PackageRevision) string {
+func (r *runner) findUpstreamName(pr *porchapiv1a1.PackageRevision) string {
 	switch pr.Spec.Tasks[0].Type {
-	case porchapi.TaskTypeClone:
+	case porchapiv1a1.TaskTypeClone:
 		return pr.Spec.Tasks[0].Clone.Upstream.UpstreamRef.Name
-	case porchapi.TaskTypeEdit:
+	case porchapiv1a1.TaskTypeEdit:
 		if n := r.findEditOrigin(pr); n != "" {
 			return n
 		}
@@ -571,16 +572,16 @@ func (r *runner) findUpstreamName(pr *porchapi.PackageRevision) string {
 			}
 		}
 		return ""
-	case porchapi.TaskTypeUpgrade:
+	case porchapiv1a1.TaskTypeUpgrade:
 		return pr.Spec.Tasks[0].Upgrade.NewUpstream.Name
 	default:
 		return ""
 	}
 }
 
-func (r *runner) findEditOrigin(currentPr *porchapi.PackageRevision) string {
+func (r *runner) findEditOrigin(currentPr *porchapiv1a1.PackageRevision) string {
 	pr := currentPr
-	for pr != nil && pr.Spec.Tasks[0].Type == porchapi.TaskTypeEdit {
+	for pr != nil && pr.Spec.Tasks[0].Type == porchapiv1a1.TaskTypeEdit {
 		sourceName := pr.Spec.Tasks[0].Edit.Source.Name
 		pr = r.findPackageRevision(sourceName)
 	}
@@ -591,7 +592,7 @@ func (r *runner) findEditOrigin(currentPr *porchapi.PackageRevision) string {
 }
 
 func (r *runner) listPackageRevisions() error {
-	packageRevisionList := porchapi.PackageRevisionList{}
+	packageRevisionList := porchapiv1a1.PackageRevisionList{}
 	listOpts := []client.ListOption{}
 	if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
 		listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
@@ -603,13 +604,13 @@ func (r *runner) listPackageRevisions() error {
 	return nil
 }
 
-func (r *runner) findUpstreamByLock(lock *porchapi.Locator) *porchapi.PackageRevision {
+func (r *runner) findUpstreamByLock(lock *porchapiv1a1.Locator) *porchapiv1a1.PackageRevision {
 	if lock == nil || lock.Git == nil {
 		return nil
 	}
 
 	target := lock.Git
-	var bestMatch *porchapi.PackageRevision
+	var bestMatch *porchapiv1a1.PackageRevision
 
 	for i := range r.prs {
 		candidate := r.prs[i]
@@ -629,7 +630,7 @@ func (r *runner) findUpstreamByLock(lock *porchapi.Locator) *porchapi.PackageRev
 	return bestMatch
 }
 
-func (r *runner) matchesTarget(candidate porchapi.PackageRevision, target *porchapi.GitLock) bool {
+func (r *runner) matchesTarget(candidate porchapiv1a1.PackageRevision, target *porchapiv1a1.GitLock) bool {
 	if !candidate.IsPublished() {
 		return false
 	}
