@@ -52,7 +52,7 @@
 						&::after {
 							display: inline-flex;
 							content: '\f078';
-							font-family: 'Font Awesome 5 Free';
+  							font: var(--fa-font-solid);
 						}
 					}
 					&.active-path {
