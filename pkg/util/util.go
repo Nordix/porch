@@ -28,10 +28,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
 	porchapi "github.com/kptdev/porch/api/porch"
-	porchapiv1alpha1 "github.com/kptdev/porch/api/porch/v1alpha1"
-
+	porchapiv1a1 "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	pkgerrors "github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -76,7 +75,7 @@ func GetPorchApiServiceKey(ctx context.Context) (client.ObjectKey, error) {
 	}
 
 	apiSvc := registrationapi.APIService{}
-	apiSvcName := porchapiv1alpha1.SchemeGroupVersion.Version + "." + porchapiv1alpha1.SchemeGroupVersion.Group
+	apiSvcName := porchapiv1a1.SchemeGroupVersion.Version + "." + porchapiv1a1.SchemeGroupVersion.Group
 	err = c.Get(ctx, client.ObjectKey{
 		Name: apiSvcName,
 	}, &apiSvc)
@@ -275,7 +274,7 @@ func GenerateUid(prefix string, kubeNs string, kubeName string) types.UID {
 	space := uuid.MustParse(uuidSpace)
 	buff := bytes.Buffer{}
 	buff.WriteString(prefix)
-	buff.WriteString(strings.ToLower(porchapiv1alpha1.SchemeGroupVersion.Identifier()))
+	buff.WriteString(strings.ToLower(porchapiv1a1.SchemeGroupVersion.Identifier()))
 	buff.WriteString("/")
 	buff.WriteString(strings.ToLower(kubeNs))
 	buff.WriteString("/")
@@ -370,8 +369,91 @@ func RetryOnErrorConditional(retries int, shouldRetryFunc func(error) bool, f fu
 	return err
 }
 
-func GetRepoPackageRefFromUpstream(upstream *kptfilev1.Upstream) (upstreamRepoSpec *configapi.RepositorySpec, upstreamPackage, upstreamRef string, isManagedReference bool, err error) {
+// FindBestSemverMatch selects the highest semver tag from cachedTags that satisfies constraint.
+// It returns the selected tag (e.g. "v1.2.3") for the given imageName (used for logging only).
+func FindBestSemverMatch(constraint string, imageName string, cachedTags []string) (string, error) {
+	c, err := semver.NewConstraint(constraint)
+	if err != nil {
+		return "", fmt.Errorf("invalid semver constraint %q: %w", constraint, err)
+	}
 
+	type candidate struct {
+		key     string
+		version *semver.Version
+	}
+
+	var matches []candidate
+	for _, tag := range cachedTags {
+		v, err := semver.NewVersion(tag)
+		if err != nil {
+			klog.Infof("Failed to parse version %q from cached image %q: %v", tag, imageName, err)
+			continue
+		}
+
+		if c.Check(v) {
+			matches = append(matches, candidate{key: tag, version: v})
+		}
+	}
+
+	if len(matches) == 0 {
+		klog.Infof("Image %q with constraint %q is not found in the cache", imageName, constraint)
+		return "", fmt.Errorf("no image matching %q with constraint %q found in the cache", imageName, constraint)
+	}
+
+	slices.SortFunc(matches, func(a, b candidate) int {
+		return a.version.Compare(b.version)
+	})
+
+	selected := matches[len(matches)-1]
+	klog.Infof("Selected image %q (version %q) for request %q",
+		imageName+":"+selected.key, selected.version, imageName)
+
+	return selected.key, nil
+}
+
+func GetImageName(image string) string {
+	if i := strings.Index(image, "@"); i != -1 {
+		image = image[:i]
+	}
+
+	if i := strings.LastIndex(image, ":"); i != -1 && !strings.Contains(image[i+1:], "/") {
+		image = image[:i]
+	}
+
+	if i := strings.LastIndex(image, "/"); i != -1 {
+		image = image[i+1:]
+	}
+	return image
+}
+
+func GetImageRepository(image string) string {
+	lastSlash := strings.LastIndex(image, "/")
+	if lastSlash == -1 {
+		return ""
+	}
+	return image[:lastSlash]
+}
+
+func GetImageTag(image string) string {
+	if strings.Contains(image, "@sha256:") {
+		return ""
+	}
+
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+
+	if lastColon == -1 || lastColon < lastSlash {
+		return "latest"
+	}
+
+	return image[lastColon+1:]
+}
+
+func ImageJoin(prefix, image string) string {
+	return strings.TrimRight(prefix, "/") + "/" + strings.TrimLeft(image, "/")
+}
+
+func GetRepoPackageRefFromUpstream(upstream *kptfilev1.Upstream) (upstreamRepoSpec *configapi.RepositorySpec, upstreamPackage, upstreamRef string, isManagedReference bool, err error) {
 	isManagedReference = false
 
 	if upstream == nil || upstream.Git == nil || upstream.Git.Repo == "" {
