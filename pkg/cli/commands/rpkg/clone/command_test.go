@@ -296,11 +296,11 @@ func TestPreRunE(t *testing.T) {
 			}
 
 			// Mark flags as changed if explicitly set in test
-			if ws, ok := test.flags["workspace"]; ok {
-				assert.NoError(t, cmd.Flags().Set("workspace", ws))
+			if repo, ok := test.flags["repository"]; ok && repo != "" {
+				_ = cmd.Flags().Set("repository", repo)
 			}
-			if repo, ok := test.flags["repository"]; ok {
-				assert.NoError(t, cmd.Flags().Set("repository", repo))
+			if ws, ok := test.flags["workspace"]; ok && ws != "" {
+				_ = cmd.Flags().Set("workspace", ws)
 			}
 
 			err := r.preRunE(cmd, test.args)

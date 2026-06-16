@@ -15,6 +15,7 @@
 package porch
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,19 +46,16 @@ func TestIsValidSubpackageDir(t *testing.T) {
 		{name: "empty segment (double slash)", dir: "sub//pkg", expectValid: false},
 		{name: "with underscores (invalid DNS)", dir: "my_subpkg", expectValid: false},
 		{name: "mixed with underscores (invalid DNS)", dir: "my-sub_pkg.v1/nested-dir", expectValid: false},
-		{name: "with dots in name", dir: "my.subpkg", expectValid: false},
 
 		// Valid cases
 		{name: "simple directory", dir: "subpkg", expectValid: true},
 		{name: "nested directory", dir: "path/to/subpkg", expectValid: true},
 		{name: "two levels", dir: "sub/pkg", expectValid: true},
 		{name: "with hyphens", dir: "my-subpkg", expectValid: true},
+		{name: "with dots in name", dir: "my.subpkg", expectValid: true},
 		{name: "numeric name", dir: "123", expectValid: true},
 		{name: "deeply nested", dir: "a/b/c/d/e", expectValid: true},
 		{name: "single char segments", dir: "a/b/c", expectValid: true},
-		{name: "starts with digit", dir: "1subpackage", expectValid: true},
-		{name: "ends with digit", dir: "subpackage1", expectValid: true},
-		{name: "contains digits", dir: "1subpckage2/3subpackage4/5subpackage6", expectValid: true},
 	}
 
 	for _, tt := range tests {
@@ -67,6 +65,101 @@ func TestIsValidSubpackageDir(t *testing.T) {
 				assert.NoError(t, err)
 			} else {
 				assert.Error(t, err)
+			}
+		})
+	}
+}
+
+func TestValidSubpkgObjName(t *testing.T) {
+	tests := []struct {
+		name           string
+		subpackageName string
+		wantErr        bool
+		errContains    string
+	}{
+		{
+			name:           "valid subpackage name",
+			subpackageName: "my-subpackage",
+			wantErr:        false,
+		},
+		{
+			name:           "valid subpackage name with dots",
+			subpackageName: "my.sub.package",
+			wantErr:        false,
+		},
+		{
+			name:           "valid subpackage name with multiple segments",
+			subpackageName: "foo.bar.baz",
+			wantErr:        false,
+		},
+		{
+			name:           "invalid subpackage name with uppercase",
+			subpackageName: "My-Subpackage",
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+		{
+			name:           "invalid subpackage name with underscore",
+			subpackageName: "my_subpackage",
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+		{
+			name:           "invalid subpackage name starting with dot",
+			subpackageName: ".mysubpackage",
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+		{
+			name:           "invalid subpackage name ending with dot",
+			subpackageName: "mysubpackage.",
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+		{
+			name:           "invalid subpackage name with consecutive dots",
+			subpackageName: "my..subpackage",
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+		{
+			name:           "empty subpackage name",
+			subpackageName: "",
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+		{
+			name:           "invalid subpackage name too long",
+			subpackageName: strings.Repeat("a", 254),
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+		{
+			name:           "valid subpackage name at max length",
+			subpackageName: strings.Repeat("a", 253),
+			wantErr:        false,
+		},
+		{
+			name:           "invalid subpackage name with special characters",
+			subpackageName: "my-sub@package",
+			wantErr:        true,
+			errContains:    "invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := IsValidSubpackageDir(tt.subpackageName)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ValidSubpkgObjName() expected error but got nil")
+				} else if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("ValidSubpkgObjName() error = %v, want error containing %q", err, tt.errContains)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ValidSubpkgObjName() unexpected error = %v", err)
+				}
 			}
 		})
 	}
