@@ -103,7 +103,7 @@ Key points:
 - The first task is the parent's original task (e.g., `init` or `clone`)
 - The second task is the new `clone` task with `subpackageDir` set to the target subdirectory
 - `upstreamRef.upstreamRef.name` identifies the published upstream package revision to clone from
-- `resourceVersion` and `uid` must match the current parent package revision (fetch them with `kubectl get packagerevision <name> -o json`)
+- `resourceVersion` must match the current parent package revision (fetch it with `kubectl get packagerevision <name> -o json`)
 - The `"clone"` task is removed from the `PackageRevision` resource once the clone operation has been executed.
 
 ### Upgrading a subpackage via the API
@@ -139,7 +139,7 @@ second task of type `upgrade` that includes `subpackageDir`. The parent must be 
             "name": "porch-test.upstream-function.beta"
           },
           "localPackageRevisionRef": {
-            "name": "porch-test.nf-with-sub.second-draft"
+            "name": "porch-test.package-with-sub.second-draft"
           },
           "strategy": "force-delete-replace",
           "subpackageDir": "subpackages/subpackage1"
@@ -152,18 +152,17 @@ second task of type `upgrade` that includes `subpackageDir`. The parent must be 
 
 Key points:
 
-- `oldUpstreamRef.name` is the package revision the subpackage was originally cloned from
-- `newUpstreamRef.name` is the new upstream package revision to upgrade to
-- `localPackageRevisionRef.name` is the published parent package revision that contains the current subpackage contents (used as the local side of the 3-way merge)
+- `oldUpstreamRef.name` is the published package revision the subpackage was originally cloned from
+- `newUpstreamRef.name` is the new upstream published package revision to upgrade to
+- `localPackageRevisionRef.name` is the parent draft package revision that contains the current subpackage contents (used as the local side of the 3-way merge)
 - `strategy` controls the merge behaviour (e.g., `resource-merge`, `force-delete-replace`)
 - `subpackageDir` identifies which subdirectory contains the independent subpackage to upgrade
-- The `"upgrade"` task is removed from the `PackageRevision` resource once the clone operation has been executed.
-
+- The `"upgrade"` task is removed from the `PackageRevision` resource once the upgrade operation has been executed.
 
 ### Typical workflow
 
 1. Create or copy a parent package revision (it will be in Draft state with one task)
-2. `kubectl get packagerevision <name> -n <namespace> -o json` to fetch the current `resourceVersion` and `uid`
+2. `kubectl get packagerevision <name> -n <namespace> -o json` to fetch the current `resourceVersion`
 3. Append the clone or upgrade task to the `spec.tasks` array
 4. `kubectl apply -f <file>.json` to trigger the operation
 5. Verify with `porchctl rpkg pull <name> ./dir --namespace=<namespace>` to inspect the subpackage contents

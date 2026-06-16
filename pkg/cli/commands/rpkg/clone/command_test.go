@@ -295,9 +295,12 @@ func TestPreRunE(t *testing.T) {
 				subpackageDir: test.flags["subpackage-dir"],
 			}
 
-			// Mark workspace flag as changed if explicitly set in test
-			if ws, ok := test.flags["workspace"]; ok && ws != "" {
+			// Mark flags as changed if explicitly set in test
+			if ws, ok := test.flags["workspace"]; ok {
 				_ = cmd.Flags().Set("workspace", ws)
+			}
+			if repo, ok := test.flags["repository"]; ok {
+				_ = cmd.Flags().Set("repository", repo)
 			}
 
 			err := r.preRunE(cmd, test.args)
