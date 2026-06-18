@@ -124,13 +124,6 @@ func IsValidSubpackageDir(subpackageDir string) error {
 		return pkgerrors.Errorf("subpackage directory %q is invalid, it cannot contain '.' or start with '/' or end with '/'", subpackageDir)
 	}
 
-	// Reject any path segment equal to "." (for example ".", "./subpkg", or "subpkg/./nested").
-	for _, segment := range strings.Split(subpackageDir, "/") {
-		if segment == "." {
-			return pkgerrors.Errorf("subpackage directory %q is invalid, it cannot contain '.'", subpackageDir)
-		}
-	}
-
 	if !validRelativePathRegex.MatchString(subpackageDir) {
 		return pkgerrors.Errorf("subpackage directory %q is invalid, it must match regular expression %q", subpackageDir, validRelativePathRegex.String())
 	}
