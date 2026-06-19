@@ -327,12 +327,16 @@ porchctl rpkg clone SOURCE_PACKAGE NAME [flags]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--repository string` | Downstream repository for cloned package | (required unless `--subpackage-dir` is set) |
-| `--workspace string` | Workspace name for new package | `v1` (ignored when `--subpackage-dir` is set; must not be explicitly specified) |
+| `--workspace string` | Workspace name for new package | `v1` (must not be explicitly specified together with `--subpackage-dir`) |
 | `--directory string` | Directory within upstream repository (Git only) | |
 | `--ref string` | Branch, tag, or SHA in upstream repository (Git only) | |
 | `--strategy string` | Update strategy: `resource-merge`, `fast-forward`, `force-delete-replace`, `copy-merge` | `resource-merge` |
 | `--secret-ref string` | Secret name for basic auth (Git only) | |
 | `--subpackage-dir string` | Directory path into which the upstream package will be cloned as an independent subpackage. When set, `NAME` refers to the parent package revision (which must be in Draft state), and `--repository`/`--workspace` must not be specified. | |
+
+Note that **--subpackage-dir** paths must follow the
+[rules described on the subpackage page]({{% relref "/docs/2_concepts/subpackages/#subpackage-naming" %}}).
+
 
 **Examples:**
 
@@ -596,6 +600,10 @@ porchctl rpkg upgrade SOURCE_PACKAGE_REVISION [flags]
 | `--strategy string` | Update strategy: `resource-merge`, `fast-forward`, `force-delete-replace`, `copy-merge` | `resource-merge` |
 | `--discover string` | Discover available updates instead of upgrading. Options: `upstream`, `downstream` | |
 | `--subpackage-dir string` | Directory path of an independent subpackage to upgrade within the parent package. When set, `SOURCE_PACKAGE_REVISION` refers to the parent Draft package revision, and `--workspace` must not be specified. | |
+
+
+Note that **--subpackage-dir** paths must follow the
+[rules described on the subpackage page]({{% relref "/docs/2_concepts/subpackages/#subpackage-naming" %}}).
 
 **Examples:**
 

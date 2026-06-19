@@ -444,8 +444,8 @@ func GetRepoPackageRefFromUpstream(upstream *kptfileapi.Upstream) (upstreamRepoS
 		return
 	}
 
-	if !porchapi.IsValidSubpackageDir(upstream.Git.Directory) {
-		err = pkgerrors.Errorf("git directory reference %q in upstream is invalid", upstream.Git.Directory)
+	if validationErr := porchapi.IsValidSubpackageDir(upstream.Git.Directory); validationErr != nil {
+		err = pkgerrors.Wrapf(validationErr, "git directory reference %q in upstream is invalid", upstream.Git.Directory)
 		return
 	}
 

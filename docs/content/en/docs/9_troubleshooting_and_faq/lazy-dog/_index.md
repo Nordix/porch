@@ -58,11 +58,15 @@ into your Starlark script, which will cause an error and trigger the output:
 You can use the Porch Kubernetes API directly (via `kubectl` or `curl`) to clone an upstream package as an independent
 subpackage into an existing Draft package revision, and to upgrade that subpackage later.
 
+Note that **subpackageDir** paths must follow the
+[rules described on the subpackage page]({{% relref "/docs/2_concepts/subpackages/#subpackage-naming" %}}).
+
 ### Cloning a subpackage via the API
 
- To clone an upstream package into a subdirectory of an existing Draft package revision, update the parent `PackageRevision` by appending
- an additional task of type `clone` that includes `subpackageDir` (for example via `kubectl apply` / server-side apply, or
- a PATCH request). The parent must already exist in Draft state with exactly one task.
+To clone an upstream package into a subdirectory of an existing Draft package revision, update the parent `PackageRevision` by appending
+an additional task of type `clone` that includes `subpackageDir` (for example via `kubectl apply` / server-side apply, or
+a PATCH request). The parent must already exist in Draft state with exactly one task.
+
 
 ```json
 {
@@ -107,9 +111,9 @@ Key points:
 
 ### Upgrading a subpackage via the API
 
- To upgrade an existing independent subpackage, update the parent `PackageRevision` by appending
- an additional task of type `upgrade` that includes `subpackageDir` (for example via `kubectl apply` / server-side apply,
- or a PATCH request). The parent must be in Draft state with exactly one task.
+To upgrade an existing independent subpackage, update the parent `PackageRevision` by appending
+an additional task of type `upgrade` that includes `subpackageDir` (for example via `kubectl apply` / server-side apply,
+or a PATCH request). The parent must be in Draft state with exactly one task.
 
 ```json
 {
