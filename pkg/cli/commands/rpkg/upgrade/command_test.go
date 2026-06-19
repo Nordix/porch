@@ -194,15 +194,17 @@ func TestPreRunSubpackageDir(t *testing.T) {
 	const ns = "ns"
 
 	t.Run("Subpackage upgrade with workspace flag returns error", func(t *testing.T) {
+		cmd := NewCommand(context.Background(), &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()})
+		assert.NoError(t, cmd.Flags().Set("workspace", "ws"))
 		r := &runner{
 			ctx:           context.Background(),
 			cfg:           &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()},
-			Command:       NewCommand(context.Background(), &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()}),
+			Command:       cmd,
 			revision:      2,
 			subpackageDir: "my-subpkg",
 			workspace:     "ws",
 		}
-		err := r.preRunE(r.Command, []string{"some-pr"})
+		err := r.preRunE(cmd, []string{"some-pr"})
 		assert.ErrorContains(t, err, "--workspace may not be specified on subpackage upgrades")
 	})
 
@@ -217,6 +219,20 @@ func TestPreRunSubpackageDir(t *testing.T) {
 		}
 		err := r.preRunE(r.Command, []string{"some-pr"})
 		assert.NoError(t, err)
+	})
+
+	t.Run("Subpackage upgrade with invalid subpackage-dir returns error", func(t *testing.T) {
+		r := &runner{
+			ctx:           context.Background(),
+			cfg:           &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()},
+			Command:       NewCommand(context.Background(), &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()}),
+			revision:      2,
+			subpackageDir: "../invalid",
+			strategy:      "resource-merge",
+		}
+		err := r.preRunE(r.Command, []string{"some-pr"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), `invalid --subpackage-dir "../invalid"`)
 	})
 }
 
