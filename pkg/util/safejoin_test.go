@@ -1,4 +1,4 @@
-// Copyright 2022 The kpt Authors
+// Copyright 2022, 2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package engine
+package util
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ import (
 
 // Relevant: https://github.com/golang/go/issues/20126
 
-func TestSafeJoin(t *testing.T) {
+func TestFilepathSafeJoin(t *testing.T) {
 	grid := []struct {
 		base      string
 		relative  string
@@ -64,6 +64,16 @@ func TestSafeJoin(t *testing.T) {
 			wantError: true,
 		},
 		{
+			base:      "/tmp",
+			relative:  "..",
+			wantError: true,
+		},
+		{
+			base:      "/tmp",
+			relative:  ".",
+			wantError: true,
+		},
+		{
 			base:      "tmp/",
 			relative:  "a/../foo",
 			wantError: true,
@@ -82,7 +92,7 @@ func TestSafeJoin(t *testing.T) {
 
 	for _, g := range grid {
 		t.Run(fmt.Sprintf("%#v", g), func(t *testing.T) {
-			got, err := filepathSafeJoin(g.base, g.relative)
+			got, err := FilepathSafeJoin(g.base, g.relative)
 			if g.wantError {
 				if err == nil {
 					t.Errorf("got %q and nil error, want error", got)
@@ -91,6 +101,62 @@ func TestSafeJoin(t *testing.T) {
 				if g.want != got {
 					t.Errorf("unexpected value; got %q, want %q", got, g.want)
 				}
+			}
+		})
+	}
+}
+
+func TestValidateResourcePaths(t *testing.T) {
+	tests := []struct {
+		name      string
+		resources map[string]string
+		wantError bool
+	}{
+		{
+			name:      "valid simple path",
+			resources: map[string]string{"Kptfile": "content", "subdir/file.yaml": "content"},
+			wantError: false,
+		},
+		{
+			name:      "path traversal with ..",
+			resources: map[string]string{"../etc/config": "content"},
+			wantError: true,
+		},
+		{
+			name:      "bare .. without trailing path",
+			resources: map[string]string{"..": "content"},
+			wantError: true,
+		},
+		{
+			name:      "dot refers to directory not a file",
+			resources: map[string]string{".": "content"},
+			wantError: true,
+		},
+		{
+			name:      "path traversal nested",
+			resources: map[string]string{"a/../../etc/file": "content"},
+			wantError: true,
+		},
+		{
+			name:      "absolute path",
+			resources: map[string]string{"/etc/cron.d/job": "content"},
+			wantError: true,
+		},
+		{
+			name:      "empty map is valid",
+			resources: map[string]string{},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateResourcePaths(tt.resources)
+			if tt.wantError && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tt.wantError && err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}

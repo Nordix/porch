@@ -1,4 +1,4 @@
-// Copyright 2025 The kpt Authors
+// Copyright 2025-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -223,4 +223,28 @@ func (t *PorchSuite) TestUpdateResourcesEmptyPatch() {
 	renderStatus := prResources.Status.RenderStatus
 	assert.Empty(t, renderStatus.Err, "render error must be empty for empty patch operation.")
 	assert.Zero(t, renderStatus.Result.ExitCode, "exit code must be zero for empty patch operation.")
+}
+
+func (t *PorchSuite) TestUpdateResourcesRejectsInvalidPaths() {
+	const (
+		repository  = "invalid-path-test"
+		packageName = "invalid-path-pkg"
+		workspace   = defaultWorkspace
+	)
+
+	t.RegisterGitRepositoryF(t.GetPorchTestRepoURL(), repository, "", suiteutils.GiteaUser, suiteutils.GiteaPassword)
+	pr := t.CreatePackageDraftF(repository, packageName, workspace)
+
+	var prResources porchapi.PackageRevisionResources
+	t.GetF(client.ObjectKey{
+		Namespace: t.Namespace,
+		Name:      pr.Name,
+	}, &prResources)
+
+	// Attempt to add a resource with a relative path that escapes the package directory
+	prResources.Spec.Resources["../../etc/config"] = "content"
+
+	err := t.Client.Update(t.GetContext(), &prResources)
+	t.Require().Error(err, "update with invalid resource path should be rejected")
+	t.Require().ErrorContains(err, "invalid resource path")
 }

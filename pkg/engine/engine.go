@@ -498,6 +498,10 @@ func (cad *cadEngine) UpdatePackageResources(ctx context.Context, repositoryObj 
 		return nil, nil, fmt.Errorf("cannot update a package revision with lifecycle value %q; package must be Draft", lifecycle)
 	}
 
+	if err := util.ValidateResourcePaths(newRes.Spec.Resources); err != nil {
+		return nil, nil, err
+	}
+
 	repo, err := cad.cache.OpenRepository(ctx, repositoryObj)
 	if err != nil {
 		return nil, nil, err

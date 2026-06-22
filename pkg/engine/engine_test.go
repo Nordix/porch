@@ -917,3 +917,51 @@ func TestUpdatePackageResourcesRenderFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdatePackageResourcesRejectsPathTraversal(t *testing.T) {
+	mockCache := &mockCache{}
+	mockTaskHandler := &mockTaskHandler{}
+	mockPkgRev := &mockrepo.MockPackageRevision{}
+
+	repositoryObj := &configapi.Repository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-repo",
+			Namespace: "default",
+		},
+	}
+
+	oldRes := &porchapi.PackageRevisionResources{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pkg",
+			ResourceVersion: "1",
+		},
+	}
+	newRes := &porchapi.PackageRevisionResources{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pkg",
+			ResourceVersion: "1",
+		},
+		Spec: porchapi.PackageRevisionResourcesSpec{
+			Resources: map[string]string{"../../etc/config": "content"},
+		},
+	}
+
+	mockPkgRev.On("GetPackageRevision", mock.Anything).Return(&porchapi.PackageRevision{
+		Spec: porchapi.PackageRevisionSpec{
+			Lifecycle: porchapi.PackageRevisionLifecycleDraft,
+		},
+	}, nil)
+	mockPkgRev.On("Key").Return(repository.PackageRevisionKey{}).Maybe()
+
+	engine := &cadEngine{
+		cache:       mockCache,
+		taskHandler: mockTaskHandler,
+	}
+
+	_, _, err := engine.UpdatePackageResources(context.Background(), repositoryObj, mockPkgRev, oldRes, newRes)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid resource path")
+
+	// Verify that OpenRepository was never called - validation happens before repo access
+	mockCache.AssertNotCalled(t, "OpenRepository", mock.Anything, mock.Anything)
+}
