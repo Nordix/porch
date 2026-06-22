@@ -18,10 +18,12 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"strings"
 	"testing"
 
 	pb "github.com/kptdev/porch/func/evaluator"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/kustomize/kyaml/kio"
 )
@@ -189,4 +191,169 @@ func createMockResourceList(pkg string) []byte {
 	}
 
 	return b.Bytes()
+}
+
+func TestFlattenStderr(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single line no newline",
+			input:    "hello world",
+			expected: "hello world",
+		},
+		{
+			name:     "multiple lines",
+			input:    "Starting mutation\nReplacing value\nCompleted",
+			expected: "Starting mutation | Replacing value | Completed",
+		},
+		{
+			name:     "trailing newline",
+			input:    "Starting mutation\nReplacing value\n",
+			expected: "Starting mutation | Replacing value",
+		},
+		{
+			name:     "leading and trailing newlines",
+			input:    "\nStarting mutation\nReplacing value\n",
+			expected: "Starting mutation | Replacing value",
+		},
+		{
+			name:     "preserves leading spaces",
+			input:    "  indented line\nnext line",
+			expected: "  indented line | next line",
+		},
+		{
+			name:     "preserves trailing spaces",
+			input:    "line with trailing space \nanother line",
+			expected: "line with trailing space  | another line",
+		},
+		{
+			name:     "windows line endings",
+			input:    "Starting mutation\r\nReplacing value\r\nCompleted\r\n",
+			expected: "Starting mutation | Replacing value | Completed",
+		},
+		{
+			name:     "mixed line endings",
+			input:    "line1\r\nline2\nline3\r\n",
+			expected: "line1 | line2 | line3",
+		},
+		{
+			name:     "standalone carriage return",
+			input:    "line1\rline2",
+			expected: "line1 | line2",
+		},
+		{
+			name:     "trailing carriage return",
+			input:    "progress output\r",
+			expected: "progress output",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "single newline",
+			input:    "\n",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := flattenStderr(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestEvaluateFunction_StderrLogIsFlattened(t *testing.T) {
+	// Integration test: verifies that when --flatten-log is enabled,
+	// EvaluateFunctionResponse.Log contains flattened single-line stderr.
+	evaluator := singleFunctionEvaluator{
+		entrypoint: []string{"./testdata/stderr_multiline_test.sh"},
+		flattenLog: true,
+	}
+	req := &pb.EvaluateFunctionRequest{
+		ResourceList: createMockResourceList("./testdata/deployment.yaml"),
+		Image:        "test-stderr",
+	}
+
+	resp, err := evaluator.EvaluateFunction(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	logStr := string(resp.Log)
+	assert.Equal(t, "Starting mutation | Replacing value | Completed", logStr)
+	assert.NotContains(t, logStr, "\n", "resp.Log should be flattened, not contain raw newlines")
+}
+
+func TestEvaluateFunction_StderrLogPreservesRawByDefault(t *testing.T) {
+	// Integration test: verifies that without --flatten-log,
+	// EvaluateFunctionResponse.Log preserves the raw multi-line stderr.
+	evaluator := singleFunctionEvaluator{
+		entrypoint: []string{"./testdata/stderr_multiline_test.sh"},
+		flattenLog: false,
+	}
+	req := &pb.EvaluateFunctionRequest{
+		ResourceList: createMockResourceList("./testdata/deployment.yaml"),
+		Image:        "test-stderr",
+	}
+
+	resp, err := evaluator.EvaluateFunction(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	logStr := string(resp.Log)
+	assert.Contains(t, logStr, "Starting mutation\n")
+	assert.Contains(t, logStr, "Replacing value\n")
+	assert.Contains(t, logStr, "Completed\n")
+	assert.NotContains(t, logStr, " | ", "resp.Log should preserve raw newlines when flatten-log is disabled")
+}
+
+func TestEvaluateFunction_StderrErrorContainsFlattenedMessage(t *testing.T) {
+	// Integration test: verifies that on failure with --flatten-log enabled,
+	// the gRPC error message contains flattened (single-line) stderr.
+	evaluator := singleFunctionEvaluator{
+		entrypoint: []string{"./testdata/stderr_multiline_fail_test.sh"},
+		flattenLog: true,
+	}
+	req := &pb.EvaluateFunctionRequest{
+		ResourceList: createMockResourceList("./testdata/deployment.yaml"),
+		Image:        "test-stderr-fail",
+	}
+
+	resp, err := evaluator.EvaluateFunction(context.Background(), req)
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	errMsg := err.Error()
+	// The error string should contain pipe-separated (flattened) stderr lines.
+	assert.True(t, strings.Contains(errMsg, " | "),
+		"error message should contain flattened stderr with ' | ' separator")
+	assert.NotContains(t, errMsg, "\n",
+		"error message should not contain raw newlines")
+}
+
+func TestEvaluateFunction_StderrErrorPreservesRawByDefault(t *testing.T) {
+	// Integration test: verifies that on failure without --flatten-log,
+	// the gRPC error message contains raw multi-line stderr.
+	evaluator := singleFunctionEvaluator{
+		entrypoint: []string{"./testdata/stderr_multiline_fail_test.sh"},
+		flattenLog: false,
+	}
+	req := &pb.EvaluateFunctionRequest{
+		ResourceList: createMockResourceList("./testdata/deployment.yaml"),
+		Image:        "test-stderr-fail",
+	}
+
+	resp, err := evaluator.EvaluateFunction(context.Background(), req)
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	errMsg := err.Error()
+	assert.Contains(t, errMsg, "\n", "error message should include raw newlines when flatten-log is disabled")
+	assert.NotContains(t, errMsg, " | ", "error message should preserve raw newlines when flatten-log is disabled")
 }
