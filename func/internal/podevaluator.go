@@ -26,30 +26,37 @@ import (
 	"github.com/kptdev/porch/func/evaluator"
 	"github.com/kptdev/porch/pkg/util"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	defaultWrapperServerPort  = "9446"
-	volumeName                = "wrapper-server-tools"
-	volumeMountPath           = "/wrapper-server-tools"
-	wrapperServerBin          = "wrapper-server"
-	gRPCProbeBin              = "grpc-health-probe"
-	krmFunctionImageLabel     = "fn.kpt.dev/image"
-	templateVersionAnnotation = "fn.kpt.dev/template-version"
-	fieldManagerName          = "krm-function-runner"
-	functionContainerName     = "function"
-	defaultManagerNamespace   = "porch-system"
-	defaultRegistry           = "ghcr.io/kptdev/krm-functions-catalog/"
-	serviceDnsNameSuffix      = ".svc.cluster.local"
-	channelBufferSize         = 128
+	defaultWrapperServerPort          = "9446"
+	volumeName                        = "wrapper-server-tools"
+	volumeMountPath                   = "/wrapper-server-tools"
+	wrapperServerBin                  = "wrapper-server"
+	gRPCProbeBin                      = "grpc-health-probe"
+	krmFunctionImageLabel             = "fn.kpt.dev/image"
+	templateVersionAnnotation         = "fn.kpt.dev/template-version"
+	fieldManagerName                  = "krm-function-runner"
+	functionContainerName             = "function"
+	defaultManagerNamespace           = "porch-system"
+	defaultRegistry                   = "ghcr.io/kptdev/krm-functions-catalog/"
+	serviceDnsNameSuffix              = ".svc.cluster.local"
+	channelBufferSize                 = 128
+	defaultMaxWaitlistLength          = 2
+	defaultMaxParallelPodsPerFunction = 1
+	defaultMaxGrpcRetries             = 2
 )
 
 type podEvaluator struct {
-	requestCh chan<- *connectionRequest
+	requestCh  chan<- *connectionRequest
+	evictionCh chan<- *podEvictionRequest
 
 	podCacheManager *podCacheManager
+	maxGrpcRetries  int
 }
 
 type PodEvaluatorOptions struct {
@@ -67,6 +74,7 @@ type PodEvaluatorOptions struct {
 	DefaultImagePrefix         string        // Default image prefix to use when no prefix is given for an image
 	MaxWaitlistLength          int           // Maximum waitlist length per pod
 	MaxParallelPodsPerFunction int           // Maximum parallel pods per function
+	MaxGrpcRetries             int           // Maximum number of retries on gRPC Unavailable errors
 }
 
 var _ Evaluator = &podEvaluator{}
@@ -106,11 +114,15 @@ type podReadyResponse struct {
 func NewPodEvaluator(ctx context.Context, o PodEvaluatorOptions, cl client.Client, functionConfigStore *fnconf.FunctionConfigStore) (Evaluator, error) {
 	maxWaitlist := o.MaxWaitlistLength
 	if maxWaitlist <= 0 {
-		maxWaitlist = 2
+		maxWaitlist = defaultMaxWaitlistLength
 	}
 	maxPods := o.MaxParallelPodsPerFunction
 	if maxPods <= 0 {
-		maxPods = 1
+		maxPods = defaultMaxParallelPodsPerFunction
+	}
+	maxRetries := o.MaxGrpcRetries
+	if maxRetries <= 0 {
+		maxRetries = defaultMaxGrpcRetries
 	}
 
 	managerNs, err := util.GetInClusterNamespace()
@@ -122,14 +134,18 @@ func NewPodEvaluator(ctx context.Context, o PodEvaluatorOptions, cl client.Clien
 
 	reqCh := make(chan *connectionRequest, channelBufferSize)
 	readyCh := make(chan *podReadyResponse, channelBufferSize)
+	evictCh := make(chan *podEvictionRequest, channelBufferSize)
 
 	pe := &podEvaluator{
-		requestCh: reqCh,
+		requestCh:      reqCh,
+		evictionCh:     evictCh,
+		maxGrpcRetries: maxRetries,
 		podCacheManager: &podCacheManager{
 			gcScanInterval:             o.GcScanInterval,
 			podTTL:                     o.PodTTL,
 			connectionRequestCh:        reqCh,
 			podReadyCh:                 readyCh,
+			evictionCh:                 evictCh,
 			functions:                  map[string]*functionInfo{},
 			maxWaitlistLength:          maxWaitlist,
 			maxParallelPodsPerFunction: maxPods,
@@ -187,34 +203,89 @@ func (pe *podEvaluator) EvaluateFunction(ctx context.Context, req *evaluator.Eva
 	}
 	req.Image = image
 
-	// make a buffer for the channel to prevent unnecessary blocking when the pod cache manager sends it to multiple waiting goroutine in batch.
-	responseChannel := make(chan *connectionResponse, 1)
-	// Send a request to request a grpc client.
-	pe.requestCh <- &connectionRequest{
-		image:      req.Image,
-		responseCh: responseChannel,
+	maxRetries := pe.maxGrpcRetries
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			klog.Warningf("Retrying function evaluation for %v (attempt %d/%d) after Unavailable error", req.Image, attempt+1, maxRetries+1)
+		}
+
+		responseChannel := make(chan *connectionResponse, 1)
+		pe.requestCh <- &connectionRequest{
+			image:      req.Image,
+			responseCh: responseChannel,
+		}
+
+		select {
+		case pod := <-responseChannel:
+			if pod == nil {
+				return nil, fmt.Errorf("unable to get the grpc client to the pod for %v: nil pod response", req.Image)
+			}
+			if pod.err != nil {
+				return nil, fmt.Errorf("unable to get the grpc client to the pod for %v: %w", req.Image, pod.err)
+			}
+			if pod.grpcConnection == nil {
+				return nil, fmt.Errorf("unable to get the grpc client to the pod for %v: missing grpc connection", req.Image)
+			}
+
+			decremented := false
+			defer func() {
+				if !decremented {
+					pod.concurrentEvaluations.Add(-1)
+				}
+			}()
+
+			// First attempt: fail fast if pod is dead (no WaitForReady).
+			// Retries: use WaitForReady since eviction cleaned stale pods and
+			// the retry may get a newly-created pod that is still starting.
+			var callOpts []grpc.CallOption
+			if attempt > 0 {
+				callOpts = append(callOpts, grpc.WaitForReady(true))
+			}
+			resp, err := evaluator.NewFunctionEvaluatorClient(pod.grpcConnection).EvaluateFunction(ctx, req, callOpts...)
+			if err != nil {
+				// Retry only on Unavailable — indicates the pod is dead/unreachable:
+				// connection refused (pod deleted), connection reset (pod crashed),
+				// DNS failure (service deleted), TCP timeout (pod IP unreachable).
+				// Other codes (Internal, InvalidArgument, DeadlineExceeded) are real
+				// function errors that should not be retried.
+				if status.Code(err) == codes.Unavailable && ctx.Err() == nil {
+					lastErr = err
+					// Decrement immediately so the evicted pod's counter reflects reality
+					// while we wait for the next attempt.
+					pod.concurrentEvaluations.Add(-1)
+					decremented = true
+					// Wait for the cache manager to confirm eviction before retrying,
+					// preventing re-allocation of the same dead pod.
+					doneCh := make(chan struct{})
+					if pod.podKey == nil {
+						return nil, fmt.Errorf("unable to evict dead pod for %v: missing pod key", req.Image)
+					}
+					evictReq := &podEvictionRequest{image: pod.image, podKey: *pod.podKey, doneCh: doneCh}
+					select {
+					case pe.evictionCh <- evictReq:
+					case <-ctx.Done():
+						return nil, fmt.Errorf("function evaluation timed out for %v: %w", req.Image, ctx.Err())
+					}
+					select {
+					case <-doneCh:
+					case <-ctx.Done():
+						return nil, fmt.Errorf("function evaluation timed out for %v: %w", req.Image, ctx.Err())
+					}
+					continue
+				}
+				klog.V(4).Infof("Resource List: %s", req.ResourceList)
+				return nil, fmt.Errorf("unable to evaluate %v with pod evaluator: %w", req.Image, err)
+			}
+			if len(resp.Log) > 0 {
+				klog.Warningf("evaluating %q succeeded, but stderr is: %v", req.Image, string(resp.Log))
+			}
+			return resp, nil
+		case <-ctx.Done():
+			return nil, fmt.Errorf("function evaluation timed out for %v: %w", req.Image, ctx.Err())
+		}
 	}
 
-	// Waiting for the client from the channel. This step is blocking.
-	select {
-	case pod := <-responseChannel:
-		if pod == nil || pod.grpcConnection == nil || pod.err != nil {
-			return nil, fmt.Errorf("unable to get the grpc client to the pod for %v: %w", req.Image, pod.err)
-		}
-
-		defer pod.concurrentEvaluations.Add(-1)
-
-		resp, err := evaluator.NewFunctionEvaluatorClient(pod.grpcConnection).EvaluateFunction(ctx, req)
-		if err != nil {
-			klog.V(4).Infof("Resource List: %s", req.ResourceList)
-			return nil, fmt.Errorf("unable to evaluate %q with pod evaluator: %w", req.Image, err)
-		}
-		// Log stderr when the function succeeded. If the function fails, stderr will be surfaced to the users.
-		if len(resp.Log) > 0 {
-			klog.Warningf("evaluating %q succeeded, but stderr is: %v", req.Image, string(resp.Log))
-		}
-		return resp, nil
-	case <-ctx.Done():
-		return nil, fmt.Errorf("function evaluation timed out for %v: %w", req.Image, ctx.Err())
-	}
+	return nil, fmt.Errorf("unable to evaluate %v with pod evaluator after retries: %w", req.Image, lastErr)
 }

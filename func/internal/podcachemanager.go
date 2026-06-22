@@ -35,7 +35,7 @@ import (
 
 // podCacheManager manages the cache of the pods and the corresponding GRPC clients.
 // It also does the garbage collection after pods' TTL.
-// It has 2 receive-only channels: connectionRequestCh and podReadyCh.
+// It has 3 receive-only channels: connectionRequestCh, podReadyCh, and evictionCh.
 // It listens to the connectionRequestCh channel and receives clientConnRequest from the
 // GRPC request handlers and add them in the waitlists.
 // It also listens to the podReadyCh channel. If a pod is ready, it notifies the
@@ -48,6 +48,8 @@ type podCacheManager struct {
 	connectionRequestCh <-chan *connectionRequest
 	// podReadyCh is a channel to receive the information when a pod is ready.
 	podReadyCh <-chan *podReadyResponse
+	// evictionCh receives requests to remove specific dead pods from cache
+	evictionCh <-chan *podEvictionRequest
 
 	// functions maps KRM function image names to its pods and waitlist information.
 	functions map[string]*functionInfo
@@ -57,6 +59,15 @@ type podCacheManager struct {
 	maxWaitlistLength          int
 	maxParallelPodsPerFunction int
 	functionConfigMap          *fnconf.FunctionConfigStore
+}
+
+// podEvictionRequest is sent after an Unavailable gRPC error to remove a dead pod from cache.
+type podEvictionRequest struct {
+	image  string
+	podKey client.ObjectKey
+	// doneCh is closed by the cache manager once the pod has been removed from cache,
+	// allowing the caller to wait for eviction completion before retrying.
+	doneCh chan struct{}
 }
 
 // functionInfo holds the list of all pod instances for the same KRM function image.
@@ -114,7 +125,6 @@ func (pcm *podCacheManager) podCacheManager(ctx context.Context) {
 			fn := pcm.FunctionInfo(req.image)
 
 			shouldScaleUp := false
-			pcm.removeUnhealthyPods(fn, false)
 			bestPodIndex, bestWaitlistLen := pcm.findBestPod(fn)
 			_, maxWaitlist, maxPods := pcm.getParamsForImage(req.image)
 			if bestPodIndex == -1 {
@@ -193,6 +203,29 @@ func (pcm *podCacheManager) podCacheManager(ctx context.Context) {
 				pod.SendResponse(ch, nil)
 			}
 			pod.waitlist = nil
+
+		case evict := <-pcm.evictionCh:
+			fn, ok := pcm.functions[evict.image]
+			if !ok {
+				if evict.doneCh != nil {
+					close(evict.doneCh)
+				}
+				continue
+			}
+			idx := slices.IndexFunc(fn.pods, func(pod functionPodInfo) bool {
+				return pod.podData != nil && pod.podKey != nil && *pod.podKey == evict.podKey
+			})
+			if idx != -1 {
+				klog.Infof("Evicting dead pod %s from cache for image %s (Unavailable)", evict.podKey.Name, evict.image)
+				pcm.DeletePodWithServiceInBackgroundByObjectKey(*fn.pods[idx].podData)
+				fn.pods = slices.Delete(fn.pods, idx, idx+1)
+			} else {
+				// Best-effort cleanup of any other stale entries for this image.
+				pcm.removeUnhealthyPods(fn, false)
+			}
+			if evict.doneCh != nil {
+				close(evict.doneCh)
+			}
 
 		case <-tick:
 			pcm.garbageCollector()
