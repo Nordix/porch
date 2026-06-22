@@ -237,7 +237,7 @@ func (t *PorchSuite) TestUpdateResourcesRejectsInvalidPaths() {
 
 	err := t.Client.Update(t.GetContext(), &prResources)
 	t.Require().Error(err, "update with invalid resource path should be rejected")
-	t.Require().ErrorContains(err, "path traversal not allowed")
+	t.Require().ErrorContains(err, "invalid resource path")
 }
 
 func (t *PorchSuite) TestUpdateResourcesEmptyPatch() {

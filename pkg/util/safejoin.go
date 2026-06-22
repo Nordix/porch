@@ -22,9 +22,12 @@ import (
 
 // Relevant: https://github.com/golang/go/issues/20126
 
-// FilepathSafeJoin joins dir and relative, returning an error if the result
-// would escape dir via path traversal.
-func FilepathSafeJoin(dir string, relative string) (string, error) {
+// FilepathSafeJoin joins dir and relative, returning an error if relative is
+// not a clean, canonical relative path within dir. It rejects path traversal
+// (.. sequences), absolute paths, the bare "." and ".." entries, and any path
+// that would be altered by filepath.Clean (e.g. leading "./", redundant
+// separators, or internal "a/../b" segments).
+func FilepathSafeJoin(dir, relative string) (string, error) {
 	p := filepath.Join(dir, relative)
 	p = filepath.Clean(p)
 
@@ -32,18 +35,20 @@ func FilepathSafeJoin(dir string, relative string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid relative path %q", relative)
 	}
-	if rel != relative || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || strings.HasPrefix(rel, "."+string(filepath.Separator)) {
+	if rel == "." || rel == ".." || rel != relative || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || strings.HasPrefix(rel, "."+string(filepath.Separator)) {
 		return "", fmt.Errorf("invalid relative path %q", relative)
 	}
 	return p, nil
 }
 
-// ValidateResourcePaths checks that none of the keys in a resource map
-// contain path traversal sequences. Returns an error on the first invalid key.
+// ValidateResourcePaths checks that all keys in a resource map are valid
+// relative file paths within a package. It rejects path traversal sequences,
+// absolute paths, and non-canonical paths (e.g. leading "./", bare "." or "..").
+// Returns an error on the first invalid key.
 func ValidateResourcePaths(resources map[string]string) error {
 	for k := range resources {
 		if _, err := FilepathSafeJoin(".", k); err != nil {
-			return fmt.Errorf("invalid resource path %q: path traversal not allowed", k)
+			return fmt.Errorf("invalid resource path %q: %w", k, err)
 		}
 	}
 	return nil

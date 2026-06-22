@@ -64,6 +64,16 @@ func TestFilepathSafeJoin(t *testing.T) {
 			wantError: true,
 		},
 		{
+			base:      "/tmp",
+			relative:  "..",
+			wantError: true,
+		},
+		{
+			base:      "/tmp",
+			relative:  ".",
+			wantError: true,
+		},
+		{
 			base:      "tmp/",
 			relative:  "a/../foo",
 			wantError: true,
@@ -110,6 +120,16 @@ func TestValidateResourcePaths(t *testing.T) {
 		{
 			name:      "path traversal with ..",
 			resources: map[string]string{"../etc/config": "content"},
+			wantError: true,
+		},
+		{
+			name:      "bare .. without trailing path",
+			resources: map[string]string{"..": "content"},
+			wantError: true,
+		},
+		{
+			name:      "dot refers to directory not a file",
+			resources: map[string]string{".": "content"},
 			wantError: true,
 		},
 		{

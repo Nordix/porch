@@ -120,7 +120,7 @@ func TestReplaceResourcesRejectsInvalidPaths(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid path, got nil")
 	}
-	if !bytes.Contains([]byte(err.Error()), []byte("path traversal not allowed")) {
+	if !bytes.Contains([]byte(err.Error()), []byte("invalid resource path")) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
