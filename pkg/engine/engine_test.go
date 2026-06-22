@@ -898,6 +898,7 @@ func TestUpdatePackageResourcesWithoutRender(t *testing.T) {
 		lifecycle     porchapi.PackageRevisionLifecycle
 		oldRV         string
 		newRV         string
+		resources     map[string]string
 		closeErr      error
 		expectError   bool
 		errorContains string
@@ -941,6 +942,15 @@ func TestUpdatePackageResourcesWithoutRender(t *testing.T) {
 			expectError:   true,
 			errorContains: "git push failed",
 		},
+		{
+			name:          "failure - path traversal rejected",
+			lifecycle:     porchapi.PackageRevisionLifecycleDraft,
+			oldRV:         "1",
+			newRV:         "1",
+			resources:     map[string]string{"../../etc/config": "content"},
+			expectError:   true,
+			errorContains: "path traversal not allowed",
+		},
 	}
 
 	for _, tt := range tests {
@@ -963,31 +973,40 @@ func TestUpdatePackageResourcesWithoutRender(t *testing.T) {
 					ResourceVersion: tt.oldRV,
 				},
 			}
+			resources := tt.resources
+			if resources == nil {
+				resources = map[string]string{"Kptfile": "test"}
+			}
 			newRes := &porchapi.PackageRevisionResources{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "test-pkg",
 					ResourceVersion: tt.newRV,
 				},
 				Spec: porchapi.PackageRevisionResourcesSpec{
-					Resources: map[string]string{"Kptfile": "test"},
+					Resources: resources,
 				},
 			}
 
 			mockPkgRev.On("Lifecycle", mock.Anything).Return(tt.lifecycle).Maybe()
 			mockPkgRev.On("Key").Return(repository.PackageRevisionKey{}).Maybe()
 
-			// Only expect repo open + draft flow when we pass validation
-			needsDraft := tt.newRV != "" && tt.oldRV == tt.newRV && tt.lifecycle == porchapi.PackageRevisionLifecycleDraft
+			// Only expect repo open + draft flow when we pass all pre-draft validation
+			needsDraft := tt.newRV != "" && tt.oldRV == tt.newRV &&
+				tt.lifecycle == porchapi.PackageRevisionLifecycleDraft
 			if needsDraft {
 				mockCache.On("OpenRepository", mock.Anything, repositoryObj).Return(mockRepo, nil)
 				mockRepo.On("UpdatePackageRevision", mock.Anything, mockPkgRev).Return(mockDraft, nil)
-				mockDraft.On("UpdateResources", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-				closeRet := mockrepo.MockPackageRevision{}
-				if tt.closeErr != nil {
-					mockRepo.On("ClosePackageRevisionDraft", mock.Anything, mockDraft, 0).Return(nil, tt.closeErr)
-				} else {
-					mockRepo.On("ClosePackageRevisionDraft", mock.Anything, mockDraft, 0).Return(&closeRet, nil)
+				// Only expect write+close when resources pass validation
+				if tt.resources == nil {
+					mockDraft.On("UpdateResources", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+					closeRet := mockrepo.MockPackageRevision{}
+					if tt.closeErr != nil {
+						mockRepo.On("ClosePackageRevisionDraft", mock.Anything, mockDraft, 0).Return(nil, tt.closeErr)
+					} else {
+						mockRepo.On("ClosePackageRevisionDraft", mock.Anything, mockDraft, 0).Return(&closeRet, nil)
+					}
 				}
 			}
 

@@ -1,4 +1,4 @@
-// Copyright 2022, 2024 The kpt Authors
+// Copyright 2022, 2024, 2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -90,4 +90,37 @@ func removeCommentsFromFile(t *testing.T, name, contents string) string {
 	}
 
 	return nocomment.String()
+}
+
+func TestReplaceResourcesRejectsInvalidPaths(t *testing.T) {
+	ctx := context.Background()
+
+	replace := &replaceResourcesMutation{
+		newResources: &porchapi.PackageRevisionResources{
+			Spec: porchapi.PackageRevisionResourcesSpec{
+				Resources: map[string]string{
+					"../../../etc/config": "content",
+				},
+			},
+		},
+		oldResources: &porchapi.PackageRevisionResources{
+			Spec: porchapi.PackageRevisionResourcesSpec{
+				Resources: map[string]string{
+					"Kptfile": "existing",
+				},
+			},
+		},
+	}
+
+	input := repository.PackageResources{
+		Contents: map[string]string{"Kptfile": "existing"},
+	}
+
+	_, _, err := replace.apply(ctx, input)
+	if err == nil {
+		t.Fatal("expected error for invalid path, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("path traversal not allowed")) {
+		t.Errorf("unexpected error message: %v", err)
+	}
 }

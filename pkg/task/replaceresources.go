@@ -1,4 +1,4 @@
-// Copyright 2024 The kpt Authors
+// Copyright 2024, 2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	"github.com/kptdev/porch/pkg/repository"
+	"github.com/kptdev/porch/pkg/util"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -33,6 +34,10 @@ type replaceResourcesMutation struct {
 func (m *replaceResourcesMutation) apply(ctx context.Context, resources repository.PackageResources) (repository.PackageResources, *porchapi.TaskResult, error) {
 	_, span := tracer.Start(ctx, "mutationReplaceResources::apply", trace.WithAttributes())
 	defer span.End()
+
+	if err := util.ValidateResourcePaths(m.newResources.Spec.Resources); err != nil {
+		return repository.PackageResources{}, nil, err
+	}
 
 	old := resources.Contents
 	newRes, err := healConfig(old, m.newResources.Spec.Resources)

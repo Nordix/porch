@@ -558,6 +558,10 @@ func (cad *cadEngine) UpdatePackageResourcesWithoutRender(ctx context.Context, r
 		return nil, err
 	}
 
+	if err := util.ValidateResourcePaths(newRes.Spec.Resources); err != nil {
+		return nil, err
+	}
+
 	prr := &porchapi.PackageRevisionResources{
 		Spec: porchapi.PackageRevisionResourcesSpec{
 			Resources: newRes.Spec.Resources,

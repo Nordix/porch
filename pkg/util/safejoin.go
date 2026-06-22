@@ -1,4 +1,4 @@
-// Copyright 2022 The kpt Authors
+// Copyright 2022, 2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package engine
+package util
 
 import (
 	"fmt"
@@ -22,7 +22,9 @@ import (
 
 // Relevant: https://github.com/golang/go/issues/20126
 
-func filepathSafeJoin(dir string, relative string) (string, error) {
+// FilepathSafeJoin joins dir and relative, returning an error if the result
+// would escape dir via path traversal.
+func FilepathSafeJoin(dir string, relative string) (string, error) {
 	p := filepath.Join(dir, relative)
 	p = filepath.Clean(p)
 
@@ -34,4 +36,15 @@ func filepathSafeJoin(dir string, relative string) (string, error) {
 		return "", fmt.Errorf("invalid relative path %q", relative)
 	}
 	return p, nil
+}
+
+// ValidateResourcePaths checks that none of the keys in a resource map
+// contain path traversal sequences. Returns an error on the first invalid key.
+func ValidateResourcePaths(resources map[string]string) error {
+	for k := range resources {
+		if _, err := FilepathSafeJoin(".", k); err != nil {
+			return fmt.Errorf("invalid resource path %q: path traversal not allowed", k)
+		}
+	}
+	return nil
 }
