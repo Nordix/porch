@@ -1,4 +1,4 @@
-// Copyright 2025 The kpt Authors
+// Copyright 2025-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -214,6 +214,30 @@ metadata:
 		t.Errorf("Unexpected updated config map contents: (-want,+got): %s", diff)
 	}
 	t.Logf("ConfigMap content matches expected result after KRM function processing")
+}
+
+func (t *PorchSuite) TestUpdateResourcesRejectsInvalidPaths() {
+	const (
+		repository  = "invalid-path-test"
+		packageName = "invalid-path-pkg"
+		workspace   = defaultWorkspace
+	)
+
+	t.RegisterGitRepositoryF(t.GetPorchTestRepoURL(), repository, "", suiteutils.GiteaUser, suiteutils.GiteaPassword)
+	pr := t.CreatePackageDraftF(repository, packageName, workspace)
+
+	var prResources porchapi.PackageRevisionResources
+	t.GetF(client.ObjectKey{
+		Namespace: t.Namespace,
+		Name:      pr.Name,
+	}, &prResources)
+
+	// Attempt to add a resource with a relative path that escapes the package directory
+	prResources.Spec.Resources["../../etc/config"] = "content"
+
+	err := t.Client.Update(t.GetContext(), &prResources)
+	t.Require().Error(err, "update with invalid resource path should be rejected")
+	t.Require().ErrorContains(err, "invalid resource path")
 }
 
 func (t *PorchSuite) TestUpdateResourcesEmptyPatch() {

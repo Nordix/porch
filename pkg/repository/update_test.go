@@ -1,4 +1,4 @@
-// Copyright 2022, 2024 The kpt Authors
+// Copyright 2022, 2024, 2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -148,4 +148,30 @@ func TestDefaultPackageUpdaterdo(t *testing.T) {
 	updatedResources, err := loadResourcesFromDirectory(localPkgDir)
 	assert.NoError(t, err)
 	assert.Equal(t, "upstream content", updatedResources.Contents["file1.txt"])
+}
+
+func TestWriteResourcesToDirectoryRejectsInvalidPaths(t *testing.T) {
+	dir := t.TempDir()
+
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{"relative path escapes base", "../escape.txt"},
+		{"nested relative path escapes base", "a/../../escape.txt"},
+		{"absolute path", "/etc/file"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resources := PackageResources{
+				Contents: map[string]string{
+					tt.key: "content",
+				},
+			}
+			err := writeResourcesToDirectory(dir, resources)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid resource path")
+		})
+	}
 }
