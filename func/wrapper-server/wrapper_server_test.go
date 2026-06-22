@@ -332,7 +332,7 @@ func TestEvaluateFunction_StderrErrorContainsFlattenedMessage(t *testing.T) {
 	errMsg := err.Error()
 	// The error string should contain pipe-separated (flattened) stderr lines.
 	assert.True(t, strings.Contains(errMsg, " | "),
-		"error message should contain flattened stderr with ' | ' separator, got: %s", errMsg)
+		"error message should contain flattened stderr with ' | ' separator")
 	assert.NotContains(t, errMsg, "\n",
 		"error message should not contain raw newlines")
 }
