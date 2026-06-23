@@ -23,13 +23,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 object:headerFile="../../../scripts/boilerplate.go.txt",year=$YEAR_GEN crd:crdVersions=v1,headerFile="../../../scripts/boilerplate.yaml.txt",year=$YEAR_GEN output:crd:artifacts:config=. paths=./...
-
 var (
 	// GroupVersion is group version used to register these objects
 	GroupVersion = schema.GroupVersion{Group: "config.porch.kpt.dev", Version: "v1alpha1"}
 
 	// We removed SchemeBuilder to keep our dependencies small
+
+	TypePackageRev = TypeInfo{
+		Kind:     "PackageRev",
+		Resource: GroupVersion.WithResource("packagerevs"),
+		objects:  []runtime.Object{&PackageRev{}, &PackageRevList{}},
+	}
 
 	TypeRepository = TypeInfo{
 		Kind:     "Repository",
@@ -49,7 +53,26 @@ var (
 		objects:  []runtime.Object{&ServiceTemplate{}, &ServiceTemplateList{}},
 	}
 
-	AllKinds = []TypeInfo{TypeRepository, TypeFunctionConfig, TypeServiceTemplate}
+	TypePackageVariant = TypeInfo{
+		Kind:     "PackageVariant",
+		Resource: GroupVersion.WithResource("packagevariants"),
+		objects:  []runtime.Object{&PackageVariant{}, &PackageVariantList{}},
+	}
+
+	TypePackageVariantSet = TypeInfo{
+		Kind:     "PackageVariantSet",
+		Resource: GroupVersion.WithResource("packagevariantsets"),
+		objects:  []runtime.Object{&PackageVariantSet{}, &PackageVariantSetList{}},
+	}
+
+	AllKinds = []TypeInfo{
+		TypePackageRev,
+		TypeRepository,
+		TypeFunctionConfig,
+		TypeServiceTemplate,
+		TypePackageVariant,
+		TypePackageVariantSet,
+	}
 )
 
 //+kubebuilder:object:generate=false

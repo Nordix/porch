@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	kptfn "github.com/kptdev/krm-functions-sdk/go/fn"
 	kptfileko "github.com/kptdev/krm-functions-sdk/go/fn/kptfileko"
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"

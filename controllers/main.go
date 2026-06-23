@@ -14,9 +14,7 @@
 
 package main
 
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 rbac:headerFile=../scripts/boilerplate.yaml.txt,roleName=porch-controllers,year=$YEAR_GEN webhook paths="."
-
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 crd:headerFile=../scripts/boilerplate.yaml.txt,year=$YEAR_GEN paths="./..." output:crd:artifacts:config=config/crd/bases
+//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.0 rbac:headerFile=../scripts/boilerplate.yaml.txt,roleName=porch-controllers,year=$YEAR_GEN webhook paths="."
 
 import (
 	"context"
@@ -60,7 +58,6 @@ import (
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
-	porchinternal "github.com/kptdev/porch/internal/api/porchinternal/v1alpha1"
 	"github.com/kptdev/porch/internal/telemetry"
 	//+kubebuilder:scaffold:imports
 )
@@ -192,7 +189,6 @@ func initScheme() (*runtime.Scheme, error) {
 		porchapi.AddToScheme,
 		porchv1alpha2.AddToScheme,
 		configapi.AddToScheme,
-		porchinternal.AddToScheme,
 	} {
 		if err := addToScheme(scheme); err != nil {
 			return nil, fmt.Errorf(errInitScheme, err)

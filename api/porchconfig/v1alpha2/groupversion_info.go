@@ -1,4 +1,4 @@
-// Copyright 2022,2026 The kpt Authors
+// Copyright 2022-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package v1alpha1 contains API Schema definitions for the v1alpha1 API group
+// Package v1alpha2 contains API Schema definitions for the v1alpha2 API group
 // +kubebuilder:object:generate=true
 // +groupName=config.porch.kpt.dev
-package v1alpha1
+package v1alpha2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,33 +23,45 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 object:headerFile="../../../../scripts/boilerplate.go.txt",year=$YEAR_GEN crd:crdVersions=v1 output:crd:artifacts:config=. paths=./...
-
 var (
 	// GroupVersion is group version used to register these objects
-	GroupVersion = schema.GroupVersion{Group: "config.porch.kpt.dev", Version: "v1alpha1"}
+	GroupVersion = schema.GroupVersion{Group: "config.porch.kpt.dev", Version: "v1alpha2"}
 
 	// We removed SchemeBuilder to keep our dependencies small
 
-	KindRepository = KindInfo{
-		Resource: GroupVersion.WithResource("packagerev"),
-		objects:  []runtime.Object{&PackageRev{}, &PackageRevList{}},
+	TypePackageVariantSet = TypeInfo{
+		Kind:     "PackageVariantSet",
+		Resource: GroupVersion.WithResource("packagevariantsets"),
+		objects:  []runtime.Object{&PackageVariantSet{}, &PackageVariantSetList{}},
 	}
 
-	AllKinds = []KindInfo{KindRepository}
+	AllKinds = []TypeInfo{
+		TypePackageVariantSet,
+	}
 )
 
 //+kubebuilder:object:generate=false
 
-// KindInfo holds type meta-information
-type KindInfo struct {
+// TypeInfo holds type meta-information
+type TypeInfo struct {
+	Kind     string
 	Resource schema.GroupVersionResource
 	objects  []runtime.Object
 }
 
+// GVK returns the schema.GroupVersionKind for the type
+func (t *TypeInfo) GVK() schema.GroupVersionKind {
+	return t.Resource.GroupVersion().WithKind(t.Kind)
+}
+
+// APIVersion returns the apiVersion for the type
+func (t *TypeInfo) APIVersion() string {
+	return t.Resource.GroupVersion().Identifier()
+}
+
 // GroupResource returns the GroupResource for the kind
-func (k *KindInfo) GroupResource() schema.GroupResource {
-	return k.Resource.GroupResource()
+func (t *TypeInfo) GroupResource() schema.GroupResource {
+	return t.Resource.GroupResource()
 }
 
 func AddToScheme(scheme *runtime.Scheme) error {

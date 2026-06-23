@@ -27,13 +27,11 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/krm-functions-sdk/go/fn/kptfileapi"
 	kptfilesdk "github.com/kptdev/krm-functions-sdk/go/fn/kptfileko"
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
-	pvapi "github.com/kptdev/porch/controllers/packagevariants/api/v1alpha1"
-	internalapi "github.com/kptdev/porch/internal/api/porchinternal/v1alpha1"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	coreapi "k8s.io/api/core/v1"
@@ -576,13 +574,13 @@ func (t *TestSuite) WaitUntilAllPackageVariantsReady() {
 
 	var innerErr error
 	err := wait.PollUntilContextTimeout(t.GetContext(), time.Second, 300*time.Second, true, func(ctx context.Context) (bool, error) {
-		var repos pvapi.PackageVariantList
+		var repos configapi.PackageVariantList
 		if err := t.Reader.List(t.GetContext(), &repos, client.InNamespace(t.Namespace)); err != nil {
 			innerErr = err
 			return false, err
 		}
 
-		allReady := !slices.ContainsFunc(repos.Items, func(aRepo pvapi.PackageVariant) bool {
+		allReady := !slices.ContainsFunc(repos.Items, func(aRepo configapi.PackageVariant) bool {
 			return aRepo.Status.Conditions == nil || slices.ContainsFunc(aRepo.Status.Conditions, func(aCondition metav1.Condition) bool {
 				return aCondition.Type == configapi.RepositoryReady && aCondition.Status != metav1.ConditionTrue
 			})
@@ -639,7 +637,7 @@ func (t *TestSuite) WaitUntilAllPackageRevisionsDeleted(repoName string, namespa
 func (t *TestSuite) WaitUntilAllPackageRevsDeleted(repoName string, namespace string) {
 	t.T().Helper()
 	err := wait.PollUntilContextTimeout(t.GetContext(), time.Second, 60*time.Second, true, func(ctx context.Context) (done bool, err error) {
-		var internalPkgRevList internalapi.PackageRevList
+		var internalPkgRevList configapi.PackageRevList
 		if err := t.Reader.List(ctx, &internalPkgRevList, client.InNamespace(namespace), client.MatchingLabels{
 			"internal.porch.kpt.dev/repository": repoName,
 		}); err != nil {
@@ -1084,7 +1082,7 @@ func RunInParallel(functions ...func() any) []any {
 	return results
 }
 
-func (t *TestSuite) removePkgRevFinalizers(ctx context.Context, pkgRev *internalapi.PackageRev) {
+func (t *TestSuite) removePkgRevFinalizers(ctx context.Context, pkgRev *configapi.PackageRev) {
 	t.Logf("removing finalizers from orphaned PackageRev %s/%s", pkgRev.Namespace, pkgRev.Name)
 	pkgRev.Finalizers = []string{}
 	for range 3 {
