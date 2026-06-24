@@ -94,7 +94,7 @@ Because the placeholder mirrors the real state of that branch:
 
 Yes. The placeholder is **not immutable**. It can be deleted via `porchctl` like any other PackageRevision. This is useful during package cleanup (e.g. removing a package entirely from a repository).
 
-Deleting the placeholder does **not** affect the underlying Git branch content.
+Deleting the placeholder **removes the package content from the configured Git branch**. A commit is made to the branch (e.g. `main`) that deletes the package directory and its files. This means any GitOps reconciler watching that branch will also see the removal.
 
 ## Summary
 
@@ -103,8 +103,8 @@ Deleting the placeholder does **not** affect the underlying Git branch content.
 | First revision published | Placeholder **created** |
 | Subsequent revision published | Placeholder **updated** to new content |
 | Published revision deleted | Placeholder **unchanged** (no rollback) |
-| Placeholder itself deleted | Removed from Porch (Git branch unaffected) |
-| New revision published after placeholder deletion | Placeholder **recreated** |
+| Placeholder itself deleted | Removed from Porch and content deleted from Git branch |
+| New revision published after placeholder deletion | Placeholder **recreated** with contents of the new revision |
 
 ## Restrictions
 
