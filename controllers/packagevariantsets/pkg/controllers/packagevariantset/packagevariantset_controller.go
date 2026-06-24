@@ -24,8 +24,7 @@ import (
 
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
-	pkgvarapi "github.com/kptdev/porch/controllers/packagevariants/api/v1alpha1"
-	api "github.com/kptdev/porch/controllers/packagevariantsets/api/v1alpha2"
+	api "github.com/kptdev/porch/api/porchconfig/v1alpha2"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,7 +71,7 @@ const (
 
 func (r *PackageVariantSetReconciler) Name() string { return reconcilerName }
 
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0 rbac:headerFile=../../../../../scripts/boilerplate.yaml.txt,roleName=porch-controllers-packagevariantsets,year=$YEAR_GEN webhook paths="." output:rbac:artifacts:config=../../../config/rbac
+//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.0 rbac:headerFile=../../../../../scripts/boilerplate.yaml.txt,roleName=porch-controllers-packagevariantsets,year=$YEAR_GEN webhook paths="." output:rbac:artifacts:config=../../../config/rbac
 
 //+kubebuilder:rbac:groups=config.porch.kpt.dev,resources=packagevariantsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=config.porch.kpt.dev,resources=packagevariantsets/status,verbs=get;update;patch
@@ -165,7 +164,7 @@ func (r *PackageVariantSetReconciler) init(ctx context.Context, req ctrl.Request
 	return &pvs, &prList, &repoList, nil
 }
 
-func (r *PackageVariantSetReconciler) getUpstreamPR(upstream *pkgvarapi.Upstream,
+func (r *PackageVariantSetReconciler) getUpstreamPR(upstream *configapi.Upstream,
 	prList *porchapi.PackageRevisionList) (*porchapi.PackageRevision, error) {
 
 	for _, pr := range prList.Items {
@@ -271,7 +270,7 @@ func (r *PackageVariantSetReconciler) ensurePackageVariants(ctx context.Context,
 	repoList *configapi.RepositoryList, upstreamPR *porchapi.PackageRevision,
 	downstreams []pvContext) error {
 
-	var pvList pkgvarapi.PackageVariantList
+	var pvList configapi.PackageVariantList
 	if err := r.Client.List(ctx, &pvList,
 		client.InNamespace(pvs.Namespace),
 		client.MatchingLabels{
@@ -281,9 +280,9 @@ func (r *PackageVariantSetReconciler) ensurePackageVariants(ctx context.Context,
 	}
 
 	// existingPackageVariantMap holds the PackageVariant objects that currently exist.
-	existingPackageVariantMap := make(map[string]*pkgvarapi.PackageVariant, len(pvList.Items))
+	existingPackageVariantMap := make(map[string]*configapi.PackageVariant, len(pvList.Items))
 	// desiredPackageVariantMap holds the PackageVariant objects that we want to exist.
-	desiredPackageVariantMap := make(map[string]*pkgvarapi.PackageVariant, len(downstreams))
+	desiredPackageVariantMap := make(map[string]*configapi.PackageVariant, len(downstreams))
 
 	for _, pv := range pvList.Items {
 		pvId := packageVariantIdentifier(pvs.Name, &pv.Spec)
@@ -297,7 +296,7 @@ func (r *PackageVariantSetReconciler) ensurePackageVariants(ctx context.Context,
 			return err
 		}
 		pvId := packageVariantIdentifier(pvs.Name, pvSpec)
-		pv := pkgvarapi.PackageVariant{
+		pv := configapi.PackageVariant{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "PackageVariant",
 				APIVersion: "config.porch.kpt.dev",
@@ -305,7 +304,7 @@ func (r *PackageVariantSetReconciler) ensurePackageVariants(ctx context.Context,
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       packageVariantName(pvId),
 				Namespace:  pvs.Namespace,
-				Finalizers: []string{pkgvarapi.Finalizer},
+				Finalizers: []string{configapi.Finalizer},
 				Labels:     map[string]string{PackageVariantSetOwnerLabel: string(pvs.UID)},
 				OwnerReferences: []metav1.OwnerReference{{
 					APIVersion:         pvs.APIVersion,
@@ -358,7 +357,7 @@ func (r *PackageVariantSetReconciler) ensurePackageVariants(ctx context.Context,
 	return nil
 }
 
-func packageVariantIdentifier(pvsName string, spec *pkgvarapi.PackageVariantSpec) string {
+func packageVariantIdentifier(pvsName string, spec *configapi.PackageVariantSpec) string {
 	return pvsName + "-" + spec.Downstream.Repo + "-" + spec.Downstream.Package
 }
 
@@ -383,9 +382,6 @@ func (r *PackageVariantSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := configapi.AddToScheme(mgr.GetScheme()); err != nil {
 		return err
 	}
-	if err := pkgvarapi.AddToScheme(mgr.GetScheme()); err != nil {
-		return err
-	}
 	if err := scheme.AddToScheme(mgr.GetScheme()); err != nil {
 		return err
 	}
@@ -396,7 +392,7 @@ func (r *PackageVariantSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&api.PackageVariantSet{}).
-		Watches(&pkgvarapi.PackageVariant{},
+		Watches(&configapi.PackageVariant{},
 			handler.EnqueueRequestsFromMapFunc(mapObjectsToRequests(r.Client))).
 		Watches(&porchapi.PackageRevision{},
 			handler.EnqueueRequestsFromMapFunc(mapObjectsToRequests(r.Client))).

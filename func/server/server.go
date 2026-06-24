@@ -1,4 +1,4 @@
-// Copyright 2022-2025 The kpt Authors
+// Copyright 2022-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import (
 	pb "github.com/kptdev/porch/func/evaluator"
 	"github.com/kptdev/porch/func/healthchecker"
 	"github.com/kptdev/porch/func/internal"
-	porchotel "github.com/kptdev/porch/internal/otel"
+	"github.com/kptdev/porch/internal/telemetry"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -92,6 +92,7 @@ func main() {
 	flag.IntVar(&o.pod.MaxGrpcMessageSize, "max-request-body-size", 6*1024*1024, "Maximum size of grpc messages in bytes. Keep this in sync with porch-server's corresponding argument.")
 	flag.IntVar(&o.pod.MaxWaitlistLength, "max-waitlist-length", 2, "Maximum waitlist length per pod")
 	flag.IntVar(&o.pod.MaxParallelPodsPerFunction, "max-parallel-pods-per-function", 1, "Maximum parallel pods per function")
+	flag.IntVar(&o.pod.MaxGrpcRetries, "max-grpc-retries", 2, "Maximum number of retries on gRPC Unavailable errors")
 
 	flag.Parse()
 
@@ -120,12 +121,17 @@ func run(o *options) error {
 		lis.Close()
 	}()
 
-	err = porchotel.SetupOpenTelemetry(ctx)
+	otelResources, err := telemetry.SetupOpenTelemetry(ctx)
 	if err != nil {
 		contextsignal.RequestShutdown()
 		klog.Errorf("%v\n", err)
 		return err
 	}
+	defer func() {
+		if err := otelResources.ShutdownWithTimeout(10 * time.Second); err != nil {
+			klog.Warningf("failed to gracefully shutdown OpenTelemetry: %v", err)
+		}
+	}()
 
 	availableRuntimes := map[string]struct{}{
 		execRuntime: {},

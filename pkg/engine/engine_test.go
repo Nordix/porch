@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/fn"
 	"github.com/kptdev/kpt/pkg/lib/builtins/builtintypes"
 	"github.com/kptdev/kpt/pkg/lib/runneroptions"
@@ -894,13 +894,15 @@ func TestUpdatePackageResourcesRenderFailure(t *testing.T) {
 
 func TestUpdatePackageResourcesWithoutRender(t *testing.T) {
 	tests := []struct {
-		name          string
-		lifecycle     porchapi.PackageRevisionLifecycle
-		oldRV         string
-		newRV         string
-		closeErr      error
-		expectError   bool
-		errorContains string
+		name           string
+		lifecycle      porchapi.PackageRevisionLifecycle
+		oldRV          string
+		newRV          string
+		resources      map[string]string
+		closeErr       error
+		skipWriteClose bool
+		expectError    bool
+		errorContains  string
 	}{
 		{
 			name:      "success - draft lifecycle",
@@ -941,6 +943,16 @@ func TestUpdatePackageResourcesWithoutRender(t *testing.T) {
 			expectError:   true,
 			errorContains: "git push failed",
 		},
+		{
+			name:           "failure - path traversal rejected",
+			lifecycle:      porchapi.PackageRevisionLifecycleDraft,
+			oldRV:          "1",
+			newRV:          "1",
+			resources:      map[string]string{"../../etc/config": "content"},
+			skipWriteClose: true,
+			expectError:    true,
+			errorContains:  "invalid resource path",
+		},
 	}
 
 	for _, tt := range tests {
@@ -963,21 +975,26 @@ func TestUpdatePackageResourcesWithoutRender(t *testing.T) {
 					ResourceVersion: tt.oldRV,
 				},
 			}
+			resources := tt.resources
+			if resources == nil {
+				resources = map[string]string{"Kptfile": "test"}
+			}
 			newRes := &porchapi.PackageRevisionResources{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "test-pkg",
 					ResourceVersion: tt.newRV,
 				},
 				Spec: porchapi.PackageRevisionResourcesSpec{
-					Resources: map[string]string{"Kptfile": "test"},
+					Resources: resources,
 				},
 			}
 
 			mockPkgRev.On("Lifecycle", mock.Anything).Return(tt.lifecycle).Maybe()
 			mockPkgRev.On("Key").Return(repository.PackageRevisionKey{}).Maybe()
 
-			// Only expect repo open + draft flow when we pass validation
-			needsDraft := tt.newRV != "" && tt.oldRV == tt.newRV && tt.lifecycle == porchapi.PackageRevisionLifecycleDraft
+			// Only expect repo open + draft flow when we pass all pre-draft validation
+			needsDraft := !tt.skipWriteClose && tt.newRV != "" && tt.oldRV == tt.newRV &&
+				tt.lifecycle == porchapi.PackageRevisionLifecycleDraft
 			if needsDraft {
 				mockCache.On("OpenRepository", mock.Anything, repositoryObj).Return(mockRepo, nil)
 				mockRepo.On("UpdatePackageRevision", mock.Anything, mockPkgRev).Return(mockDraft, nil)

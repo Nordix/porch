@@ -192,20 +192,31 @@ The PR will automatically update with your new commits.
 
 ## Reviews of Your PR
 
-Before your PR is merged, it must be reviewed by community members and maintainers. Generally, in order to make the best
-use of their time, they will review your PR when:
+Before your PR is merged, it must be reviewed by community members and maintainers. Generally, in
+order to make the best use of their time, they will review your PR when:
 
 1. The code including the code changes in your PR is compiling and building
 2. The documentation is building and verified
 3. All lint checks are passing
 4. SonarCloud quality checks such as code coverage levels are passing
-5. The comments from the first run of AI on the commit of the PR are addressed (Further re-runs of AI are optional)
+5. The comments from the first run of AI on the commit of the PR are addressed (Further re-runs of
+   AI are optional)
+
+All PRs should be approved by at least one member of the
+[contributors](https://github.com/orgs/kptdev/teams/contributors) team and one member of the
+[maintainers](https://github.com/orgs/kptdev/teams/maintainers) team, have all checks passing, and have all discussions resolved before merge.
+
 
 {{% alert title="Note" color="primary" %}}
 If you are having difficulty in getting tests to pass, need guidance in how to address an AI-generated comment, or
 want to request an exception on a quality metric such as code coverage, please add a comment on your PR and the
 community members and maintainers will consider your request.
 {{% /alert %}}
+
+### Stale PRs
+
+If review comments on a PR are not addressed for more than two weeks, maintainers may close the PR.
+A closed PR can be reopened at any time to continue the work.
 
 ## Rebase on Latest Main
 

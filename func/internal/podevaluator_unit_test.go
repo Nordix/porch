@@ -20,13 +20,17 @@ import (
 	"net"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/kptdev/kpt/pkg/fn/runtime"
 	pb "github.com/kptdev/porch/func/evaluator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // startFakeEvalServer starts a gRPC function evaluator server on a dynamic port.
@@ -248,4 +252,156 @@ func TestEvaluateFunction_CounterDecrement(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int32(0), counter.Load(), "concurrentEvaluations should be decremented back to 0")
+}
+
+func TestEvaluateFunction_Unavailable_EvictsAndRetries(t *testing.T) {
+	// First server returns Unavailable (simulates dead pod)
+	unavailableAddr, unavailableCleanup := startFakeEvalServer(t, func(_ context.Context, _ *pb.EvaluateFunctionRequest) (*pb.EvaluateFunctionResponse, error) {
+		return nil, status.Error(codes.Unavailable, "connection refused")
+	})
+	defer unavailableCleanup()
+
+	unavailableConn, err := grpc.NewClient(unavailableAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer unavailableConn.Close()
+
+	// Second server returns success (healthy pod)
+	healthyAddr, healthyCleanup := startFakeEvalServer(t, func(_ context.Context, _ *pb.EvaluateFunctionRequest) (*pb.EvaluateFunctionResponse, error) {
+		return &pb.EvaluateFunctionResponse{ResourceList: []byte("success")}, nil
+	})
+	defer healthyCleanup()
+
+	healthyConn, err := grpc.NewClient(healthyAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer healthyConn.Close()
+
+	deadPodKey := client.ObjectKey{Namespace: "fn-ns", Name: "dead-pod"}
+	healthyPodKey := client.ObjectKey{Namespace: "fn-ns", Name: "healthy-pod"}
+
+	reqCh := make(chan *connectionRequest, 2)
+	evictCh := make(chan *podEvictionRequest, 1)
+
+	pe := &podEvaluator{
+		requestCh:      reqCh,
+		evictionCh:     evictCh,
+		maxGrpcRetries: 2,
+		podCacheManager: &podCacheManager{
+			podManager: &podManager{
+				tagResolver: runtime.TagResolver{},
+			},
+		},
+	}
+
+	deadCounter := &atomic.Int32{}
+	deadCounter.Store(1)
+	healthyCounter := &atomic.Int32{}
+	healthyCounter.Store(1)
+
+	// Serve two requests: first returns dead pod, second returns healthy pod.
+	// Between them, drain the eviction and ack it so the retry proceeds.
+	capturedEvictionCh := make(chan *podEvictionRequest, 1)
+	go func() {
+		req1 := <-reqCh
+		req1.responseCh <- &connectionResponse{
+			podData:               podData{image: "test-image", grpcConnection: unavailableConn, podKey: &deadPodKey, serviceKey: &deadPodKey},
+			concurrentEvaluations: deadCounter,
+		}
+		eviction := <-evictCh
+		capturedEvictionCh <- eviction
+		close(eviction.doneCh)
+		req2 := <-reqCh
+		req2.responseCh <- &connectionResponse{
+			podData:               podData{image: "test-image", grpcConnection: healthyConn, podKey: &healthyPodKey, serviceKey: &healthyPodKey},
+			concurrentEvaluations: healthyCounter,
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	resp, err := pe.EvaluateFunction(ctx, &pb.EvaluateFunctionRequest{
+		Image: "test-image",
+	})
+
+	// Should succeed on retry
+	require.NoError(t, err)
+	assert.Equal(t, []byte("success"), resp.ResourceList)
+	var capturedEviction *podEvictionRequest
+	select {
+	case capturedEviction = <-capturedEvictionCh:
+	case <-ctx.Done():
+	}
+	// Verify eviction was sent for the dead pod
+	require.NotNil(t, capturedEviction, "expected eviction request but none was sent")
+	assert.Equal(t, "test-image", capturedEviction.image)
+	assert.Equal(t, deadPodKey, capturedEviction.podKey)
+}
+
+func TestEvaluateFunction_ExhaustsRetries(t *testing.T) {
+	// With maxGrpcRetries=1, the function should fail after 2 attempts (initial + 1 retry)
+	// when all pods return Unavailable.
+
+	// Server that always returns Unavailable
+	unavailableAddr, unavailableCleanup := startFakeEvalServer(t, func(_ context.Context, _ *pb.EvaluateFunctionRequest) (*pb.EvaluateFunctionResponse, error) {
+		return nil, status.Error(codes.Unavailable, "connection refused")
+	})
+	defer unavailableCleanup()
+
+	unavailableConn, err := grpc.NewClient(unavailableAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer unavailableConn.Close()
+
+	deadPodKey1 := client.ObjectKey{Namespace: "fn-ns", Name: "dead-pod-1"}
+	deadPodKey2 := client.ObjectKey{Namespace: "fn-ns", Name: "dead-pod-2"}
+
+	reqCh := make(chan *connectionRequest, 2)
+	evictCh := make(chan *podEvictionRequest, 2)
+
+	pe := &podEvaluator{
+		requestCh:      reqCh,
+		evictionCh:     evictCh,
+		maxGrpcRetries: 1, // only 1 retry allowed
+		podCacheManager: &podCacheManager{
+			podManager: &podManager{
+				tagResolver: runtime.TagResolver{},
+			},
+		},
+	}
+
+	counter1 := &atomic.Int32{}
+	counter1.Store(1)
+	counter2 := &atomic.Int32{}
+	counter2.Store(1)
+
+	// Serve exactly 2 requests (initial + 1 retry), both return dead pods.
+	// Drain evictions and ack them.
+	go func() {
+		req1 := <-reqCh
+		req1.responseCh <- &connectionResponse{
+			podData:               podData{image: "test-image", grpcConnection: unavailableConn, podKey: &deadPodKey1, serviceKey: &deadPodKey1},
+			concurrentEvaluations: counter1,
+		}
+		eviction1 := <-evictCh
+		close(eviction1.doneCh)
+
+		req2 := <-reqCh
+		req2.responseCh <- &connectionResponse{
+			podData:               podData{image: "test-image", grpcConnection: unavailableConn, podKey: &deadPodKey2, serviceKey: &deadPodKey2},
+			concurrentEvaluations: counter2,
+		}
+		eviction2 := <-evictCh
+		close(eviction2.doneCh)
+	}()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	resp, err := pe.EvaluateFunction(ctx, &pb.EvaluateFunctionRequest{
+		Image: "test-image",
+	})
+
+	// Should fail after exhausting retries
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "after retries")
 }

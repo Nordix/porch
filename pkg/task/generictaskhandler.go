@@ -21,7 +21,7 @@ import (
 	"path"
 	"strings"
 
-	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/fn"
 	"github.com/kptdev/kpt/pkg/lib/builtins/builtintypes"
 	"github.com/kptdev/kpt/pkg/lib/runneroptions"
@@ -277,12 +277,13 @@ func (th *genericTaskHandler) applySubpackageTask(
 		return err
 	}
 
-	if err := kptFile.SetName(path.Base(subpackageDir)); err != nil {
-		return pkgerrors.Wrapf(err, "failed to write package name %q to subpackage Kptfile", path.Base(subpackageDir))
+	subpackageName, _ := porchapi.ComposeSubpkgObjName(subpackageDir)
+	if err := kptFile.SetName(subpackageName); err != nil {
+		return pkgerrors.Wrapf(err, "failed to write package name %q to subpackage Kptfile", subpackageName)
 	}
 
 	if err := kptFile.WriteToPackage(subpackageResources.Contents); err != nil {
-		return pkgerrors.Wrap(err, "failed to write to subpackage Kptfile")
+		return pkgerrors.Wrapf(err, "failed to write to subpackage Kptfile %q", path.Join(subpackageDir, kptfilev1.KptFileName))
 	}
 
 	// Remove the subpackage task to prevent re-execution of the task
@@ -397,6 +398,10 @@ func (th *genericTaskHandler) upgradeSubpackageResourcesInDraftResources(ctx con
 
 	subpackageFound := false
 	for resourceKey := range parentResources.Contents {
+		if resourceKey == subpackageDir {
+			return fmt.Errorf("cannot upgrade subpackage in parent, parent already has content at %q", subpackageDir)
+		}
+
 		if strings.HasPrefix(resourceKey, subpackageDir+"/") {
 			subpackageFound = true
 			delete(parentResources.Contents, resourceKey)
