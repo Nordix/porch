@@ -3,12 +3,12 @@ title: "Placeholder Package Revision"
 type: docs
 weight: 4
 description: |
-  The placeholder package revision tracks the configured Git branch for a package. This page explains its behaviour, lifecycle interactions, and how it relates to GitOps workflows.
+  The placeholder package revision tracks the most recent content of a package in its repository. This page explains its behaviour, lifecycle interactions, and how it relates to GitOps workflows.
 ---
 
 ## Overview
 
-The placeholder package revision is a special PackageRevision that Porch creates automatically to represent the state of a package on its configured Git branch. It acts as a "branch-tracking" reference, always reflecting the content of the most recently published revision.
+The placeholder package revision is a special PackageRevision that Porch creates automatically as a reference the latest released version of a package. It acts as a "branch-tracking" reference. The placeholder package revision points at the version of the package revision at the HEAD of the branch of the repository that the package revision is stored on.
 
 **Identifying a placeholder:**
 
@@ -19,11 +19,11 @@ The placeholder package revision is a special PackageRevision that Porch creates
 | Naming convention | `{repository-name}.{package-name}.{branch-name}` |
 | Lifecycle | `Published` |
 
-There is always at most one placeholder package revision per package.
+There is one and only one placeholder package revision per package.
 
 ## When Is It Created?
 
-The placeholder is created automatically when the **first revision** of a package is published (transitions from Proposed to Published). You never create it manually.
+The placeholder package revision is created automatically when the **first revision** of a package is published (transitions from Proposed to Published). You cannot create it manually.
 
 For example, publishing `example-repository.my-package.v1` (revision 1) will also create `example-repository.my-package.main` (revision -1) with the same content.
 
@@ -35,11 +35,11 @@ For example:
 1. Publish v1 (revision 1): placeholder is **created** with v1's content
 2. Publish v2 (revision 2): placeholder is **updated** with v2's content
 
-The placeholder **only moves forward** through explicit publish operations.
+The placeholder **only moves forward** on each explicit publish operations.
 
-## What Happens When a Revision Is Deleted?
+## What Happens When the Latest Package Revision Is Deleted?
 
-Deleting a published revision (even if it is the latest) does **not** cause the placeholder to roll back to a previous revision. The placeholder retains the content it had at the time of the last publish.
+Deleting the latest published package revision does **not** cause the placeholder to roll back to a previous revision. The placeholder retains the content it had at the time of the last publish. It still refers to the version of the Package Revision at the HEAD of the branch in git.
 
 This is intentional. Consider the scenario:
 
@@ -49,12 +49,12 @@ This is intentional. Consider the scenario:
 
 After step 3, the placeholder **still reflects v2's content**. It does not fall back to v1.
 
-**Why?** Because deletion of a PackageRevision in Porch:
+**This occurs due to deletion of a PackageRevision in Porch:
 
 - Removes the tag/branch reference from Git
 - Removes the Porch metadata
 
-But it does **not** perform a `git revert` on the tracked branch. The actual content on that branch in Git is unchanged. The placeholder remains consistent with the real Git state.
+However, it does **not** perform a `git revert` on the tracked branch. The actual content on that branch in Git is unchanged. The placeholder remains consistent with the real Git state.
 
 ## How to Roll Back a Package
 
@@ -80,7 +80,7 @@ This preserves linear Git history and makes the intent **explicit**.
 
 ## Relationship to GitOps
 
-In a GitOps workflow, a reconciler (such as Flux or ArgoCD) watches a branch in Git for changes. The placeholder package revision corresponds directly to this branch.
+In a GitOps workflow, a reconciler (such as Flux or ArgoCD) watches a branch in Git for changes. The placeholder package revision references this branch.
 
 The branch is configured via `spec.git.branch` on the Repository CR. This is commonly `main` but can be any branch name (e.g. `production`, `release`, `staging`). The placeholder's workspace name will match whatever branch is configured.
 
@@ -112,6 +112,6 @@ The placeholder cannot be used as a source for certain operations:
 
 - **Clone**: cannot clone from a placeholder
 - **Edit/Copy**: cannot edit or copy a placeholder
-- **Upgrade**: cannot upgrade to or from a placeholder
+- **Upgrade**: cannot upgrade a placeholder or use a placeholder as the target upstream of an upgrade
 
 These operations require a specific published revision with a concrete revision number.

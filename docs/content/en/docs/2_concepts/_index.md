@@ -76,7 +76,7 @@ This section introduces some core concepts of Porch's package orchestration:
       of `4` once published
 
 * ***[Placeholder package revision]({{% relref "placeholder-package-revision" %}})***: A package revision that tracks
-  the content of a package's configured Git branch (typically `main`). It is created automatically when the first revision
+  the most recent content of a package in its repository. It is created automatically when the first revision
   of a package is published and updated on each subsequent publish.
 
 * ***[Upstream and Downstream]({{% relref "upstream-downstream" %}})***: source-and-derivation relationships between
