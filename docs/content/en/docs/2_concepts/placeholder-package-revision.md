@@ -3,12 +3,12 @@ title: "Placeholder Package Revision"
 type: docs
 weight: 4
 description: |
-  The placeholder package revision tracks the most recent content of a package in its repository. This page explains its behaviour, lifecycle interactions, and how it relates to GitOps workflows.
+  The placeholder PackageRevision tracks the most recent content of a package in its repository. This page explains its behaviour, lifecycle interactions, and how it relates to GitOps workflows.
 ---
 
 ## Overview
 
-The placeholder package revision is a special PackageRevision that Porch creates automatically as a reference to the latest released version of a package. It acts as a "branch-tracking" reference: the placeholder package revision points at the version of the package at the HEAD of the branch of the repository where the package revision is stored.
+The placeholder PackageRevision is a special PackageRevision that Porch creates automatically as a reference to the latest released version of a package. It acts as a "branch-tracking" reference: the placeholder PackageRevision points at the version of the package at the HEAD of the branch of the repository where the PackageRevision is stored.
 
 **Identifying a placeholder:**
 
@@ -19,11 +19,11 @@ The placeholder package revision is a special PackageRevision that Porch creates
 | Naming convention | `{repository-name}.{package-name}.{branch-name}` |
 | Lifecycle | `Published` |
 
-There is one and only one placeholder package revision per package.
+There is one and only one placeholder PackageRevision per package.
 
 ## When Is It Created?
 
-The placeholder package revision is created automatically when the **first revision** of a package is published (transitions from Proposed to Published). You cannot create it manually.
+The placeholder PackageRevision is created automatically when the **first revision** of a package is published (transitions from Proposed to Published). You cannot create it manually.
 
 For example, publishing `example-repository.my-package.v1` (revision 1) will also create `example-repository.my-package.main` (revision -1) with the same content.
 
@@ -35,11 +35,11 @@ For example:
 1. Publish v1 (revision 1): placeholder is **created** with v1's content
 2. Publish v2 (revision 2): placeholder is **updated** with v2's content
 
-The placeholder **only moves forward** on each explicit publish operations.
+The placeholder **only moves forward** on each explicit publish operation.
 
-## What Happens When the Latest Package Revision Is Deleted?
+## What Happens When the Latest PackageRevision Is Deleted?
 
-Deleting the latest published package revision does **not** cause the placeholder to roll back to a previous revision. The placeholder retains the content it had at the time of the last publish. It still refers to the version of the Package Revision at the HEAD of the branch in git.
+Deleting the latest published PackageRevision does **not** cause the placeholder to roll back to a previous revision. The placeholder retains the content it had at the time of the last publish. It still refers to the version of the PackageRevision at the HEAD of the branch in Git.
 
 This is intentional. Consider the scenario:
 
@@ -80,7 +80,7 @@ This preserves linear Git history and makes the intent **explicit**.
 
 ## Relationship to GitOps
 
-In a GitOps workflow, a reconciler (such as Flux or ArgoCD) watches a branch in Git for changes. The placeholder package revision references this branch.
+In a GitOps workflow, a reconciler (such as Flux or ArgoCD) watches a branch in Git for changes. The placeholder PackageRevision references this branch.
 
 The branch is configured via `spec.git.branch` on the Repository CR. This is commonly `main` but can be any branch name (e.g. `production`, `release`, `staging`). The placeholder's workspace name will match whatever branch is configured.
 
