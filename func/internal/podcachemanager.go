@@ -97,7 +97,8 @@ func (pcm *podCacheManager) redistributeLoad(image string, fn *functionInfo, con
 	for _, ch := range connections {
 		bestPodIndex, _ := pcm.findBestPod(fn)
 		if bestPodIndex != -1 {
-			pod := pcm.functions[image].pods[bestPodIndex]
+			pod := &pcm.functions[image].pods[bestPodIndex]
+			pod.concurrentEvaluations.Add(1)
 			if pod.podData != nil {
 				pod.SendResponse(ch, nil)
 			} else {
@@ -216,12 +217,29 @@ func (pcm *podCacheManager) podCacheManager(ctx context.Context) {
 				return pod.podData != nil && pod.podKey != nil && *pod.podKey == evict.podKey
 			})
 			if idx != -1 {
-				klog.Infof("Evicting dead pod %s from cache for image %s (Unavailable)", evict.podKey.Name, evict.image)
-				pcm.DeletePodWithServiceInBackgroundByObjectKey(*fn.pods[idx].podData)
-				fn.pods = slices.Delete(fn.pods, idx, idx+1)
-			} else {
-				// Best-effort cleanup of any other stale entries for this image.
-				pcm.removeUnhealthyPods(fn, false)
+				// Check if the pod still exists and is healthy in k8s.
+				// Use a bounded context to avoid blocking the event loop on API-server issues.
+				k8sPod := &corev1.Pod{}
+				getCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				err := pcm.podManager.kubeClient.Get(getCtx, *fn.pods[idx].podKey, k8sPod)
+				cancel()
+				if apierrors.IsNotFound(err) {
+					klog.Infof("Evicting missing pod %s from cache for image %s (Unavailable)", evict.podKey.Name, evict.image)
+					if fn.pods[idx].grpcConnection != nil {
+						fn.pods[idx].grpcConnection.Close()
+					}
+					fn.pods = slices.Delete(fn.pods, idx, idx+1)
+				} else if err != nil {
+					// Transient API error — keep the pod in cache rather than evicting a healthy pod.
+					klog.Warningf("Failed to confirm pod health for %s/%s; keeping it in cache: %v", evict.podKey.Namespace, evict.podKey.Name, err)
+				} else if k8sPod.Status.Phase != corev1.PodRunning || k8sPod.DeletionTimestamp != nil {
+					klog.Infof("Evicting dead pod %s from cache for image %s (Unavailable)", evict.podKey.Name, evict.image)
+					if fn.pods[idx].grpcConnection != nil {
+						fn.pods[idx].grpcConnection.Close()
+					}
+					pcm.DeletePodInBackground(k8sPod)
+					fn.pods = slices.Delete(fn.pods, idx, idx+1)
+				}
 			}
 			if evict.doneCh != nil {
 				close(evict.doneCh)
@@ -314,6 +332,15 @@ func (pcm *podCacheManager) retrieveFunctionPods(ctx context.Context) error {
 					if len(fn.pods) < pcm.maxParallelPodsPerFunction && pod.Status.Phase == corev1.PodRunning {
 						pData, err := pcm.podManager.createPodData(ctx, serviceKey, podKey, image)
 						if err == nil {
+							// Verify gRPC is reachable before adding to cache
+							if !pcm.podManager.skipGrpcReadyCheck {
+								if grpcErr := pcm.podManager.waitForGrpcReady(ctx, pData.grpcConnection); grpcErr != nil {
+									klog.Warningf("retrieved pod %s/%s for %s but gRPC not ready, deleting: %v", pod.Namespace, pod.Name, image, grpcErr)
+									pData.grpcConnection.Close()
+									pcm.DeletePodInBackground(&pod)
+									continue
+								}
+							}
 							klog.Infof("retrieved function evaluator pod %s/%s for %s", pod.Namespace, pod.Name, image)
 							fn.pods = append(fn.pods, NewPodInfo(nil))
 							pcm.podManager.podReadyCh <- &podReadyResponse{
