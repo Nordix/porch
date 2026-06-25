@@ -8,7 +8,7 @@ description: |
 
 ## Overview
 
-The placeholder package revision is a special PackageRevision that Porch creates automatically as a reference the latest released version of a package. It acts as a "branch-tracking" reference. The placeholder package revision points at the version of the package revision at the HEAD of the branch of the repository that the package revision is stored on.
+The placeholder package revision is a special PackageRevision that Porch creates automatically as a reference to the latest released version of a package. It acts as a "branch-tracking" reference: the placeholder package revision points at the version of the package at the HEAD of the branch of the repository where the package revision is stored.
 
 **Identifying a placeholder:**
 
@@ -49,7 +49,7 @@ This is intentional. Consider the scenario:
 
 After step 3, the placeholder **still reflects v2's content**. It does not fall back to v1.
 
-**This occurs due to deletion of a PackageRevision in Porch:
+**This occurs because** the deletion of a PackageRevision in Porch:
 
 - Removes the tag/branch reference from Git
 - Removes the Porch metadata
