@@ -517,10 +517,13 @@ func findUpstreamRefsFromDB(ctx context.Context, namespace, prName string) (stri
 
 	// Uses the indexed upstream_ref_name column for fast B-tree lookups.
 	// Excludes main branch packages (revision = -1) as they are auto-managed.
+	// The explicit upstream_ref_name != '' predicate ensures PostgreSQL can
+	// prove eligibility of the partial index even with a parameterized plan.
 	sqlStatement := `
 		SELECT k8s_name FROM package_revisions
 		WHERE k8s_name_space=$1
 		  AND revision != -1
+		  AND upstream_ref_name != ''
 		  AND upstream_ref_name=$2
 		LIMIT 1
 	`
