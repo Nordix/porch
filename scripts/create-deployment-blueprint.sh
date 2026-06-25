@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2022-2025 The kpt Authors
+# Copyright 2022-2026 The kpt Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -357,6 +357,12 @@ function main() {
 
   # Porch Deployment Config
   cp ${PORCH_DIR}/deployments/porch/*.yaml "${PORCH_DIR}/deployments/porch/Kptfile" "${DESTINATION}"
+
+  # Move functionconfig/servicetemplate CR instances to a separate post-deploy directory.
+  # These are applied after porch-server is healthy to avoid kpt live apply reconcile timeouts
+  # caused by applying a CRD and its instances in the same operation.
+  mkdir -p "${DESTINATION}-post"
+  mv "${DESTINATION}/22-function-templates.yaml" "${DESTINATION}/23-function-configurations.yaml" "${DESTINATION}-post/"
   # Copy Porch controller manager rbac
   cp ${PORCH_DIR}/controllers/config/rbac/role.yaml "${DESTINATION}/9-porch-controller-clusterrole.yaml"
 
