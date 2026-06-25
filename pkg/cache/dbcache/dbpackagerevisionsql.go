@@ -351,8 +351,8 @@ func pkgRevWriteToDB(ctx context.Context, pr *dbPackageRevision) error {
 	klog.V(5).Infof("pkgRevWriteToDB: writing package revision %+v", pr.Key())
 
 	sqlStatement := `
-        INSERT INTO package_revisions (k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks, kptfile_status, resources_size)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        INSERT INTO package_revisions (k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks, kptfile_status, resources_size, upstream_ref_name)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 
 	klog.V(6).Infof("pkgRevWriteToDB: running query %q on package revision %+v", sqlStatement, pr)
@@ -360,7 +360,7 @@ func pkgRevWriteToDB(ctx context.Context, pr *dbPackageRevision) error {
 	if _, err := GetDB().db.Exec(ctx,
 		sqlStatement,
 		prk.K8SNS(), prk.K8SName(),
-		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks), valueAsJSON(pr.kptfileStatus), pr.resourcesSizeBytes); err == nil {
+		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks), valueAsJSON(pr.kptfileStatus), pr.resourcesSizeBytes, extractUpstreamRefName(pr.tasks)); err == nil {
 		klog.V(5).Infof("pkgRevWriteToDB: query succeeded, row created")
 	} else {
 		klog.Warningf("pkgRevWriteToDB: query failed for %+v %q", pr.Key(), err)
@@ -383,29 +383,30 @@ func pkgRevUpdateDB(ctx context.Context, pr *dbPackageRevision, updateResources 
 	klog.V(5).Infof("pkgRevUpdateDB: updating package revision %+v", pr.Key())
 
 	sqlStatement := `
-        UPDATE package_revisions SET package_k8s_name=$3, revision=$4, meta=$5, spec=$6, updated=$7, updatedby=$8, lifecycle=$9, ext_pr_id=$10, tasks=$11, kptfile_status=$12, resources_size=$13
+        UPDATE package_revisions SET package_k8s_name=$3, revision=$4, meta=$5, spec=$6, updated=$7, updatedby=$8, lifecycle=$9, ext_pr_id=$10, tasks=$11, kptfile_status=$12, resources_size=$13, upstream_ref_name=$14
         WHERE k8s_name_space=$1 AND k8s_name=$2
 	`
 	if pr.pkgRevKey.Revision == -1 {
 		sqlStatement = `
     INSERT INTO package_revisions (
-        k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks, kptfile_status, resources_size
+        k8s_name_space, k8s_name, package_k8s_name, revision, meta, spec, updated, updatedby, lifecycle, ext_pr_id, tasks, kptfile_status, resources_size, upstream_ref_name
     ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
     )
     ON CONFLICT (k8s_name_space, k8s_name)
     DO UPDATE SET
-        package_k8s_name = EXCLUDED.package_k8s_name,
-        meta             = EXCLUDED.meta,
-        revision         = EXCLUDED.revision,
-        spec             = EXCLUDED.spec,
-        updated          = EXCLUDED.updated,
-        updatedby        = EXCLUDED.updatedby,
-        lifecycle        = EXCLUDED.lifecycle,
-        ext_pr_id        = EXCLUDED.ext_pr_id,
-        tasks            = EXCLUDED.tasks,
-        kptfile_status   = EXCLUDED.kptfile_status,
-        resources_size   = EXCLUDED.resources_size;
+        package_k8s_name   = EXCLUDED.package_k8s_name,
+        meta               = EXCLUDED.meta,
+        revision           = EXCLUDED.revision,
+        spec               = EXCLUDED.spec,
+        updated            = EXCLUDED.updated,
+        updatedby          = EXCLUDED.updatedby,
+        lifecycle          = EXCLUDED.lifecycle,
+        ext_pr_id          = EXCLUDED.ext_pr_id,
+        tasks              = EXCLUDED.tasks,
+        kptfile_status     = EXCLUDED.kptfile_status,
+        resources_size     = EXCLUDED.resources_size,
+        upstream_ref_name  = EXCLUDED.upstream_ref_name;
 	`
 	}
 
@@ -414,7 +415,7 @@ func pkgRevUpdateDB(ctx context.Context, pr *dbPackageRevision, updateResources 
 	result, err := GetDB().db.Exec(ctx,
 		sqlStatement,
 		prk.K8SNS(), prk.K8SName(),
-		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks), valueAsJSON(pr.kptfileStatus), pr.resourcesSizeBytes)
+		prk.PKey().K8SName(), prk.Revision, valueAsJSON(pr.meta), valueAsJSON(pr.spec), pr.updated, pr.updatedBy, pr.lifecycle, valueAsJSON(pr.extPRID), valueAsJSON(pr.tasks), valueAsJSON(pr.kptfileStatus), pr.resourcesSizeBytes, extractUpstreamRefName(pr.tasks))
 
 	if err == nil {
 		if rowsAffected, _ := result.RowsAffected(); rowsAffected == 1 {
@@ -475,13 +476,17 @@ func findUpstreamRefsFromDB(ctx context.Context, namespace, prName string) (stri
 	_, span := tracer.Start(ctx, "dbpackagerevisionsql::findUpstreamRefsFromDB")
 	defer span.End()
 
-	// Match newUpstreamRef (upgrade) or nested upstreamRef (clone)
-	// Exclude main branch packages (revision = -1) as they are auto-managed
+	if prName == "" {
+		return "", nil
+	}
+
+	// Uses the indexed upstream_ref_name column for fast B-tree lookups.
+	// Excludes main branch packages (revision = -1) as they are auto-managed.
 	sqlStatement := `
 		SELECT k8s_name FROM package_revisions
 		WHERE k8s_name_space=$1
 		  AND revision != -1
-		  AND tasks::text ~ ('"(upstreamRef|newUpstreamRef)":\{"name":"' || $2 || '"')
+		  AND upstream_ref_name=$2
 		LIMIT 1
 	`
 
@@ -496,61 +501,204 @@ func findUpstreamRefsFromDB(ctx context.Context, namespace, prName string) (stri
 	return downstreamName, nil
 }
 
+// extractUpstreamRefName extracts the upstream package revision name from tasks.
+// It looks for clone tasks with an upstreamRef or upgrade tasks with a newUpstreamRef.
+func extractUpstreamRefName(tasks []porchapi.Task) string {
+	for _, task := range tasks {
+		switch task.Type {
+		case porchapi.TaskTypeClone:
+			if task.Clone != nil && task.Clone.Upstream.UpstreamRef != nil && task.Clone.Upstream.UpstreamRef.Name != "" {
+				return task.Clone.Upstream.UpstreamRef.Name
+			}
+		case porchapi.TaskTypeUpgrade:
+			if task.Upgrade != nil && task.Upgrade.NewUpstream.Name != "" {
+				return task.Upgrade.NewUpstream.Name
+			}
+		}
+	}
+	return ""
+}
+
+// backfillBatchSize controls how many rows are selected and updated per
+// transaction during startup backfills. Keeping batches small reduces lock
+// duration and contention on large databases.
+const backfillBatchSize = 500
+
 // backfillKptfileMeta populates the kptfile_status column for any package
 // revisions that still have the default empty value. It reads the Kptfile
 // resource for each such row, parses it, and stores the extracted status
 // (conditions, upstreamLock) and updates the spec (readinessGates, packageMetadata).
 // This runs once on startup to handle rows created before the column existed.
+// It processes rows in batches to avoid holding long-lived locks.
+// Each successfully updated row no longer matches the WHERE clause (kptfile_status
+// changes from '{}'), so the next LIMIT query naturally returns the next batch.
 func backfillKptfileMeta(ctx context.Context) error {
-	tx, err := GetDB().db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("backfillKptfileMeta: begin transaction failed: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
+	type row struct{ ns, name, specJSON, kfYAML string }
 
 	sqlSelect := `
 		SELECT pr.k8s_name_space, pr.k8s_name, pr.spec, r.resource_value
 		FROM package_revisions pr
 		JOIN resources r ON pr.k8s_name_space = r.k8s_name_space AND pr.k8s_name = r.k8s_name
 		WHERE pr.kptfile_status = '{}' AND r.resource_key = 'Kptfile'
+		ORDER BY pr.k8s_name_space, pr.k8s_name
+		LIMIT $1
 	`
-	rows, err := tx.QueryContext(ctx, sqlSelect)
-	if err != nil {
-		return fmt.Errorf("backfillKptfileMeta: query failed: %w", err)
-	}
-
-	type row struct{ ns, name, specJSON, kfYAML string }
-	var pending []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.ns, &r.name, &r.specJSON, &r.kfYAML); err != nil {
-			rows.Close()
-			return fmt.Errorf("backfillKptfileMeta: scan failed: %w", err)
-		}
-		pending = append(pending, r)
-	}
-	rows.Close()
-
 	sqlUpdate := `UPDATE package_revisions SET kptfile_status = $3, spec = $4 WHERE k8s_name_space = $1 AND k8s_name = $2`
-	for _, r := range pending {
-		resources := map[string]string{kptfile.KptFileName: r.kfYAML}
-		status, gates, pkgMeta := extractFromKptfile(resources)
 
-		var spec porchapi.PackageRevisionSpec
-		setValueFromJSON(r.specJSON, &spec)
-		spec.ReadinessGates = gates
-		spec.PackageMetadata = pkgMeta
+	totalUpdated := 0
 
-		if _, err := tx.ExecContext(ctx, sqlUpdate, r.ns, r.name, valueAsJSON(status), valueAsJSON(spec)); err != nil {
-			return fmt.Errorf("backfillKptfileMeta: update failed for %s/%s: %w", r.ns, r.name, err)
+	for {
+		// Fetch a batch outside a long-running transaction.
+		rows, err := GetDB().db.Query(ctx, sqlSelect, backfillBatchSize)
+		if err != nil {
+			return fmt.Errorf("backfillKptfileMeta: query failed: %w", err)
+		}
+
+		var pending []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.ns, &r.name, &r.specJSON, &r.kfYAML); err != nil {
+				rows.Close()
+				return fmt.Errorf("backfillKptfileMeta: scan failed: %w", err)
+			}
+			pending = append(pending, r)
+		}
+		rows.Close()
+
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("backfillKptfileMeta: row iteration failed: %w", err)
+		}
+
+		if len(pending) == 0 {
+			break
+		}
+
+		// Update this batch in its own short-lived transaction.
+		tx, err := GetDB().db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("backfillKptfileMeta: begin transaction failed: %w", err)
+		}
+
+		for _, r := range pending {
+			resources := map[string]string{kptfile.KptFileName: r.kfYAML}
+			status, gates, pkgMeta := extractFromKptfile(resources)
+
+			var spec porchapi.PackageRevisionSpec
+			setValueFromJSON(r.specJSON, &spec)
+			spec.ReadinessGates = gates
+			spec.PackageMetadata = pkgMeta
+
+			if _, err := tx.ExecContext(ctx, sqlUpdate, r.ns, r.name, valueAsJSON(status), valueAsJSON(spec)); err != nil {
+				tx.Rollback() //nolint:errcheck
+				return fmt.Errorf("backfillKptfileMeta: update failed for %s/%s: %w", r.ns, r.name, err)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("backfillKptfileMeta: commit failed: %w", err)
+		}
+
+		totalUpdated += len(pending)
+		klog.V(3).Infof("backfillKptfileMeta: committed batch of %d rows (total so far: %d)", len(pending), totalUpdated)
+
+		// If we got fewer rows than the batch size, we've exhausted candidates.
+		if len(pending) < backfillBatchSize {
+			break
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("backfillKptfileMeta: commit failed: %w", err)
+	if totalUpdated > 0 {
+		klog.Infof("backfillKptfileMeta: populated kptfile_status for %d package revisions", totalUpdated)
 	}
-	if len(pending) > 0 {
-		klog.Infof("backfillKptfileMeta: populated kptfile_status for %d package revisions", len(pending))
+	return nil
+}
+
+// backfillUpstreamRefName populates the upstream_ref_name column for any package
+// revisions that still have an empty value but have tasks containing upstream references.
+// It parses the tasks JSON, extracts the upstream ref name, and stores it.
+// This runs once on startup to handle rows created before the column existed.
+// It processes rows in batches using keyset pagination for efficient seeking on large tables.
+func backfillUpstreamRefName(ctx context.Context) error {
+	type update struct{ ns, name, upstreamRefName string }
+
+	sqlSelect := `
+		SELECT k8s_name_space, k8s_name, tasks
+		FROM package_revisions
+		WHERE upstream_ref_name = ''
+		  AND revision != -1
+		  AND tasks != '[]' AND tasks != 'null'
+		  AND (k8s_name_space, k8s_name) > ($2, $3)
+		ORDER BY k8s_name_space, k8s_name
+		LIMIT $1
+	`
+	sqlUpdate := `UPDATE package_revisions SET upstream_ref_name = $3 WHERE k8s_name_space = $1 AND k8s_name = $2`
+
+	totalUpdated := 0
+	lastNS, lastName := "", ""
+
+	for {
+		rows, err := GetDB().db.Query(ctx, sqlSelect, backfillBatchSize, lastNS, lastName)
+		if err != nil {
+			return fmt.Errorf("backfillUpstreamRefName: query failed after (%s, %s): %w", lastNS, lastName, err)
+		}
+
+		var updates []update
+		rowsScanned := 0
+		for rows.Next() {
+			var ns, name, tasksJSON string
+			if err := rows.Scan(&ns, &name, &tasksJSON); err != nil {
+				rows.Close()
+				return fmt.Errorf("backfillUpstreamRefName: scan failed: %w", err)
+			}
+			rowsScanned++
+			lastNS, lastName = ns, name
+
+			var tasks []porchapi.Task
+			setValueFromJSON(tasksJSON, &tasks)
+			upstreamName := extractUpstreamRefName(tasks)
+			if upstreamName != "" {
+				updates = append(updates, update{ns, name, upstreamName})
+			}
+		}
+		rows.Close()
+
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("backfillUpstreamRefName: row iteration failed: %w", err)
+		}
+
+		if rowsScanned == 0 {
+			break
+		}
+
+		// Update qualifying rows in a short-lived transaction.
+		if len(updates) > 0 {
+			tx, err := GetDB().db.BeginTx(ctx, nil)
+			if err != nil {
+				return fmt.Errorf("backfillUpstreamRefName: begin transaction failed: %w", err)
+			}
+
+			for _, u := range updates {
+				if _, err := tx.ExecContext(ctx, sqlUpdate, u.ns, u.name, u.upstreamRefName); err != nil {
+					tx.Rollback() //nolint:errcheck
+					return fmt.Errorf("backfillUpstreamRefName: update failed for %s/%s: %w", u.ns, u.name, err)
+				}
+			}
+
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("backfillUpstreamRefName: commit failed: %w", err)
+			}
+
+			totalUpdated += len(updates)
+			klog.V(3).Infof("backfillUpstreamRefName: committed batch of %d rows (total so far: %d)", len(updates), totalUpdated)
+		}
+
+		if rowsScanned < backfillBatchSize {
+			break
+		}
+	}
+
+	if totalUpdated > 0 {
+		klog.Infof("backfillUpstreamRefName: populated upstream_ref_name for %d package revisions", totalUpdated)
 	}
 	return nil
 }
