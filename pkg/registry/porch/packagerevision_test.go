@@ -759,6 +759,9 @@ func TestCheckIfUpstreamIsReferenced(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	mockClient, mockEngine := setup(t)
+	mockWatcherManager := mockengine.NewMockWatcherManager(t)
+	mockEngine.On("ObjectCache").Return(mockWatcherManager).Maybe()
+	mockWatcherManager.On("WatchPackageRevisions", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	ctx := request.WithNamespace(context.TODO(), "someDummyNamespace")
 	pkgRevName := "repo.1234567890.ws"
 
