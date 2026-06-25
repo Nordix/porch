@@ -358,9 +358,10 @@ function main() {
   # Porch Deployment Config
   cp ${PORCH_DIR}/deployments/porch/*.yaml "${PORCH_DIR}/deployments/porch/Kptfile" "${DESTINATION}"
 
-  # Move functionconfig/servicetemplate CR instances to a separate post-deploy directory.
-  # These are applied after porch-server is healthy to avoid kpt live apply reconcile timeouts
+  # Move FunctionConfig/ServiceTemplate CR instances to a separate post-deploy directory.
+  # These are applied after the main deployment rollout checks pass to avoid kpt live apply reconcile timeouts
   # caused by applying a CRD and its instances in the same operation.
+  rm -rf "${DESTINATION}-post"
   mkdir -p "${DESTINATION}-post"
   mv "${DESTINATION}/22-function-templates.yaml" "${DESTINATION}/23-function-configurations.yaml" "${DESTINATION}-post/"
   # Copy Porch controller manager rbac

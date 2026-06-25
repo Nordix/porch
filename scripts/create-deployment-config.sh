@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2025 The kpt Authors
+# Copyright 2025-2026 The kpt Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ source "$(dirname "$0")/common.sh"
 
 echo "Creating deployment configuration..."
 
-rm -rf "${DEPLOYPORCHCONFIGDIR}" || true
+rm -rf "${DEPLOYPORCHCONFIGDIR}" "${DEPLOYPORCHCONFIGDIR}-post" || true
 mkdir -p "${DEPLOYPORCHCONFIGDIR}"
 
 ./scripts/create-deployment-blueprint.sh \

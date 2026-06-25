@@ -118,6 +118,11 @@ function deploy-porch-dev-pkg {
   kpt fn render ${DESTINATION}/porch
   kpt live init ${DESTINATION}/porch
   kpt live apply ${DESTINATION}/porch
+  # Apply CRD instances after the main deployment to avoid reconcile timeouts
+  # caused by applying a CRD and its instances in the same operation.
+  if [ -d "${DESTINATION}/porch-post" ]; then
+    kubectl apply --server-side --force-conflicts -f "${DESTINATION}/porch-post/"
+  fi
 }
 
 function load-custom-images {
@@ -166,6 +171,16 @@ for resource in ctx.resource_list["items"]:
   "${WRAPPER_SERVER_IMAGE}"
 
   echo "Deploying porch with newly built images..."
+  # Move FunctionConfig/ServiceTemplate CR instances to a separate post-deploy directory.
+  # These are applied after the main deployment to avoid kpt live apply reconcile timeouts
+  # caused by applying a CRD and its instances in the same operation.
+  rm -rf "${DESTINATION}/porch-post"
+  mkdir -p "${DESTINATION}/porch-post"
+  for f in "${DESTINATION}/porch/22-function-templates.yaml" "${DESTINATION}/porch/23-function-configurations.yaml"; do
+    if [ -f "$f" ]; then
+      mv "$f" "${DESTINATION}/porch-post/"
+    fi
+  done
   deploy-porch-dev-pkg
 
   echo
