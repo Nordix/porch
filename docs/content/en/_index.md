@@ -34,7 +34,7 @@ Packages move through lifecycle stages (Draft → Proposed → Published → Del
 {{% /blocks/feature %}}
 
 {{% blocks/feature icon="fas fa-cube" title="Standard kpt Packages" %}}
-Manages standard kpt packages with no vendor lock-in. Packages can be edited through Porch or directly in Git.
+Manages standard kpt packages with no vendor lock-in.
 {{% /blocks/feature %}}
 
 {{% /blocks/section %}}

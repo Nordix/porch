@@ -75,18 +75,9 @@ This section introduces some core concepts of Porch's package orchestration:
       package revision is created with its workspace name given a value of "V2", it could very well end up with a Revision
       of `4` once published
 
-* ***Placeholder package revision***: A dummy package revision reference that points at a package's latest package revision.
-  The placeholder package revision is created by Porch simultaneously with the first package revision for a particular
-  package. Each time a new package revision is published on the package, the placeholder package revision is updated (actually
-  deleted and recreated).
-
-  The following rules apply:
-  * there is always at most one placeholder package revision for a package
-  * it always has a revision number of `-1`
-  * its workspace name is always the branch in the Git repository on which the package revision exists - usually (though
-    not always) `main`
-  * its naming comvention is `{repository-name}.{package-name}.{branch-name}`, where {branch-name} is the branch in Git
-    on which the package revision exists
+* ***[Placeholder package revision]({{% relref "placeholder-package-revision" %}})***: A package revision that tracks
+  the most recent content of a package in its repository. It is created automatically when the first revision
+  of a package is published and updated on each subsequent publish.
 
 * ***[Upstream and Downstream]({{% relref "upstream-downstream" %}})***: source-and-derivation relationships between
   package revisions. When a package revision is cloned, it becomes the **upstream** (source) in its relationship to the
