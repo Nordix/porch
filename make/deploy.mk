@@ -137,6 +137,9 @@ deploy-current-config:## Deploy the configuration that is currently in $(DEPLOYP
 	@if [ "$(SKIP_CONTROLLER_BUILD)" != "true" ]; then \
 		kubectl rollout status deployment porch-controllers --namespace porch-system --timeout=180s; \
 	fi
+	@if [ -d "$(DEPLOYPORCHCONFIGDIR)-post" ]; then \
+		kubectl apply --server-side -f $(DEPLOYPORCHCONFIGDIR)-post/; \
+	fi
 	@echo "Done."
 
 .PHONY: reload-function-runner
