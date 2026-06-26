@@ -75,23 +75,20 @@ This section introduces some core concepts of Porch's package orchestration:
       package revision is created with its workspace name given a value of "V2", it could very well end up with a Revision
       of `4` once published
 
-* ***Placeholder package revision***: A dummy package revision reference that points at a package's latest package revision.
-  The placeholder package revision is created by Porch simultaneously with the first package revision for a particular
-  package. Each time a new package revision is published on the package, the placeholder package revision is updated (actually
-  deleted and recreated).
-
-  The following rules apply:
-  * there is always at most one placeholder package revision for a package
-  * it always has a revision number of `-1`
-  * its workspace name is always the branch in the Git repository on which the package revision exists - usually (though
-    not always) `main`
-  * its naming comvention is `{repository-name}.{package-name}.{branch-name}`, where {branch-name} is the branch in Git
-    on which the package revision exists
+* ***[Placeholder package revision]({{% relref "placeholder-package-revision" %}})***: A package revision that tracks
+  the most recent content of a package in its repository. It is created automatically when the first revision
+  of a package is published and updated on each subsequent publish.
 
 * ***[Upstream and Downstream]({{% relref "upstream-downstream" %}})***: source-and-derivation relationships between
   package revisions. When a package revision is cloned, it becomes the **upstream** (source) in its relationship to the
   newly-created **downstream** (derived) package revision(s). Downstream package revisions maintain a link to their upstream
   source package revision and can be upgraded when new versions of the upstream package revision are published.
+
+* ***[Subpackages]({{% relref "subpackages" %}})***: A **subpackage** is a kpt package nested within a parent
+  package at a specific subdirectory. An **independent subpackage** maintains its own upstream source whereas a
+  **dependent subpackage** has no upstream source. Independent subpackages enable composition of a single
+  package from multiple upstream sources, where each subpackage can be independently cloned and upgraded on its own schedule.
+  See [the kpt package documentation](https://kpt.dev/book/03-packages) for a full description of dependent and independent subpackages.
 
 * ***[Functions]({{% relref "functions" %}})***: Specifically, [KRM functions](https://github.com/kubernetes-sigs/kustomize/blob/master/cmd/config/docs/api-conventions/functions-spec.md).
   Functions can be added to a package's [kptfile pipeline](https://kpt.dev/book/04-using-functions/#declarative-function-execution)

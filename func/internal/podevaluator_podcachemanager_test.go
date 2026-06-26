@@ -306,7 +306,7 @@ func TestPodCacheManager(t *testing.T) {
 				WithScheme(scheme).
 				WithInterceptorFuncs(interceptor.Funcs{Create: fakeClientCreateFixInterceptor}).
 				Build(),
-			expectedLog: "Removing deleted pod from cache for image apply-replacements",
+			expectedLog: "Queuing request for apply-replacements on pod instance #0",
 		},
 		{
 			name:       "Pod does not Exists but Service Exists and not in Cache",
@@ -336,6 +336,7 @@ func TestPodCacheManager(t *testing.T) {
 		managerNamespace:        defaultNamespace,
 		enablePrivateRegistries: false,
 		podReadyCh:              podReadyCh,
+		skipGrpcReadyCheck:      true,
 	}
 
 	for k, v := range defaultImageMetadataCache {

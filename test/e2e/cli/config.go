@@ -38,10 +38,20 @@ type Command struct {
 	Yaml bool `yaml:"yaml,omitempty"`
 	// IgnoreWhitespace indicates that whitespace differences should be ignored in the output
 	IgnoreWhitespace bool `yaml:"ignoreWhitespace,omitempty"`
+	// IgnoreColumns lists column names to strip from both expected and actual table output
+	// before comparison. Useful for non-deterministic columns like AGE.
+	IgnoreColumns []string `yaml:"ignoreColumns,omitempty"`
 	// StdErrTabToWhitespace replaces "\t" (tab) character with whitespace "  "
 	StdErrTabToWhitespace bool `yaml:"stdErrTabToWhitespace,omitempty"`
 	// ContainsErrorString changes Stderr check from exact string match to contains string match
 	ContainsErrorString bool `yaml:"containsErrorString,omitempty"`
+	// WaitForReady waits for the PackageRevision named in stdout to become Ready.
+	// Use for v1alpha2 async operations (clone, init, copy, push, etc.).
+	WaitForReady bool `yaml:"waitForReady,omitempty"`
+	// WaitForPublished waits for the PackageRevision named in stdout to be Published
+	// with a non-zero status.revision. Use after approve commands where downstream
+	// consumers need the revision number to be set.
+	WaitForPublished bool `yaml:"waitForPublished,omitempty"`
 }
 
 type TestCaseConfig struct {

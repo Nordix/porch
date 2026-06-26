@@ -31,7 +31,7 @@ import (
 // +kubebuilder:printcolumn:name="Package",type=string,JSONPath=`.spec.packageName`
 // +kubebuilder:printcolumn:name="WorkspaceName",type=string,JSONPath=`.spec.workspaceName`
 // +kubebuilder:printcolumn:name="Revision",type=string,JSONPath=`.status.revision`
-// +kubebuilder:printcolumn:name="Latest",type=string,JSONPath=".metadata.labels['porch.kpt.dev/latest-revision']"
+// +kubebuilder:printcolumn:name="Latest",type=string,JSONPath=`.metadata.labels['porch\.kpt\.dev/latest-revision']`
 // +kubebuilder:printcolumn:name="Lifecycle",type=string,JSONPath=`.spec.lifecycle`
 // +kubebuilder:printcolumn:name="Repository",type=string,JSONPath=`.spec.repository`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
@@ -63,6 +63,10 @@ const (
 	LatestPackageRevisionKey   = "porch.kpt.dev/latest-revision"
 	LatestPackageRevisionValue = "true"
 )
+
+// RepositoryLabelKey is set on every PackageRevision resource to identify which repository it belongs to.
+// Both the repository controller and the PR controller must ensure this label is present.
+const RepositoryLabelKey = "porch.kpt.dev/repository"
 
 // AnnotationRenderRequest triggers async rendering when patched by the PRR handler.
 const AnnotationRenderRequest = "porch.kpt.dev/render-request"

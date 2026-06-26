@@ -1,4 +1,4 @@
-// Copyright 2024-2025 The kpt Authors
+// Copyright 2024-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,6 +49,9 @@ type CliTestSuite struct {
 	GitServerURL string
 	// PorchctlCommand is the full path to the porchctl command to be tested.
 	PorchctlCommand string
+	// DeleteNamespaceFunc is the function used to clean up test namespaces.
+	// Defaults to KubectlDeleteNamespace. Override for v1alpha2 to handle CRD finalizers.
+	DeleteNamespaceFunc func(t *testing.T, name string)
 }
 
 // NewCliTestSuite creates a new CliTestSuite based on the configuration in the testdata directory.
@@ -93,6 +96,10 @@ func NewCliTestSuite(t *testing.T, testdataDir string) *CliTestSuite {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
+
+	// Default namespace cleanup uses v1alpha1 finalizer removal
+	s.DeleteNamespaceFunc = KubectlDeleteNamespace
+
 	return s
 }
 
@@ -119,7 +126,7 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 	go func() {
 		<-sigChan
 		t.Logf("Interrupt received, cleaning up namespace %s", tc.TestCase)
-		KubectlDeleteNamespace(t, tc.TestCase)
+		s.DeleteNamespaceFunc(t, tc.TestCase)
 		if tc.UsesPorchTestRepo {
 			suiteutils.RecreateGiteaRepo(t, porchTestRepo)
 		}
@@ -128,7 +135,7 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 
 	t.Cleanup(func() {
 		signal.Stop(sigChan)
-		KubectlDeleteNamespace(t, tc.TestCase)
+		s.DeleteNamespaceFunc(t, tc.TestCase)
 		if tc.UsesPorchTestRepo {
 			suiteutils.RecreateGiteaRepo(t, porchTestRepo)
 		}
@@ -137,16 +144,20 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 	for i := range tc.Commands {
 		// time.Sleep(1 * time.Second) // TODO: why was this necessary?
 		command := &tc.Commands[i]
-		for i, arg := range command.Args {
+
+		// Build execution args without mutating the original command (preserves golden file content)
+		execArgs := make([]string, len(command.Args))
+		copy(execArgs, command.Args)
+		for j := range execArgs {
 			for search, replace := range s.SearchAndReplace {
-				command.Args[i] = strings.ReplaceAll(arg, search, replace)
+				execArgs[j] = strings.ReplaceAll(execArgs[j], search, replace)
 			}
 		}
-		if command.Args[0] == "porchctl" {
+		if execArgs[0] == "porchctl" {
 			// make sure that we are testing the porchctl command built from this codebase
-			command.Args[0] = s.PorchctlCommand
+			execArgs[0] = s.PorchctlCommand
 		}
-		cmd := exec.Command(command.Args[0], command.Args[1:]...)
+		cmd := exec.Command(execArgs[0], execArgs[1:]...)
 
 		var stdout, stderr bytes.Buffer
 		if command.Stdin != "" {
@@ -177,6 +188,11 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 			stderrStr = strings.ReplaceAll(stderrStr, "\t", "  ") // Replace tabs with spaces
 		}
 
+		if len(command.IgnoreColumns) > 0 {
+			stdoutStr = stripColumns(stdoutStr, command.IgnoreColumns)
+			command.Stdout = stripColumns(command.Stdout, command.IgnoreColumns)
+		}
+
 		if command.IgnoreWhitespace {
 			command.Stdout = normalizeWhitespace(command.Stdout)
 			command.Stderr = normalizeWhitespace(command.Stderr)
@@ -184,7 +200,14 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 			stderrStr = normalizeWhitespace(stderrStr)
 		}
 
+		if strings.Contains(command.Stdout, placeholderAny) {
+			command.Stdout = replacePlaceholders(command.Stdout, stdoutStr)
+		}
+
 		if os.Getenv(updateGoldenFiles) != "" {
+			// NOTE: updateCommand overwrites Stdout/Stderr with raw output,
+			// discarding {{ANY}} placeholders and ignoreColumns transformations.
+			// After regenerating golden files, manually restore placeholders.
 			updateCommand(command, err, stdout.String(), stderr.String())
 		}
 
@@ -213,6 +236,20 @@ func (s *CliTestSuite) RunTestCase(t *testing.T, tc TestCaseConfig) {
 				KubectlWaitForRepoReady(t, name, tc.TestCase)
 			} else {
 				t.Fatalf("Failed to get repo name for registration: %s", tc.TestCase)
+			}
+		}
+
+		if command.WaitForReady && err == nil {
+			prName := parsePRNameFromOutput(stdout.String())
+			if prName != "" {
+				KubectlWaitForPackageRevisionReady(t, prName, tc.TestCase)
+			}
+		}
+
+		if command.WaitForPublished && err == nil {
+			prName := parsePRNameFromOutput(stdout.String())
+			if prName != "" {
+				KubectlWaitForPackageRevisionPublished(t, prName, tc.TestCase)
 			}
 		}
 	}
@@ -274,6 +311,153 @@ func normalizeWhitespace(s1 string) string {
 	return strings.Join(words, " ")
 }
 
+// placeholderAny matches any non-empty value in a cell position during output comparison.
+const placeholderAny = "{{ANY}}"
+
+// stripColumns removes named columns from table-formatted output.
+// It parses the header row to find column byte offsets, then removes
+// those byte ranges from all rows. Returns the input unchanged if
+// the header doesn't contain any of the named columns.
+func stripColumns(output string, columns []string) string {
+	if len(columns) == 0 || output == "" {
+		return output
+	}
+
+	lines := strings.Split(output, "\n")
+	if len(lines) == 0 {
+		return output
+	}
+
+	ranges := findColumnRanges(lines[0], columns)
+	if len(ranges) == 0 {
+		return output
+	}
+
+	var result []string
+	for _, line := range lines {
+		stripped := removeRanges(line, ranges)
+		stripped = strings.TrimRight(stripped, " ")
+		result = append(result, stripped)
+	}
+	return strings.Join(result, "\n")
+}
+
+// colRange represents a byte range [start, end) within a line.
+type colRange struct{ start, end int }
+
+// findColumnRanges locates the byte ranges for the given column names in the header.
+// Returns ranges sorted right-to-left for safe removal.
+// For the last column in a row (no subsequent column), the range extends to end-of-line
+// so data values wider than the header label are fully removed.
+// Column names are matched as whole words (bounded by start-of-string, end-of-string, or spaces).
+func findColumnRanges(header string, columns []string) []colRange {
+	var ranges []colRange
+	for _, col := range columns {
+		idx := findWholeColumn(header, col)
+		if idx == -1 {
+			continue
+		}
+		end := idx + len(col)
+		// Consume trailing spaces to reach the next column header.
+		for end < len(header) && header[end] == ' ' {
+			end++
+		}
+		// If we reached end-of-header, this is the last column — mark end as -1
+		// so removeRanges extends to end-of-line for each row.
+		if end >= len(header) {
+			ranges = append(ranges, colRange{idx, -1})
+		} else {
+			ranges = append(ranges, colRange{idx, end})
+		}
+	}
+	sort.Slice(ranges, func(i, j int) bool {
+		return ranges[i].start > ranges[j].start
+	})
+	return ranges
+}
+
+// findWholeColumn finds a column name in the header that is bounded by
+// start-of-string/spaces on the left and end-of-string/spaces on the right.
+// Returns -1 if not found as a whole word.
+func findWholeColumn(header, col string) int {
+	start := 0
+	for {
+		idx := strings.Index(header[start:], col)
+		if idx == -1 {
+			return -1
+		}
+		idx += start
+		leftOK := idx == 0 || header[idx-1] == ' '
+		rightEnd := idx + len(col)
+		rightOK := rightEnd >= len(header) || header[rightEnd] == ' '
+		if leftOK && rightOK {
+			return idx
+		}
+		start = idx + 1
+	}
+}
+
+// removeRanges strips the given byte ranges from a line (ranges must be sorted right-to-left).
+// A range with end == -1 means "to end of line" (last column).
+func removeRanges(line string, ranges []colRange) string {
+	for _, r := range ranges {
+		if r.start >= len(line) {
+			continue
+		}
+		end := r.end
+		if end == -1 || end > len(line) {
+			end = len(line)
+		}
+		line = line[:r.start] + line[end:]
+	}
+	return line
+}
+
+// replacePlaceholders replaces {{ANY}} tokens in the expected string with the
+// corresponding whitespace-delimited value from the actual string. This allows
+// non-deterministic values (timestamps, ages, resource versions) to be ignored
+// in comparisons.
+//
+// NOTE: This function uses strings.Fields internally, which normalizes whitespace.
+// It should be used with ignoreWhitespace: true to ensure consistent behavior.
+func replacePlaceholders(expected, actual string) string {
+	if !strings.Contains(expected, placeholderAny) {
+		return expected
+	}
+
+	expectedLines := strings.Split(expected, "\n")
+	actualLines := strings.Split(actual, "\n")
+
+	var result []string
+	for i, eLine := range expectedLines {
+		if !strings.Contains(eLine, placeholderAny) || i >= len(actualLines) {
+			result = append(result, eLine)
+			continue
+		}
+		result = append(result, replacePlaceholdersInLine(eLine, actualLines[i]))
+	}
+	return strings.Join(result, "\n")
+}
+
+// replacePlaceholdersInLine replaces {{ANY}} tokens in a single line with
+// the corresponding word from the actual line.
+func replacePlaceholdersInLine(expectedLine, actualLine string) string {
+	eWords := strings.Fields(expectedLine)
+	aWords := strings.Fields(actualLine)
+
+	var replaced []string
+	aIdx := 0
+	for _, ew := range eWords {
+		if ew == placeholderAny && aIdx < len(aWords) {
+			replaced = append(replaced, aWords[aIdx])
+		} else {
+			replaced = append(replaced, ew)
+		}
+		aIdx++
+	}
+	return strings.Join(replaced, " ")
+}
+
 func removeArmPlatformWarning(got string) string {
 	got = strings.Replace(
 		got,
@@ -313,14 +497,15 @@ func reorderYamlStdout(t *testing.T, buf *bytes.Buffer) {
 		return
 	}
 
-	// strip out the resourceVersion:, creationTimestamp:
+	// strip out the resourceVersion:, creationTimestamp:, uid:
 	// because that will change with every run
 	scanner := bufio.NewScanner(buf)
 	var newBuf bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.Contains(line, "resourceVersion:") &&
-			!strings.Contains(line, "creationTimestamp:") {
+			!strings.Contains(line, "creationTimestamp:") &&
+			!strings.Contains(line, "uid:") {
 			newBuf.Write([]byte(line))
 			newBuf.Write([]byte("\n"))
 		}
@@ -399,4 +584,19 @@ func getRepoName(args []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// parsePRNameFromOutput extracts a PackageRevision name from command output.
+// It looks for lines like "git.basens-clone.clone-1 created" and returns the name part.
+func parsePRNameFromOutput(output string) string {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		// Match patterns like "<name> created", "<name> updated", "<name> proposed"
+		for _, suffix := range []string{" created", " updated", " proposed", " approved", " rejected", " pushed"} {
+			if before, ok := strings.CutSuffix(line, suffix); ok {
+				return before
+			}
+		}
+	}
+	return ""
 }

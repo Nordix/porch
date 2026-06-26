@@ -1,4 +1,4 @@
-// Copyright 2022 The kpt Authors
+// Copyright 2022, 2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,11 +25,13 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/kptdev/krm-functions-sdk/go/fn"
 	pb "github.com/kptdev/porch/func/evaluator"
 	"github.com/kptdev/porch/func/healthchecker"
-	porchotel "github.com/kptdev/porch/internal/otel"
+	"github.com/kptdev/porch/internal/telemetry"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
@@ -59,6 +61,7 @@ func main() {
 	cmd.Flags().IntVar(&op.port, "port", 9446, "The server port")
 	cmd.Flags().IntVar(&op.maxGrpcMessageSize, "max-request-body-size", 6*1024*1024, "Maximum size of grpc messages in bytes.")
 	cmd.Flags().IntVar(&op.logLevel, "verbosity", 2, "Verbosity of logs.")
+	cmd.Flags().BoolVar(&op.flattenLog, "flatten-log", false, "Flatten multi-line stderr into a single line in response Log, gRPC error messages, and warning logs.")
 
 	flagSet := flag.NewFlagSet("log-level", flag.ContinueOnError)
 	klog.InitFlags(flagSet)
@@ -75,16 +78,22 @@ type options struct {
 	maxGrpcMessageSize int
 	entrypoint         []string
 	logLevel           int
+	flattenLog         bool
 }
 
 func (o *options) run() error {
 	ctx := contextsignal.SetupSignalContext()
-	err := porchotel.SetupOpenTelemetry(ctx)
+	otelResources, err := telemetry.SetupOpenTelemetry(ctx)
 	if err != nil {
 		contextsignal.RequestShutdown()
 		klog.Errorf("%v\n", err)
 		return err
 	}
+	defer func() {
+		if err := otelResources.ShutdownWithTimeout(10 * time.Second); err != nil {
+			klog.Warningf("failed to gracefully shutdown OpenTelemetry: %v", err)
+		}
+	}()
 	klog.Info("OpenTelemetry initialized")
 	address := fmt.Sprintf(":%d", o.port)
 	lis, err := net.Listen("tcp", address)
@@ -94,6 +103,7 @@ func (o *options) run() error {
 
 	evaluator := &singleFunctionEvaluator{
 		entrypoint: o.entrypoint,
+		flattenLog: o.flattenLog,
 	}
 
 	klog.Infof("Listening on %s", address)
@@ -124,6 +134,7 @@ type singleFunctionEvaluator struct {
 	pb.UnimplementedFunctionEvaluatorServer
 
 	entrypoint []string
+	flattenLog bool
 }
 
 func (e *singleFunctionEvaluator) EvaluateFunction(ctx context.Context, req *pb.EvaluateFunctionRequest) (*pb.EvaluateFunctionResponse, error) {
@@ -139,6 +150,7 @@ func (e *singleFunctionEvaluator) EvaluateFunction(ctx context.Context, req *pb.
 	var exitErr *exec.ExitError
 	outbytes := stdout.Bytes()
 	stderrStr := stderr.String()
+	stderrLog := e.stderrOutput(stderrStr)
 
 	if err != nil {
 		klog.V(4).Infof("Input Resource List: %s\nOutput Resource List: %s", req.ResourceList, outbytes)
@@ -147,12 +159,12 @@ func (e *singleFunctionEvaluator) EvaluateFunction(ctx context.Context, req *pb.
 			rl, pe := fn.ParseResourceList(outbytes)
 			if pe != nil {
 				// If we can't parse the output resource list, we only surface the content in stderr.
-				return nil, status.Errorf(codes.Internal, "failed to parse the output of function %q with stderr '%v': %+v", req.Image, stderrStr, pe)
+				return nil, status.Errorf(codes.Internal, "failed to parse the output of function %q with stderr '%v': %+v", req.Image, stderrLog, pe)
 			}
 
-			return nil, status.Errorf(codes.Internal, "failed to evaluate function %q with structured results: %v and stderr: %v", req.Image, rl.Results.Error(), stderrStr)
+			return nil, status.Errorf(codes.Internal, "failed to evaluate function %q with structured results: %v and stderr: %v", req.Image, rl.Results.Error(), stderrLog)
 		} else {
-			return nil, status.Errorf(codes.Internal, "Failed to execute function %q: %s (%s)", req.Image, err, stderrStr)
+			return nil, status.Errorf(codes.Internal, "Failed to execute function %q: %s (%s)", req.Image, err, stderrLog)
 		}
 	}
 
@@ -162,15 +174,37 @@ func (e *singleFunctionEvaluator) EvaluateFunction(ctx context.Context, req *pb.
 	if pErr != nil {
 		klog.V(4).Infof("Input Resource List: %s\nOutput Resource List: %s", req.ResourceList, outbytes)
 		// If we can't parse the output resource list, we only surface the content in stderr.
-		return nil, status.Errorf(codes.Internal, "failed to parse the output of function %q with stderr '%v': %+v", req.Image, stderrStr, pErr)
+		return nil, status.Errorf(codes.Internal, "failed to parse the output of function %q with stderr '%v': %+v", req.Image, stderrLog, pErr)
 	}
 	if rl.Results.ExitCode() != 0 {
 		jsonBytes, _ := json.Marshal(rl.Results)
-		klog.Warningf("failed to evaluate function %q with structured results: %s and stderr: %v", req.Image, jsonBytes, stderrStr)
+		klog.Warningf("failed to evaluate function %q with structured results: %s and stderr: %v", req.Image, jsonBytes, stderrLog)
 	}
 
 	return &pb.EvaluateFunctionResponse{
 		ResourceList: outbytes,
-		Log:          []byte(stderrStr),
+		Log:          []byte(stderrLog),
 	}, nil
+}
+
+// flattenStderr normalizes multi-line stderr output into a single line for safe
+// embedding in log messages and gRPC error descriptions. It handles Windows (\r\n),
+// Unix (\n), and standalone carriage returns (\r, used by progress-style output).
+// Only leading/trailing newline characters are trimmed; other whitespace (spaces,
+// tabs) is preserved.
+func flattenStderr(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.Trim(s, "\n")
+	return strings.ReplaceAll(s, "\n", " | ")
+}
+
+// stderrOutput returns the stderr content in the appropriate form.
+// When flattenLog is enabled, it normalizes multi-line stderr into a single line;
+// otherwise it returns the raw stderr as-is, avoiding unnecessary allocations.
+func (e *singleFunctionEvaluator) stderrOutput(raw string) string {
+	if e.flattenLog {
+		return flattenStderr(raw)
+	}
+	return raw
 }

@@ -14,30 +14,46 @@
 
 # Core Go development tools
 
-GOLANG_CI_VER ?= v2.10.1
+GOLANGCI_LINT_VERSION ?= 2.12.2
+GOLANG_CI_ARGS ?= -v --fix --timeout=10m
 
 ##@ Go Development
 
 .PHONY: fmt
-fmt: ## Run go fmt against the codebase
+fmt: fmt-api ## Run go fmt against the codebase
 	go fmt ./...
 
 .PHONY: vet
-vet: ## Run go vet against the codebase
+vet: vet-api ## Run go vet against the codebase
 	go vet ./...
 
-.PHONY: lint
-lint: ## Run Go linter against the codebase
-ifeq ($(CONTAINER_RUNNABLE), 0)
-	$(RUN_CONTAINER_COMMAND) docker.io/golangci/golangci-lint:${GOLANG_CI_VER}-alpine \
-	 golangci-lint run ./... -v --fix --timeout=10m
-else
-	golangci-lint run ./... -v --timeout=10m --exclude-generated=true
-endif
+.PHONY: fix
+fix: fix-api ## Run go fix against the codebase
+	go fix ./...
 
-.PHONY: fix-headers
-fix-headers: ## Update license headers in source files
-	../scripts/update-license.sh
+.PHONY: lint
+lint: lint-api ## Run Go linter against the codebase
+	@if command -v golangci-lint >/dev/null 2>&1 && [ "$$(golangci-lint version --short)" = "$(GOLANGCI_LINT_VERSION)" ]; then \
+		golangci-lint run ./... $(GOLANG_CI_ARGS); \
+	else \
+		go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION) run ./... $(GOLANG_CI_ARGS); \
+	fi
 
 .PHONY: fix-all
-fix-all: fix-headers fmt tidy ## Fix headers, format code, and tidy modules
+fix-all: tidy fix vet fmt lint ## Fix headers, format code, and tidy modules
+
+.PHONY: tidy-api fix-api vet-api fmt-api lint-api
+tidy-api:
+	make -C api tidy
+
+fix-api:
+	make -C api fix
+
+vet-api:
+	make -C api vet
+
+fmt-api:
+	make -C api fmt
+
+lint-api:
+	make -C api lint

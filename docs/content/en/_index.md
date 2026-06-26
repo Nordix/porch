@@ -9,7 +9,7 @@ toc_hide: true
 <div class="row mt-5 mb-3">
     <div class="col-lg-6">
         <div class="lead">
-Porch is a Kubernetes extension apiserver that manages the lifecycle of KRM configuration packages in Git repositories. It provides package operations through Kubernetes resources, enabling GitOps workflows with approval gates, automation, and collaboration.
+{{< site_description >}}
         </div>
     </div>
     <div class="col-lg-6 text-center td-home-hero-logo">
@@ -45,7 +45,7 @@ All package changes are committed to Git with full history. Works seamlessly wit
 Packages move through lifecycle stages (Draft → Proposed → Published → DeletionProposed) with explicit approval gates.
 {{% /blocks/feature %}}
 {{% blocks/feature icon="fas fa-cube" title="Standard kpt Packages" %}}
-Manages standard kpt packages with no vendor lock-in. Packages can be edited through Porch or directly in Git.
+Manages standard kpt packages with no vendor lock-in.
 {{% /blocks/feature %}}
 {{% blocks/feature icon="fas fa-code-branch" title="Package Cloning & Upgrades" %}}
 Clone packages from upstream sources and automatically upgrade when new versions are published. Three-way merge handles local customizations.

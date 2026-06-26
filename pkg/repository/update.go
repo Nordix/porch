@@ -1,4 +1,4 @@
-// Copyright 2022-2025 The kpt Authors
+// Copyright 2022-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 
 	"github.com/kptdev/kpt/pkg/lib/update"
 	updatetypes "github.com/kptdev/kpt/pkg/lib/update/updatetypes"
+	"github.com/kptdev/porch/pkg/util"
 )
 
 const LocalUpdateDir = "kpt-pkg-update-*"
@@ -99,13 +100,16 @@ func (m *DefaultPackageUpdater) do(_ context.Context, localPkgDir, originalPkgDi
 
 func writeResourcesToDirectory(dir string, resources PackageResources) error {
 	for k, v := range resources.Contents {
-		p := filepath.Join(dir, k)
-		dir := filepath.Dir(p)
-		if err := os.MkdirAll(dir, 0750); err != nil {
-			return fmt.Errorf("failed to create directory %q: %w", dir, err)
+		p, err := util.FilepathSafeJoin(dir, k)
+		if err != nil {
+			return fmt.Errorf("invalid resource path %q: %w", k, err)
+		}
+		d := filepath.Dir(p)
+		if err := os.MkdirAll(d, 0750); err != nil {
+			return fmt.Errorf("failed to create directory %q: %w", d, err)
 		}
 		if err := os.WriteFile(p, []byte(v), 0600); err != nil {
-			return fmt.Errorf("failed to write file %q: %w", dir, err)
+			return fmt.Errorf("failed to write file %q: %w", p, err)
 		}
 	}
 	return nil

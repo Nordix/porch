@@ -38,14 +38,16 @@ import (
 // newTestEventLoopPCM creates a podCacheManager with unbuffered channels suitable
 // for deterministic event loop testing. The podManager's podReadyCh is the same as
 // the pcm's podReadyCh so that getFuncEvalPodClient sends results to the event loop.
-func newTestEventLoopPCM(kubeClient client.Client) (*podCacheManager, chan *connectionRequest, chan *podReadyResponse) {
+func newTestEventLoopPCM(kubeClient client.Client) (*podCacheManager, chan *connectionRequest, chan *podReadyResponse, chan *podEvictionRequest) {
 	reqCh := make(chan *connectionRequest)
 	readyCh := make(chan *podReadyResponse)
+	evictCh := make(chan *podEvictionRequest)
 	pcm := &podCacheManager{
 		gcScanInterval:             5 * time.Minute,
 		podTTL:                     10 * time.Minute,
 		connectionRequestCh:        reqCh,
 		podReadyCh:                 readyCh,
+		evictionCh:                 evictCh,
 		functions:                  map[string]*functionInfo{},
 		maxWaitlistLength:          2,
 		maxParallelPodsPerFunction: 1,
@@ -58,16 +60,17 @@ func newTestEventLoopPCM(kubeClient client.Client) (*podCacheManager, chan *conn
 			podReadyCh:         readyCh,
 			podReadyTimeout:    2 * time.Second,
 			managerNamespace:   defaultNamespace,
+			skipGrpcReadyCheck: true,
 		},
 	}
-	return pcm, reqCh, readyCh
+	return pcm, reqCh, readyCh, evictCh
 }
 
 // ---------- Event Loop Tests ----------
 
 func TestEventLoop_PodReadyEmptyImage(t *testing.T) {
 	kubeClient := fake.NewClientBuilder().Build()
-	pcm, _, readyCh := newTestEventLoopPCM(kubeClient)
+	pcm, _, readyCh, _ := newTestEventLoopPCM(kubeClient)
 
 	// Pre-populate a pending pod for "test-image" BEFORE starting the event loop
 	waitCh := make(chan *connectionResponse, 1)
@@ -104,7 +107,7 @@ func TestEventLoop_PodReadyEmptyImage(t *testing.T) {
 
 func TestEventLoop_PodReadyUnknownFunction(t *testing.T) {
 	kubeClient := fake.NewClientBuilder().Build()
-	pcm, _, readyCh := newTestEventLoopPCM(kubeClient)
+	pcm, _, readyCh, _ := newTestEventLoopPCM(kubeClient)
 
 	// Pre-populate a pending pod for "known-image" BEFORE starting the event loop
 	waitCh := make(chan *connectionResponse, 1)
@@ -163,7 +166,7 @@ func TestEventLoop_PodReadyNoPendingPod(t *testing.T) {
 	}
 
 	kubeClient := fake.NewClientBuilder().WithObjects(k8sPod, k8sSvc).Build()
-	pcm, reqCh, readyCh := newTestEventLoopPCM(kubeClient)
+	pcm, reqCh, readyCh, _ := newTestEventLoopPCM(kubeClient)
 
 	readyPod := makeReadyPodInfo("test-image", podKey, serviceKey, conn, 0)
 	pcm.functions["test-image"] = &functionInfo{
@@ -196,7 +199,7 @@ func TestEventLoop_PodReadyNoPendingPod(t *testing.T) {
 
 func TestEventLoop_QueueOnPendingPod(t *testing.T) {
 	kubeClient := fake.NewClientBuilder().Build()
-	pcm, reqCh, readyCh := newTestEventLoopPCM(kubeClient)
+	pcm, reqCh, readyCh, _ := newTestEventLoopPCM(kubeClient)
 
 	// Pre-populate with pending pod that has one initial waiter
 	initialCh := make(chan *connectionResponse, 1)
@@ -251,7 +254,7 @@ func TestEventLoop_PodFailedNoRedistribution(t *testing.T) {
 			},
 		}).Build()
 
-	pcm, reqCh, _ := newTestEventLoopPCM(kubeClient)
+	pcm, reqCh, _, _ := newTestEventLoopPCM(kubeClient)
 
 	// Pre-populate imageMetadataCache so imageDigestAndEntrypoint returns instantly
 	pcm.podManager.imageMetadataCache.Store("ghcr.io/kptdev/krm-functions-catalog/test-fn:latest", &digestAndEntrypoint{
@@ -317,4 +320,140 @@ func TestRetrieveFunctionPods_EmptyPodList(t *testing.T) {
 	err := pcm.retrieveFunctionPods(context.Background())
 	assert.NoError(t, err)
 	assert.Empty(t, pcm.functions)
+}
+
+func TestEventLoop_Eviction(t *testing.T) {
+	now := metav1.Now()
+
+	tests := []struct {
+		name          string
+		k8sObjects    []client.Object
+		evictImage    string
+		evictPodKey   client.ObjectKey
+		expectRemoved bool
+		expectMessage string
+	}{
+		{
+			name:          "pod not found in k8s is removed from cache",
+			k8sObjects:    nil,
+			evictImage:    "test-image",
+			evictPodKey:   client.ObjectKey{Name: "evict-pod", Namespace: defaultNamespace},
+			expectRemoved: true,
+		},
+		{
+			name: "pod in Failed state is removed from cache",
+			k8sObjects: []client.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "evict-pod", Namespace: defaultNamespace},
+					Status:     corev1.PodStatus{Phase: corev1.PodFailed},
+				},
+			},
+			evictImage:    "test-image",
+			evictPodKey:   client.ObjectKey{Name: "evict-pod", Namespace: defaultNamespace},
+			expectRemoved: true,
+		},
+		{
+			name: "pod with DeletionTimestamp is removed from cache",
+			k8sObjects: []client.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "evict-pod",
+						Namespace:         defaultNamespace,
+						DeletionTimestamp: &now,
+						Finalizers:        []string{"test-finalizer"},
+					},
+					Status: corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+			},
+			evictImage:    "test-image",
+			evictPodKey:   client.ObjectKey{Name: "evict-pod", Namespace: defaultNamespace},
+			expectRemoved: true,
+		},
+		{
+			name: "healthy Running pod is kept in cache",
+			k8sObjects: []client.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "evict-pod", Namespace: defaultNamespace},
+					Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+			},
+			evictImage:    "test-image",
+			evictPodKey:   client.ObjectKey{Name: "evict-pod", Namespace: defaultNamespace},
+			expectRemoved: false,
+		},
+		{
+			name:          "unknown image closes doneCh without error",
+			k8sObjects:    nil,
+			evictImage:    "unknown-image",
+			evictPodKey:   client.ObjectKey{Name: "no-pod", Namespace: defaultNamespace},
+			expectRemoved: false, // no function entry, nothing to remove
+		},
+		{
+			name: "non-matching podKey is a no-op",
+			k8sObjects: []client.Object{
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "real-pod", Namespace: defaultNamespace},
+					Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+				},
+			},
+			evictImage:    "test-image",
+			evictPodKey:   client.ObjectKey{Name: "wrong-pod", Namespace: defaultNamespace},
+			expectRemoved: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			podKey := client.ObjectKey{Name: "evict-pod", Namespace: defaultNamespace}
+			serviceKey := client.ObjectKey{Name: "evict-svc", Namespace: defaultNamespace}
+			serviceUrl := serviceKey.Name + "." + serviceKey.Namespace + serviceDnsNameSuffix
+			address := net.JoinHostPort(serviceUrl, defaultWrapperServerPort)
+			conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if !assert.NoError(t, err) {
+				return
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+
+			builder := fake.NewClientBuilder()
+			if len(tt.k8sObjects) > 0 {
+				builder = builder.WithObjects(tt.k8sObjects...)
+			}
+			kubeClient := builder.Build()
+			pcm, _, _, evictCh := newTestEventLoopPCM(kubeClient)
+
+			// Only set up cache entry if the eviction targets "test-image"
+			if tt.evictImage == "test-image" {
+				readyPod := makeReadyPodInfo("test-image", podKey, serviceKey, conn, 0)
+				pcm.functions["test-image"] = &functionInfo{
+					pods: []functionPodInfo{readyPod},
+				}
+			}
+
+			go pcm.podCacheManager(t.Context())
+
+			doneCh := make(chan struct{})
+			evictCh <- &podEvictionRequest{
+				image:  tt.evictImage,
+				podKey: tt.evictPodKey,
+				doneCh: doneCh,
+			}
+
+			select {
+			case <-doneCh:
+			case <-time.After(5 * time.Second):
+				t.Fatal("eviction did not complete")
+			}
+
+			fn := pcm.functions["test-image"]
+			if tt.expectRemoved {
+				if fn != nil {
+					assert.Empty(t, fn.pods, "pod should be removed from cache")
+				}
+			} else {
+				if fn != nil {
+					assert.Len(t, fn.pods, 1, "pod should remain in cache")
+				}
+			}
+		})
+	}
 }
