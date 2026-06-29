@@ -204,10 +204,10 @@ env:
   - name: OTEL_EXPORTER_PROMETHEUS_HOST
     value: "0.0.0.0"
   - name: OTEL_EXPORTER_PROMETHEUS_PORT
-    value: "9090"
+    value: "9464"
 ```
 
-The metrics endpoint will be available at `http://<pod-ip>:9090/metrics`.
+The metrics endpoint will be available at `http://<pod-ip>:9464/metrics`.
 
 ### Metrics Environment Variables
 
@@ -238,7 +238,7 @@ metadata:
   namespace: porch-system
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "9090"
+    prometheus.io/port: "9464"
     prometheus.io/path: "/metrics"
 spec:
   containers:
@@ -250,10 +250,10 @@ spec:
     - name: OTEL_EXPORTER_PROMETHEUS_HOST
       value: "0.0.0.0"
     - name: OTEL_EXPORTER_PROMETHEUS_PORT
-      value: "9090"
+      value: "9464"
     ports:
     - name: metrics
-      containerPort: 9090
+      containerPort: 9464
       protocol: TCP
 ```
 
@@ -312,7 +312,7 @@ spec:
         app: porch-controllers
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
+        prometheus.io/port: "9464"
         prometheus.io/path: "/metrics"
     spec:
       containers:
@@ -325,7 +325,7 @@ spec:
         - name: OTEL_EXPORTER_PROMETHEUS_HOST
           value: "0.0.0.0"
         - name: OTEL_EXPORTER_PROMETHEUS_PORT
-          value: "9090"
+          value: "9464"
         # OTLP for traces
         - name: OTEL_TRACES_EXPORTER
           value: "otlp"
@@ -335,7 +335,7 @@ spec:
           value: "http/protobuf"
         ports:
         - name: metrics
-          containerPort: 9090
+          containerPort: 9464
           protocol: TCP
 ```
 
@@ -358,7 +358,7 @@ spec:
         app: function-runner
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
+        prometheus.io/port: "9464"
     spec:
       containers:
       - name: function-runner
@@ -370,7 +370,7 @@ spec:
         - name: OTEL_EXPORTER_PROMETHEUS_HOST
           value: "0.0.0.0"
         - name: OTEL_EXPORTER_PROMETHEUS_PORT
-          value: "9090"
+          value: "9464"
         # OTLP for traces
         - name: OTEL_TRACES_EXPORTER
           value: "otlp"
@@ -380,7 +380,7 @@ spec:
           value: "http/protobuf"
         ports:
         - name: metrics
-          containerPort: 9090
+          containerPort: 9464
 ```
 
 ### Wrapper Server Configuration via Pod Templating
@@ -403,7 +403,7 @@ data:
       annotations:
         cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
+        prometheus.io/port: "9464"
         prometheus.io/path: "/metrics"
     spec:
       initContainers:
@@ -428,7 +428,7 @@ data:
             - name: OTEL_EXPORTER_PROMETHEUS_HOST
               value: "0.0.0.0"
             - name: OTEL_EXPORTER_PROMETHEUS_PORT
-              value: "9090"
+              value: "9464"
             - name: OTEL_TRACES_EXPORTER
               value: "otlp"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -437,7 +437,7 @@ data:
               value: "http/protobuf"
           ports:
             - name: metrics
-              containerPort: 9090
+              containerPort: 9464
               protocol: TCP
           volumeMounts:
             - name: wrapper-server-tools
