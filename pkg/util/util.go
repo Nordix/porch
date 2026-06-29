@@ -286,7 +286,7 @@ func GenerateUid(prefix string, kubeNs string, kubeName string) types.UID {
 	space := uuid.MustParse(uuidSpace)
 	buff := bytes.Buffer{}
 	buff.WriteString(prefix)
-	buff.WriteString(strings.ToLower(porchapi.SchemeGroupVersion.Identifier()))
+	buff.WriteString(strings.ToLower(porchapiv1alpha1.SchemeGroupVersion.Identifier()))
 	buff.WriteString("/")
 	buff.WriteString(strings.ToLower(kubeNs))
 	buff.WriteString("/")

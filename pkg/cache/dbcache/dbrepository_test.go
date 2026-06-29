@@ -44,7 +44,7 @@ func (t *DbTestSuite) TestDBRepository() {
 
 	t.Equal("my-ns", shellRepo.KubeObjectNamespace())
 	t.Equal("my-repo-name", shellRepo.KubeObjectName())
-	t.Equal(types.UID("65a6ef81-4623-5c04-b526-51ef7a1dc798"), shellRepo.UID())
+	t.Equal(types.UID("82d3ab92-4a01-5679-8c52-b1c3daf6f016"), shellRepo.UID())
 	t.Equal(repository.RepositoryKey{Namespace: "my-ns", Name: "my-repo-name"}, shellRepo.Key())
 }
 
