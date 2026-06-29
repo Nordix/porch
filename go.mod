@@ -4,6 +4,7 @@ go 1.26.3
 
 replace k8s.io/apiserver v0.36.1 => ./third_party/k8s.io/apiserver-v0.36.1
 
+// TODO: Comment the line below out when the next version of the API is released.
 replace github.com/kptdev/porch/api => ./api
 
 require (

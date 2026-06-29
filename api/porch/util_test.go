@@ -86,13 +86,13 @@ func TestValidSubpkgObjName(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:           "valid subpackage name with dots",
+			name:           "invalid subpackage name with dots",
 			subpackageName: "my.sub.package",
 			wantErr:        true,
 			errContains:    "invalid",
 		},
 		{
-			name:           "valid subpackage name with multiple segments",
+			name:           "invalid subpackage name with multiple segments",
 			subpackageName: "foo.bar.baz",
 			wantErr:        true,
 			errContains:    "invalid",
