@@ -234,6 +234,7 @@ func (r *PackageRevisionReconciler) reconcileRender(ctx context.Context, pr *por
 
 	requested, annotationTrigger, sourceTrigger := renderTrigger(pr)
 	if !annotationTrigger && !sourceTrigger {
+		r.refreshRenderedGeneration(ctx, pr)
 		return nil, nil
 	}
 

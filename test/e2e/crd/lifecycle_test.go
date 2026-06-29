@@ -51,6 +51,18 @@ var _ = Describe("Lifecycle", Ordered, Label("lifecycle"), func() {
 		By("verifying publish metadata")
 		Expect(pr.Status.PublishedBy).NotTo(BeEmpty())
 		Expect(pr.Status.PublishedAt).NotTo(BeNil())
+
+		By("verifying Rendered condition observedGeneration is current after lifecycle changes")
+		Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+		foundRendered := false
+		for _, c := range pr.Status.Conditions {
+			if c.Type == porchv1alpha2.ConditionRendered {
+				foundRendered = true
+				Expect(c.ObservedGeneration).To(Equal(pr.Generation),
+					"Rendered observedGeneration should match current generation after lifecycle transition")
+			}
+		}
+		Expect(foundRendered).To(BeTrue(), "expected Rendered condition to be present on the PackageRevision")
 	})
 
 	It("should transition Published → DeletionProposed → Published (undo)", func() {

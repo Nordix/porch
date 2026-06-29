@@ -158,6 +158,68 @@ func TestUpdateRenderStatusComplete(t *testing.T) {
 	assert.Equal(t, metav1.ConditionTrue, captured.Conditions[0].Status)
 }
 
+func TestRefreshRenderedGenerationBumpsStale(t *testing.T) {
+	mockClient := mockclient.NewMockClient(t)
+	captured := captureStatusPatch(t, mockClient)
+
+	r := &PackageRevisionReconciler{Client: mockClient}
+	pr := basePR()
+	pr.Generation = 5
+	originalTime := metav1.NewTime(time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC))
+	pr.Status.RenderingPrrResourceVersion = "prev-render-version"
+	pr.Status.Conditions = []metav1.Condition{
+		{
+			Type:               porchv1alpha2.ConditionRendered,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: 2,
+			Reason:             porchv1alpha2.ReasonRendered,
+			Message:            "render complete",
+			LastTransitionTime: originalTime,
+		},
+	}
+
+	r.refreshRenderedGeneration(t.Context(), pr)
+
+	assert.Len(t, captured.Conditions, 1)
+	assert.Equal(t, porchv1alpha2.ConditionRendered, captured.Conditions[0].Type)
+	assert.Equal(t, metav1.ConditionTrue, captured.Conditions[0].Status)
+	assert.Equal(t, int64(5), captured.Conditions[0].ObservedGeneration)
+	// Verify existing fields are preserved, not overwritten.
+	assert.Equal(t, porchv1alpha2.ReasonRendered, captured.Conditions[0].Reason)
+	assert.Equal(t, "render complete", captured.Conditions[0].Message)
+	assert.Equal(t, originalTime, captured.Conditions[0].LastTransitionTime)
+	// Verify renderingPrrResourceVersion is preserved.
+	assert.Equal(t, "prev-render-version", captured.RenderingPrrResourceVersion)
+}
+
+func TestRefreshRenderedGenerationSkipsWhenCurrent(t *testing.T) {
+	mockClient := mockclient.NewMockClient(t)
+	// No Status().Patch expected — should be a no-op.
+
+	r := &PackageRevisionReconciler{Client: mockClient}
+	pr := basePR()
+	pr.Generation = 3
+	pr.Status.Conditions = []metav1.Condition{
+		{Type: porchv1alpha2.ConditionRendered, Status: metav1.ConditionTrue, ObservedGeneration: 3},
+	}
+
+	r.refreshRenderedGeneration(t.Context(), pr)
+}
+
+func TestRefreshRenderedGenerationSkipsWhenNotTrue(t *testing.T) {
+	mockClient := mockclient.NewMockClient(t)
+	// No Status().Patch expected — Rendered is False, not our concern.
+
+	r := &PackageRevisionReconciler{Client: mockClient}
+	pr := basePR()
+	pr.Generation = 5
+	pr.Status.Conditions = []metav1.Condition{
+		{Type: porchv1alpha2.ConditionRendered, Status: metav1.ConditionFalse, ObservedGeneration: 2},
+	}
+
+	r.refreshRenderedGeneration(t.Context(), pr)
+}
+
 func TestSetRenderFailed(t *testing.T) {
 	mockClient := mockclient.NewMockClient(t)
 
