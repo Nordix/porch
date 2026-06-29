@@ -17,6 +17,100 @@ All Porch components (porch-server, porch-controllers, function-runner, and wrap
 
 ## Traces Configuration
 
+### Quick Start with Jaeger
+
+Porch includes a ready-to-use Jaeger manifest for a quick OTLP-compatible trace backend. Apply it to your cluster:
+
+```bash
+kubectl apply -f - <<'EOF'
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: jaeger
+  namespace: porch-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: porch-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      serviceAccountName: jaeger
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:latest
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              memory: "1024Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-oltp
+  namespace: porch-system
+spec:
+  ports:
+    - port: 4317
+      protocol: TCP
+      targetPort: 4317
+  selector:
+    app: jaeger
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-http
+  namespace: porch-system
+spec:
+  ports:
+    - port: 16686
+      protocol: TCP
+      targetPort: 16686
+  selector:
+    app: jaeger
+EOF
+```
+
+Then enable trace export on all Porch components:
+
+```bash
+kubectl set env deployment/porch-server -n porch-system \
+  OTEL_TRACES_EXPORTER=otlp \
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-oltp:4317 \
+  OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+
+kubectl set env deployment/function-runner -n porch-system \
+  OTEL_TRACES_EXPORTER=otlp \
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-oltp:4317 \
+  OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+
+kubectl set env deployment/porch-controllers -n porch-system \
+  OTEL_TRACES_EXPORTER=otlp \
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-oltp:4317 \
+  OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
+```
+
+Access the Jaeger UI:
+
+```bash
+kubectl port-forward -n porch-system service/jaeger-http 16686
+```
+
+Open http://localhost:16686 and you should see `porch-server`, `porch-function-runner`, and `porch-controllers` in the service dropdown.
+
 ### OTLP Trace Export
 
 Export traces to an OpenTelemetry Protocol (OTLP) collector using either HTTP or gRPC protocols.
@@ -454,15 +548,14 @@ When using the Prometheus exporter, these are made available under the metric na
 For Prometheus exporters, verify the metrics endpoint is accessible:
 
 ```bash
-kubectl port-forward -n porch-system deployment/porch-server 9090:9090
-curl http://localhost:9090/metrics
+kubectl port-forward -n porch-system deployment/porch-server 9464:9464
+curl http://localhost:9464/metrics
 ```
 
 ## Additional Resources
 
 - [OpenTelemetry Autoexport Documentation](https://pkg.go.dev/go.opentelemetry.io/contrib/exporters/autoexport)
 - [OpenTelemetry Environment Variables Specification](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/)
-
 
 ---
 
