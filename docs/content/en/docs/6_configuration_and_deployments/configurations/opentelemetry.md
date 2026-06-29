@@ -59,7 +59,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: jaeger-oltp
+  name: jaeger-otlp
   namespace: porch-system
 spec:
   ports:
@@ -89,17 +89,17 @@ Then enable trace export on all Porch components:
 ```bash
 kubectl set env deployment/porch-server -n porch-system \
   OTEL_TRACES_EXPORTER=otlp \
-  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-oltp:4317 \
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-otlp:4317 \
   OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
 
 kubectl set env deployment/function-runner -n porch-system \
   OTEL_TRACES_EXPORTER=otlp \
-  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-oltp:4317 \
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-otlp:4317 \
   OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
 
 kubectl set env deployment/porch-controllers -n porch-system \
   OTEL_TRACES_EXPORTER=otlp \
-  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-oltp:4317 \
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger-otlp:4317 \
   OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=grpc
 ```
 
