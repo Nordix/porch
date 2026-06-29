@@ -486,6 +486,7 @@ func findUpstreamRefsFromDB(ctx context.Context, namespace, prName string) (stri
 		SELECT k8s_name FROM package_revisions
 		WHERE k8s_name_space=$1
 		  AND revision != -1
+		  AND upstream_ref_name != ''
 		  AND upstream_ref_name=$2
 		LIMIT 1
 	`
