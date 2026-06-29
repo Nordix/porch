@@ -84,7 +84,7 @@ spec:
 EOF
 ```
 
-Then enable trace export on all Porch components:
+Then enable trace export on Porch Server, Function Runner, and Porch Controllers:
 
 ```bash
 kubectl set env deployment/porch-server -n porch-system \
