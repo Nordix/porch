@@ -18,6 +18,10 @@ Configure individual Porch components:
 - [Function Runner]({{% relref "components/function-runner-config" %}}) - Function execution environment
   - [Private Registries]({{% relref "components/function-runner-config/private-registries-config" %}}) - Container registry authentication
 
+### OTEL Metrics & Tracing
+
+[OpenTelemetry]({{% relref "/docs/6_configuration_and_deployments/configurations/opentelemetry" %}}) - Tracing and metrics configuration
+
 ## Core Configuration Options
 
 ### [Cache]({{% relref "cache" %}})
