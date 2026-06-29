@@ -4,7 +4,7 @@ go 1.26.3
 
 replace k8s.io/apiserver v0.36.1 => ./third_party/k8s.io/apiserver-v0.36.1
 
-// replace github.com/kptdev/porch/api => ./api
+replace github.com/kptdev/porch/api => ./api
 
 require (
 	cloud.google.com/go/iam v1.11.0

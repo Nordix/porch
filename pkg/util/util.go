@@ -30,7 +30,7 @@ import (
 	semver "github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
 	"github.com/kptdev/krm-functions-sdk/go/fn/kptfileapi"
-	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	porchapi "github.com/kptdev/porch/api/porch"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	pkgerrors "github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
