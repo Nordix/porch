@@ -14,10 +14,13 @@ Configure individual Porch components:
 - [Porch Server]({{% relref "components/porch-server-config" %}}) - API server configuration
   - [Git Authentication]({{% relref "components/porch-server-config/git-authentication" %}}) - Git repository authentication
   - [Cert Manager Webhooks]({{% relref "components/porch-server-config/cert-manager-webhooks" %}}) - Webhook certificate management
-  - [Jaeger Tracing]({{% relref "components/porch-server-config/jaeger-tracing" %}}) - Distributed tracing
 - [Porch Controllers]({{% relref "components/porch-controllers-config" %}}) - Controller settings
 - [Function Runner]({{% relref "components/function-runner-config" %}}) - Function execution environment
   - [Private Registries]({{% relref "components/function-runner-config/private-registries-config" %}}) - Container registry authentication
+
+### OTEL Metrics & Tracing
+
+[OpenTelemetry]({{% relref "/docs/6_configuration_and_deployments/configurations/opentelemetry" %}}) - Tracing and metrics configuration
 
 ## Core Configuration Options
 

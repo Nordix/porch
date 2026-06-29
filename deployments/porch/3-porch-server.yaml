@@ -68,9 +68,6 @@ spec:
             - secretRef:
                 name: porch-db-secret
           env:
-            # Uncomment to enable trace-reporting to jaeger
-            #- name: OTEL
-            #  value: otel://jaeger-oltp:4317
             - name: OTEL_SERVICE_NAME
               value: porch-server
             - name: CERT_STORAGE_DIR

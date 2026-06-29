@@ -76,7 +76,7 @@ For cert-manager integration with Porch webhooks, see [Cert Manager Webhooks]({{
 
 ## Distributed Tracing
 
-For Jaeger tracing configuration, see [Jaeger Tracing]({{% relref "jaeger-tracing" %}}) subsection.
+For tracing and metrics configuration, see [OpenTelemetry Configuration]({{% relref "/docs/6_configuration_and_deployments/configurations/opentelemetry" %}}).
 
 ## Resource Limits
 
