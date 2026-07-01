@@ -47,7 +47,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
 	go.opentelemetry.io/proto/otlp v1.10.0
-	golang.org/x/exp v0.0.0-20260603202125-055de637280b
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.283.0
 	google.golang.org/genproto v0.0.0-20260526163538-3dc84a4a5aaa
@@ -70,6 +69,8 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.21.1
 	sigs.k8s.io/yaml v1.6.0
 )
+
+require golang.org/x/exp v0.0.0-20260603202125-055de637280b // indirect
 
 require (
 	cel.dev/expr v0.25.2 // indirect

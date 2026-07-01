@@ -1,4 +1,4 @@
-// Copyright 2022, 2024-2025 The kpt Authors
+// Copyright 2022, 2024-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ func TestGit(t *testing.T) {
 	}
 }
 
-func Run(suite interface{}, t *testing.T) {
+func Run(suite any, t *testing.T) {
 	sv := reflect.ValueOf(suite)
 	st := reflect.TypeOf(suite)
 
@@ -287,9 +287,7 @@ func (g GitSuite) TestGitPackageRoundTrip(t *testing.T) {
 
 		t.Logf("resources is %v", resources.Spec.Resources)
 
-		if !reflect.DeepEqual(resources.Spec.Resources, wantResources) {
-			t.Fatalf("resources did not match expected; got %v, want %v", resources.Spec.Resources, wantResources)
-		}
+		assert.Equal(t, wantResources, resources.Spec.Resources)
 	}
 }
 

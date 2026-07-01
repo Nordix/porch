@@ -1,4 +1,4 @@
-// Copyright 2023-2025 The kpt Authors
+// Copyright 2023-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -308,23 +308,63 @@ func CompareObjectMeta(left metav1.ObjectMeta, right metav1.ObjectMeta) bool {
 		return false
 	}
 
-	if result := reflect.DeepEqual(left.Labels, right.Labels); !result {
+	if !mapsEqualNilSafe(left.Labels, right.Labels) {
 		return false
 	}
 
-	if result := reflect.DeepEqual(left.Annotations, right.Annotations); !result {
+	if !mapsEqualNilSafe(left.Annotations, right.Annotations) {
 		return false
 	}
 
-	if result := reflect.DeepEqual(left.Finalizers, right.Finalizers); !result {
+	if !slicesEqualNilSafe(left.Finalizers, right.Finalizers) {
 		return false
 	}
 
-	if result := reflect.DeepEqual(left.OwnerReferences, right.OwnerReferences); !result {
+	if !ownerRefsEqualNilSafe(left.OwnerReferences, right.OwnerReferences) {
 		return false
 	}
 
 	return true
+}
+
+func ownerRefEqual(a, b metav1.OwnerReference) bool {
+	return a.APIVersion == b.APIVersion &&
+		a.Kind == b.Kind &&
+		a.Name == b.Name &&
+		a.UID == b.UID &&
+		boolPtrEqual(a.Controller, b.Controller) &&
+		boolPtrEqual(a.BlockOwnerDeletion, b.BlockOwnerDeletion)
+}
+
+func boolPtrEqual(a, b *bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+func mapsEqualNilSafe(a, b map[string]string) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return maps.Equal(a, b)
+}
+
+func slicesEqualNilSafe(a, b []string) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return slices.Equal(a, b)
+}
+
+func ownerRefsEqualNilSafe(a, b []metav1.OwnerReference) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return slices.EqualFunc(a, b, ownerRefEqual)
 }
 
 // RetryOnErrorConditional retries f up to retries times if it returns an error that matches shouldRetryFunc

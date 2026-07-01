@@ -836,7 +836,7 @@ func fakeClientPatchFixInterceptor(ctx context.Context, kubeClient client.WithWa
 	return nil
 }
 
-func marshalToYamlOrPanic(obj interface{}) []byte {
+func marshalToYamlOrPanic(obj any) []byte {
 	data, err := yaml.Marshal(obj)
 	if err != nil {
 		panic(err)
@@ -844,7 +844,7 @@ func marshalToYamlOrPanic(obj interface{}) []byte {
 	return data
 }
 
-func deepCopyObject(in, out interface{}) {
+func deepCopyObject(in, out any) {
 	buf := bytes.Buffer{}
 	if err := gob.NewEncoder(&buf).Encode(in); err != nil {
 		panic(err)

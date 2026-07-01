@@ -107,7 +107,7 @@ func RegisterFunctionEvaluatorServer(s grpc.ServiceRegistrar, srv FunctionEvalua
 	s.RegisterService(&FunctionEvaluator_ServiceDesc, srv)
 }
 
-func _FunctionEvaluator_EvaluateFunction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FunctionEvaluator_EvaluateFunction_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(EvaluateFunctionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func _FunctionEvaluator_EvaluateFunction_Handler(srv interface{}, ctx context.Co
 		Server:     srv,
 		FullMethod: FunctionEvaluator_EvaluateFunction_FullMethodName,
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(FunctionEvaluatorServer).EvaluateFunction(ctx, req.(*EvaluateFunctionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
