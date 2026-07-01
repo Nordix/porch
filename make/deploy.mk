@@ -105,6 +105,9 @@ run-in-kind-db-cache-no-git-push-drafts: load-images-to-kind deployment-config d
 
 .PHONY: destroy
 destroy:## Deletes all porch resources installed by the last run-in-kind-* command
+	@if [ -d "$(DEPLOYPORCHCONFIGDIR)-post" ]; then \
+		kubectl delete -f "$(DEPLOYPORCHCONFIGDIR)-post/" --ignore-not-found; \
+	fi
 	kpt live destroy $(DEPLOYPORCHCONFIGDIR)
 
 .PHONY: deployment-config 
@@ -136,6 +139,9 @@ deploy-current-config:## Deploy the configuration that is currently in $(DEPLOYP
 	fi
 	@if [ "$(SKIP_CONTROLLER_BUILD)" != "true" ]; then \
 		kubectl rollout status deployment porch-controllers --namespace porch-system --timeout=180s; \
+	fi
+	@if [ -d "$(DEPLOYPORCHCONFIGDIR)-post" ]; then \
+		kubectl apply --server-side --force-conflicts -f "$(DEPLOYPORCHCONFIGDIR)-post/"; \
 	fi
 	@echo "Done."
 
