@@ -301,19 +301,19 @@ func CompareObjectMeta(left metav1.ObjectMeta, right metav1.ObjectMeta) bool {
 		return false
 	}
 
-	if !mapsEqualNilSafe(left.Labels, right.Labels) {
+	if !mapsEqual(left.Labels, right.Labels) {
 		return false
 	}
 
-	if !mapsEqualNilSafe(left.Annotations, right.Annotations) {
+	if !mapsEqual(left.Annotations, right.Annotations) {
 		return false
 	}
 
-	if !slicesEqualNilSafe(left.Finalizers, right.Finalizers) {
+	if !slicesEqual(left.Finalizers, right.Finalizers) {
 		return false
 	}
 
-	if !ownerRefsEqualNilSafe(left.OwnerReferences, right.OwnerReferences) {
+	if !ownerRefsEqual(left.OwnerReferences, right.OwnerReferences) {
 		return false
 	}
 
@@ -339,21 +339,21 @@ func boolPtrEqual(a, b *bool) bool {
 	return *a == *b
 }
 
-func mapsEqualNilSafe(a, b map[string]string) bool {
+func mapsEqual(a, b map[string]string) bool {
 	if (a == nil) != (b == nil) {
 		return false
 	}
 	return maps.Equal(a, b)
 }
 
-func slicesEqualNilSafe(a, b []string) bool {
+func slicesEqual(a, b []string) bool {
 	if (a == nil) != (b == nil) {
 		return false
 	}
 	return slices.Equal(a, b)
 }
 
-func ownerRefsEqualNilSafe(a, b []metav1.OwnerReference) bool {
+func ownerRefsEqual(a, b []metav1.OwnerReference) bool {
 	if (a == nil) != (b == nil) {
 		return false
 	}

@@ -237,6 +237,8 @@ func sortedRefs(refs map[string]*plumbing.Reference, head *plumbing.Reference) [
 	}
 	slices.SortFunc(sorted, func(a, b *plumbing.Reference) int {
 		switch {
+		case a == b:
+			return 0
 		case a == head:
 			return -1
 		case b == head:

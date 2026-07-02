@@ -73,7 +73,7 @@ func Backup(t *suiteutils.MultiClusterTestSuite) {
 	t.Logf("Backing up %d Gitea repos...", len(repoUrls))
 
 	if err := os.RemoveAll(backupRootFolder); err != nil {
-		t.Fatalf("error backing up Gitea: error deleting previous backup: %w", err)
+		t.Fatalf("error backing up Gitea: error deleting previous backup: %v", err)
 	}
 	if err := os.MkdirAll(backupRootFolder, 0o755); err != nil {
 		t.Fatalf("error backing up Gitea: error creating backup directory: %v", err)
