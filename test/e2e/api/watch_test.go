@@ -90,8 +90,10 @@ func (t *PorchSuite) TestWatchReturns410OnPlainResume() {
 				t.Fatalf("Watch channel closed unexpectedly without an error event")
 			}
 			if ev.Type == watch.Error {
-				// 410 came as an error event on the stream - this is also valid
-				t.Logf("Received error event on watch stream (expected): %v", ev.Object)
+				err := apierrors.FromObject(ev.Object)
+				require.Error(t.T(), err, "Expected error object on watch.Error event")
+				assert.True(t.T(), apierrors.IsGone(err), "Expected 410 Gone error event, got: %v", err)
+				assert.Contains(t.T(), err.Error(), "sendInitialEvents", "Error message should mention sendInitialEvents")
 			} else {
 				t.Errorf("Expected 410 Gone or error event, but got event type %s", ev.Type)
 			}
@@ -175,11 +177,9 @@ func (t *PorchSuite) TestWatchReturns410OnPlainResume() {
 	})
 }
 
-// TestWatchCacheHealsAfterReconnect verifies the end-to-end behavior:
-// an informer that loses its watch connection correctly heals its cache
-// when porch returns 410 on the plain resume attempt, forcing a full re-list.
-func (t *PorchSuite) TestWatchCacheHealsAfterReconnect() {
-	const repoName = "watch-heal-test"
+// TestWatchReconnectAfter410 verifies that, after a failed plain watch resume (410 Gone),
+// a client can reconnect using sendInitialEvents=true and observe objects created while disconnected.
+func (t *PorchSuite) TestWatchReconnectAfter410() {
 
 	t.RegisterGitRepositoryF(t.GetPorchTestRepoURL(), repoName, "", suiteutils.GiteaUser, suiteutils.GiteaPassword)
 

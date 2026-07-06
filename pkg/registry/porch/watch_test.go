@@ -409,8 +409,8 @@ func TestCreateGenericWatch410OnPlainWatchResume(t *testing.T) {
 				ResourceVersion:   "some-rv.12345",
 				SendInitialEvents: ptr.To(false),
 			},
-			expect410:   false,
-			description: "sendInitialEvents explicitly set (even to false) means the client is aware of the protocol",
+			expect410:   true,
+			description: "sendInitialEvents=false still requests a plain watch without initial events; porch cannot fulfill RV-based resumption",
 		},
 		{
 			name: "resourceVersion=0 without sendInitialEvents",

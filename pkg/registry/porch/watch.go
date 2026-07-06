@@ -39,7 +39,8 @@ func createGenericWatch(ctx context.Context, r packageReader, filter repository.
 	// A non-zero resourceVersion without sendInitialEvents is a plain watch resume.
 	// Porch doesn't support RV-based resumption; return 410 to force a full re-list.
 	if utilfeature.DefaultFeatureGate.Enabled(features.WatchList) &&
-		options != nil && len(options.ResourceVersion) > 0 && options.ResourceVersion != "0" && options.SendInitialEvents == nil {
+		options != nil && len(options.ResourceVersion) > 0 && options.ResourceVersion != "0" &&
+		(options.SendInitialEvents == nil || !*options.SendInitialEvents) {
 		klog.V(2).Infof("watch: returning 410 Gone for plain watch resume (resourceVersion=%q)", options.ResourceVersion)
 		return nil, apierrors.NewGone("resourceVersion is not supported for watch without sendInitialEvents")
 	}
