@@ -35,12 +35,15 @@ const (
 // updateStatus applies the PR-controller-owned status fields via SSA.
 // When content is non-nil and represents a published package, publish metadata
 // (revision, publishedBy, publishedAt) is included in the apply.
-func (r *PackageRevisionReconciler) updateStatus(ctx context.Context, pr *porchv1alpha2.PackageRevision, content repository.PackageContent, conditions ...metav1.Condition) {
+func (r *PackageRevisionReconciler) updateStatus(ctx context.Context, pr *porchv1alpha2.PackageRevision, content repository.PackageContent, creationSource string, conditions ...metav1.Condition) {
+	if creationSource == "" {
+		creationSource = pr.Status.CreationSource
+	}
+
 	status := porchv1alpha2.PackageRevisionStatus{
-		ObservedGeneration:          pr.Generation,
-		Conditions:                  conditions,
-		CreationSource:              porchv1alpha2.GetSourceName(pr),
-		LastSubpackageOperationHash: r.getSubpackageOperationHash(pr),
+		ObservedGeneration: pr.Generation,
+		Conditions:         conditions,
+		CreationSource:     creationSource,
 	}
 
 	if content != nil {
@@ -111,12 +114,12 @@ func (r *PackageRevisionReconciler) updateRenderStatus(ctx context.Context, pr *
 	}
 }
 
-// setOperationFailed logs the error and sets Ready=False and Rendered=False.
+// setFailedConditionsAndLog logs the error and sets Ready=False and Rendered=False.
 // Rendered is set even though rendering was never attempted — the package
 // content didn't land successfully, so "not rendered" is accurate.
 func (r *PackageRevisionReconciler) setFailedConditionsAndLog(ctx context.Context, pr *porchv1alpha2.PackageRevision, operationType string, err error) error {
-	log.FromContext(ctx).Error(err, operationType+" execution failed")
-	r.updateStatus(ctx, pr, nil,
+	log.FromContext(ctx).Error(err, "source execution failed")
+	r.updateStatus(ctx, pr, nil, operationType,
 		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
 		renderedCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
 	)
@@ -132,7 +135,7 @@ func (r *PackageRevisionReconciler) setRenderFailed(ctx context.Context, pr *por
 		renderedCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonRenderFailed, err.Error()),
 	)
 	// Also set Ready=False — a failed render means the package is not ready.
-	r.updateStatus(ctx, pr, nil,
+	r.updateStatus(ctx, pr, nil, "",
 		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonRenderFailed, "render failed"),
 	)
 }

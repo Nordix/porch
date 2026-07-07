@@ -19,7 +19,7 @@ import (
 	"path"
 	"time"
 
-	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/krm-functions-sdk/go/fn/kptfileko"
 	porchapi "github.com/kptdev/porch/api/porch"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
@@ -139,13 +139,13 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 	content, err := r.ContentCache.GetPackageContent(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 	if err != nil {
 		log.Error(err, "failed to get package content")
-		r.updateStatus(ctx, pr, nil, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		r.updateStatus(ctx, pr, nil, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
 		return ctrl.Result{}, nil
 	}
 
 	current := content.Lifecycle(ctx)
 	if current == desired {
-		r.updateStatus(ctx, pr, content, readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
+		r.updateStatus(ctx, pr, content, "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
 		if porchv1alpha2.LifecycleIsPublished(porchv1alpha2.PackageRevisionLifecycle(desired)) {
 			r.updateLatestRevisionLabels(ctx, pr)
 		}
@@ -167,11 +167,11 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 	updated, err := r.ContentCache.UpdateLifecycle(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, desired)
 	if err != nil {
 		log.Error(err, "lifecycle transition failed")
-		r.updateStatus(ctx, pr, nil, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		r.updateStatus(ctx, pr, nil, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	r.updateStatus(ctx, pr, updated, readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
+	r.updateStatus(ctx, pr, updated, "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
 
 	if porchv1alpha2.LifecycleIsPublished(porchv1alpha2.PackageRevisionLifecycle(desired)) {
 		// Requeue so the informer cache indexes the new status.revision
@@ -291,7 +291,7 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 		log.Error(err, "failed to read back package content after source execution")
 	}
 
-	r.updateStatus(ctx, pr, content, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"))
+	r.updateStatus(ctx, pr, content, operationType, readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"))
 	// Set Rendered=Unknown via the render field manager.
 	r.updateRenderStatus(ctx, pr, "", "", renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"))
 	r.ensureLatestRevisionLabel(ctx, pr)

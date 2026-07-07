@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	kptfilev1 "github.com/kptdev/kpt/pkg/api/kptfile/v1"
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	porchapi "github.com/kptdev/porch/api/porch"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	pkgerrors "github.com/pkg/errors"
