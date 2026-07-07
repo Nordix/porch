@@ -22,30 +22,20 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
-// Valid relative paths should not start with '/', should not contain '..' components,
-// and should only contain valid path characters
+// validRelativePathRegex validates the basic shape of a relative path (slash-separated segments made of allowed characters).
+// Additional constraints (e.g. no leading/trailing '/', no '.', and DNS1123-compliant name composition) are enforced in IsValidSubpackageDir.
 var validRelativePathRegex = regexp.MustCompile(`^(?:[a-zA-Z0-9._-]+(?:/[a-zA-Z0-9._-]+)*)?$`)
 
-// Check that there are no '..' components in a path
-var noDoubleDots = regexp.MustCompile(`(^|/)\.\.(/|$)`)
-
-// IsValidSubpackageDir returns true if subpackageDir is valid, false otherwise.
+// IsValidSubpackageDir returns an error if subpackageDir is invalid.
 func IsValidSubpackageDir(subpackageDir string) error {
 	// Empty string is invalid, a subpackage directory must be a relative path.
 	if subpackageDir == "" {
 		return pkgerrors.Errorf("subpackage directory %q is invalid", subpackageDir)
 	}
 
-	// Check basic format and ensure it doesn't contain '..' or start with '/' or end with '/'
-	if subpackageDir[0] == '/' || strings.HasSuffix(subpackageDir, "/") || noDoubleDots.MatchString(subpackageDir) {
-		return pkgerrors.Errorf("subpackage directory %q is invalid, it cannot contain '..' or start with '/' or end with '/'", subpackageDir)
-	}
-
-	// Reject any path segment equal to "." (for example ".", "./subpkg", or "subpkg/./nested").
-	for _, segment := range strings.Split(subpackageDir, "/") {
-		if segment == "." {
-			return pkgerrors.Errorf("subpackage directory %q is invalid, it cannot contain '.'", subpackageDir)
-		}
+	// Check basic format and ensure it doesn't start with '/', doesn't end with '/', and doesn't contain '.'
+	if subpackageDir[0] == '/' || strings.HasSuffix(subpackageDir, "/") || strings.Contains(subpackageDir, ".") {
+		return pkgerrors.Errorf("subpackage directory %q is invalid, it cannot contain '.' or start with '/' or end with '/'", subpackageDir)
 	}
 
 	if !validRelativePathRegex.MatchString(subpackageDir) {
