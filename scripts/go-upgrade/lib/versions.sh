@@ -43,7 +43,7 @@ cmd_go_version() {
         continue
       fi
 
-      sed -i "s/^go .*/go ${TARGET_GO_VERSION}/" "$gomod"
+      sed -i.bak "s/^go .*/go ${TARGET_GO_VERSION}/" "$gomod" && rm -f "${gomod}.bak"
       log "  $(rel_path "$mod_abs"): ${current} → ${TARGET_GO_VERSION}"
     done <<< "$modules"
 
@@ -81,7 +81,7 @@ cmd_lint_version() {
     fi
 
     local current
-    current=$(grep -oP 'GOLANGCI_LINT_VERSION\s*[:?]?=\s*\K[0-9.]+' "$makefile" || true)
+    current=$(grep -Eo 'GOLANGCI_LINT_VERSION[[:space:]]*[:?]?=[[:space:]]*[0-9.]+' "$makefile" | head -1 | sed -E 's/.*=[[:space:]]*//' || true)
 
     if [[ -z "$current" ]]; then
       warn "${name}: GOLANGCI_LINT_VERSION not found in ${makefile_rel}, skipping"
@@ -98,7 +98,7 @@ cmd_lint_version() {
       continue
     fi
 
-    sed -i "s/\(GOLANGCI_LINT_VERSION\s*[:?]\?=\s*\)[0-9.]\+/\1${TARGET_GOLANGCI_LINT_VERSION}/" "$makefile"
+    sed -i.bak -E "s/(GOLANGCI_LINT_VERSION[[:space:]]*[:?]?=[[:space:]]*)[0-9.]+/\1${TARGET_GOLANGCI_LINT_VERSION}/" "$makefile" && rm -f "${makefile}.bak"
     log "  ${name}: ${current} → ${TARGET_GOLANGCI_LINT_VERSION}"
   done < <(active_repos)
 }

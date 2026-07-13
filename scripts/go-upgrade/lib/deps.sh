@@ -27,7 +27,8 @@ build_module_map() {
     while IFS= read -r mod_abs; do
       [[ -z "$mod_abs" ]] && continue
       local mod_path
-      mod_path=$(head -1 "${mod_abs}/go.mod" | awk '{print $2}')
+      mod_path=$(grep -m1 '^module ' "${mod_abs}/go.mod" | awk '{print $2}')
+      [[ -z "$mod_path" ]] && continue
       MOD_PATH_TO_REPO[$mod_path]="$name"
     done < <(discover_modules "$entry")
   done

@@ -120,17 +120,27 @@ is_excluded_dep() {
 # --- Dependency checks ---
 check_deps() {
   command -v jq >/dev/null 2>&1 || { err "jq is required but not installed"; exit 1; }
-  command -v go >/dev/null 2>&1 || { err "go is required but not installed"; exit 1; }
-  if [[ "$GIT_PUSH" == true ]]; then
-    command -v gh >/dev/null 2>&1 || { err "gh (GitHub CLI) is required for --push"; exit 1; }
+
+  # gh is needed for both `--push` and the `push` subcommand.
+  if [[ "$GIT_PUSH" == true || "$SUBCOMMAND" == "push" ]]; then
+    command -v gh >/dev/null 2>&1 || { err "gh (GitHub CLI) is required for PR creation"; exit 1; }
   fi
 
-  # Validate that the target Go version is available
-  local installed_go
-  installed_go="$(go version | grep -oP 'go\K[0-9]+\.[0-9]+(\.[0-9]+)?')"
-  if [[ "$installed_go" != "$TARGET_GO_VERSION" ]]; then
-    err "Installed Go version is ${installed_go}, but TARGET_GO_VERSION is ${TARGET_GO_VERSION}"
-    err "Install Go ${TARGET_GO_VERSION} or update TARGET_GO_VERSION in config.env"
-    exit 1
-  fi
+  # Only require Go (and enforce exact version) when we will run Go tooling.
+  case "$SUBCOMMAND" in
+    go-version|cross-deps|all)
+      command -v go >/dev/null 2>&1 || { err "go is required but not installed"; exit 1; }
+      if [[ "$DRY_RUN" == false ]]; then
+        local installed_go
+        installed_go="$(go version | awk '{print $3}' | sed 's/^go//')"
+        if [[ "$installed_go" != "$TARGET_GO_VERSION" ]]; then
+          err "Installed Go version is ${installed_go}, but TARGET_GO_VERSION is ${TARGET_GO_VERSION}"
+          err "Install Go ${TARGET_GO_VERSION} or update TARGET_GO_VERSION in config.env"
+          exit 1
+        fi
+      fi
+      ;;
+    *)
+      ;;
+  esac
 }

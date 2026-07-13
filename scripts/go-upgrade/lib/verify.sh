@@ -23,7 +23,10 @@ verify_module() {
 
   # Hugo modules have no Go packages — use hugo mod tidy instead
   local has_packages
-  has_packages=$(cd "$abs_dir" && GOWORK=off go list ./... 2>/dev/null) || true
+  if ! has_packages=$(cd "$abs_dir" && GOWORK=off go list ./... 2>/dev/null); then
+    record_failure "list: $(rel_path "$abs_dir")"
+    return 1
+  fi
   if [[ -z "$has_packages" ]]; then
     if command -v hugo >/dev/null 2>&1; then
       (cd "$abs_dir" && hugo mod tidy 2>&1) || true

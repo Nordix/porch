@@ -100,10 +100,14 @@ ensure_clean_state() {
     # Discard any uncommitted changes (leftover from prior run)
     if ! (cd "$dir" && git diff --quiet && git diff --cached --quiet); then
       warn "${name}: discarding uncommitted changes from prior run"
-      (cd "$dir" && git checkout -- . && git clean -fd) 2>&1 || true
+      (cd "$dir" && git reset --hard && git clean -fd) 2>&1 || true
     fi
 
     # Detect base branch pollution: local commits ahead of remote
+    if ! (cd "$dir" && git fetch -q origin "$base_branch" 2>&1); then
+      record_failure "clean state: cannot fetch origin/${base_branch} in ${name}"
+      continue
+    fi
     local ahead
     ahead=$(cd "$dir" && git rev-list --count "origin/${base_branch}..${base_branch}" 2>/dev/null) || ahead=0
     if [[ "$ahead" -gt 0 ]]; then

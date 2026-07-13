@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright 2026 The kpt Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,13 @@
 # Usage: ./upgrade.sh <subcommand> [options]
 #
 # See README.md for full documentation.
+
+# Require bash >= 4 (associative arrays are used throughout the utility).
+if ((BASH_VERSINFO[0] < 4)); then
+  echo "[ERR] bash >= 4 is required (found ${BASH_VERSION}). Please install a newer bash and ensure it's first in PATH." >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,7 +60,6 @@ Subcommands:
 
 Options:
   --repo=NAME   Run only against the specified repository
-  --continue    Continue on failure, report all errors at end (default: fail-fast)
   --dry-run     Show what would change without modifying files
   --push        After operations, create branch, commit, push, and raise PR
   --for=CMD     With 'push' subcommand: specify which upgrade was done
@@ -75,9 +81,11 @@ parse_args() {
   for arg in "$@"; do
     case "$arg" in
       go-version|lint-version|cross-deps|all|push)
+        if [[ -n "$SUBCOMMAND" && "$SUBCOMMAND" != "$arg" ]]; then
+          err "Multiple subcommands provided: ${SUBCOMMAND} and ${arg}"
+          usage
+        fi
         SUBCOMMAND="$arg" ;;
-      --continue)
-        FAIL_FAST=false ;;
       --dry-run)
         DRY_RUN=true ;;
       --push)
@@ -134,13 +142,19 @@ main() {
   log "Target Go: ${TARGET_GO_VERSION}"
   log "Target golangci-lint: ${TARGET_GOLANGCI_LINT_VERSION}"
   log "Fork owner: ${FORK_OWNER}"
-  if [[ "$FAIL_FAST" == false ]]; then log "Mode: continue on error"; fi
   if [[ "$DRY_RUN" == true ]]; then log "Mode: dry-run"; fi
   if [[ "$GIT_PUSH" == true ]]; then log "Mode: push enabled"; fi
   if [[ -n "$FILTER_REPO" ]]; then log "Repo filter: ${FILTER_REPO}"; fi
   echo ""
 
+  # cross-deps needs all repos present to build the module-path→repo map,
+  # so temporarily disable filtering for the clone step.
+  local orig_filter="$FILTER_REPO"
+  if [[ "$SUBCOMMAND" == "cross-deps" || "$SUBCOMMAND" == "all" ]]; then
+    FILTER_REPO=""
+  fi
   ensure_workspace
+  FILTER_REPO="$orig_filter"
   ensure_clean_state
 
   local push_done=false
