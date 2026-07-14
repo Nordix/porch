@@ -62,7 +62,11 @@ func (r *PackageRevisionReconciler) reconcilePackageMetadata(ctx context.Context
 	}
 
 	// Trigger render if package is already rendered.
-	return r.triggerRenderIfNeeded(ctx, pr, result)
+	if result {
+		return r.triggerRenderIfNeeded(ctx, pr)
+	}
+
+	return nil, nil
 }
 
 // shouldSkipMetadataSync returns true if metadata sync should be skipped based on lifecycle and metadata state.
@@ -143,13 +147,10 @@ func (r *PackageRevisionReconciler) applyAndWriteMetadata(ctx context.Context, r
 	return true, nil
 }
 
-// triggerRenderIfNeeded checks if render should be triggered based on package state.
-func (r *PackageRevisionReconciler) triggerRenderIfNeeded(ctx context.Context, pr *porchv1alpha2.PackageRevision, metadataSynced bool) (*ctrl.Result, error) {
+// triggerRenderIfNeeded triggers a render cycle for packages that have already been rendered.
+// For new (unrendered) packages, render will occur via sourceTrigger without annotation patching.
+func (r *PackageRevisionReconciler) triggerRenderIfNeeded(ctx context.Context, pr *porchv1alpha2.PackageRevision) (*ctrl.Result, error) {
 	log := log.FromContext(ctx)
-
-	if !metadataSynced {
-		return nil, nil
-	}
 
 	// Trigger render based on package state:
 	// - Already-rendered packages: patch annotation to trigger render in next cycle via annotationTrigger
@@ -197,36 +198,24 @@ func applyPackageMetadataToKptfile(kf *kptfilev1.KptFile, pr *porchv1alpha2.Pack
 
 	var changed bool
 
-	if pr.Spec.PackageMetadata.Labels != nil {
-		if applyMetadataMap(kf, pr.Spec.PackageMetadata.Labels, true) {
-			changed = true
-		}
-	}
+	kf.Labels, changed = applyMetadataMap(kf.Labels, pr.Spec.PackageMetadata.Labels)
 
-	if pr.Spec.PackageMetadata.Annotations != nil {
-		if applyMetadataMap(kf, pr.Spec.PackageMetadata.Annotations, false) {
-			changed = true
-		}
-	}
+	var annotationsChanged bool
+	kf.Annotations, annotationsChanged = applyMetadataMap(kf.Annotations, pr.Spec.PackageMetadata.Annotations)
+	changed = changed || annotationsChanged
 
 	return changed
 }
 
-// applyMetadataMap applies labels (isLabels=true) or annotations (isLabels=false) to Kptfile in merge mode.
-func applyMetadataMap(kf *kptfilev1.KptFile, desired map[string]string, isLabels bool) bool {
-	var current map[string]string
-	if isLabels {
-		current = kf.Labels
-		if current == nil {
-			current = make(map[string]string)
-			kf.Labels = current
-		}
-	} else {
-		current = kf.Annotations
-		if current == nil {
-			current = make(map[string]string)
-			kf.Annotations = current
-		}
+// applyMetadataMap merges desired key-value pairs into current, returning the resulting map and whether any changes were made.
+// Safe to call with nil current or desired maps.
+func applyMetadataMap(current, desired map[string]string) (map[string]string, bool) {
+	if len(desired) == 0 {
+		return current, false
+	}
+
+	if current == nil {
+		current = make(map[string]string, len(desired))
 	}
 
 	changed := false
@@ -237,7 +226,7 @@ func applyMetadataMap(kf *kptfilev1.KptFile, desired map[string]string, isLabels
 		}
 	}
 
-	return changed
+	return current, changed
 }
 
 // setRenderRequestAnnotation triggers render by updating the render-request annotation with nanosecond precision.
@@ -248,7 +237,8 @@ func (r *PackageRevisionReconciler) setRenderRequestAnnotation(ctx context.Conte
 	if pr.Annotations == nil {
 		pr.Annotations = make(map[string]string)
 	}
-	// Use nanosecond precision to handle rapid successive updates (second precision could fail to trigger render).
+	// Value just needs to differ from the previous one to trigger a reconcile.
+	// Nanosecond precision avoids collisions on rapid successive updates; human-readable format aids debugging.
 	pr.Annotations[porchv1alpha2.AnnotationRenderRequest] = metav1.Now().Format("2006-01-02T15:04:05.000000000Z07:00")
 	return r.Patch(ctx, pr, client.MergeFrom(original))
 }

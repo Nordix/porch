@@ -220,140 +220,81 @@ func TestHasUserModifiedMetadata(t *testing.T) {
 func TestApplyMetadataMap(t *testing.T) {
 	tests := []struct {
 		name          string
-		kf            *kptfilev1.KptFile
+		current       map[string]string
 		desired       map[string]string
-		isLabels      bool
 		expectChanged bool
-		checkField    func(*kptfilev1.KptFile) map[string]string
+		expectResult  map[string]string
 	}{
 		{
-			name:          "add labels to nil map",
-			kf:            &kptfilev1.KptFile{},
+			name:          "add to nil map",
+			current:       nil,
 			desired:       map[string]string{"app": "test"},
-			isLabels:      true,
 			expectChanged: true,
-			checkField:    func(kf *kptfilev1.KptFile) map[string]string { return kf.Labels },
+			expectResult:  map[string]string{"app": "test"},
 		},
 		{
-			name:          "add annotations to nil map",
-			kf:            &kptfilev1.KptFile{},
-			desired:       map[string]string{"doc": "readme"},
-			isLabels:      false,
+			name:          "merge into existing map",
+			current:       map[string]string{"env": "prod"},
+			desired:       map[string]string{"app": "test"},
 			expectChanged: true,
-			checkField:    func(kf *kptfilev1.KptFile) map[string]string { return kf.Annotations },
+			expectResult:  map[string]string{"env": "prod", "app": "test"},
 		},
 		{
-			name: "merge into existing labels",
-			kf: &kptfilev1.KptFile{
-				ResourceMeta: yaml.ResourceMeta{
-					ObjectMeta: yaml.ObjectMeta{
-						Labels: map[string]string{"env": "prod"},
-					},
-				},
-			},
+			name:          "no change when identical",
+			current:       map[string]string{"app": "test"},
 			desired:       map[string]string{"app": "test"},
-			isLabels:      true,
-			expectChanged: true,
-			checkField:    func(kf *kptfilev1.KptFile) map[string]string { return kf.Labels },
-		},
-		{
-			name: "no change when identical labels",
-			kf: &kptfilev1.KptFile{
-				ResourceMeta: yaml.ResourceMeta{
-					ObjectMeta: yaml.ObjectMeta{
-						Labels: map[string]string{"app": "test"},
-					},
-				},
-			},
-			desired:       map[string]string{"app": "test"},
-			isLabels:      true,
 			expectChanged: false,
-			checkField:    func(kf *kptfilev1.KptFile) map[string]string { return kf.Labels },
+			expectResult:  map[string]string{"app": "test"},
 		},
 		{
-			name: "update existing label value",
-			kf: &kptfilev1.KptFile{
-				ResourceMeta: yaml.ResourceMeta{
-					ObjectMeta: yaml.ObjectMeta{
-						Labels: map[string]string{"app": "old"},
-					},
-				},
-			},
+			name:          "update existing value",
+			current:       map[string]string{"app": "old"},
 			desired:       map[string]string{"app": "new"},
-			isLabels:      true,
 			expectChanged: true,
-			checkField:    func(kf *kptfilev1.KptFile) map[string]string { return kf.Labels },
+			expectResult:  map[string]string{"app": "new"},
 		},
 		{
-			name: "merge multiple labels",
-			kf: &kptfilev1.KptFile{
-				ResourceMeta: yaml.ResourceMeta{
-					ObjectMeta: yaml.ObjectMeta{
-						Labels: map[string]string{"a": "1", "b": "2"},
-					},
-				},
-			},
+			name:          "merge multiple entries",
+			current:       map[string]string{"a": "1", "b": "2"},
 			desired:       map[string]string{"c": "3", "d": "4"},
-			isLabels:      true,
 			expectChanged: true,
-			checkField: func(kf *kptfilev1.KptFile) map[string]string {
-				assert.Equal(t, "1", kf.Labels["a"])
-				assert.Equal(t, "2", kf.Labels["b"])
-				assert.Equal(t, "3", kf.Labels["c"])
-				assert.Equal(t, "4", kf.Labels["d"])
-				return kf.Labels
-			},
+			expectResult:  map[string]string{"a": "1", "b": "2", "c": "3", "d": "4"},
 		},
 		{
-			name: "partial update to existing labels (keep others)",
-			kf: &kptfilev1.KptFile{
-				ResourceMeta: yaml.ResourceMeta{
-					ObjectMeta: yaml.ObjectMeta{
-						Labels: map[string]string{"keep": "this", "update": "old"},
-					},
-				},
-			},
+			name:          "partial update keeps existing keys",
+			current:       map[string]string{"keep": "this", "update": "old"},
 			desired:       map[string]string{"update": "new"},
-			isLabels:      true,
 			expectChanged: true,
-			checkField: func(kf *kptfilev1.KptFile) map[string]string {
-				assert.Equal(t, "this", kf.Labels["keep"])
-				assert.Equal(t, "new", kf.Labels["update"])
-				return kf.Labels
-			},
+			expectResult:  map[string]string{"keep": "this", "update": "new"},
 		},
 		{
 			name:          "empty desired map (no change)",
-			kf:            &kptfilev1.KptFile{},
+			current:       map[string]string{"existing": "val"},
 			desired:       map[string]string{},
-			isLabels:      true,
 			expectChanged: false,
-			checkField:    func(kf *kptfilev1.KptFile) map[string]string { return kf.Labels },
+			expectResult:  map[string]string{"existing": "val"},
 		},
 		{
-			name: "annotations with empty desired (no change)",
-			kf: &kptfilev1.KptFile{
-				ResourceMeta: yaml.ResourceMeta{
-					ObjectMeta: yaml.ObjectMeta{
-						Annotations: map[string]string{"existing": "anno"},
-					},
-				},
-			},
-			desired:       map[string]string{},
-			isLabels:      false,
+			name:          "nil desired map (no change)",
+			current:       map[string]string{"existing": "val"},
+			desired:       nil,
 			expectChanged: false,
-			checkField:    func(kf *kptfilev1.KptFile) map[string]string { return kf.Annotations },
+			expectResult:  map[string]string{"existing": "val"},
+		},
+		{
+			name:          "nil current and nil desired",
+			current:       nil,
+			desired:       nil,
+			expectChanged: false,
+			expectResult:  nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			changed := applyMetadataMap(tt.kf, tt.desired, tt.isLabels)
+			result, changed := applyMetadataMap(tt.current, tt.desired)
 			assert.Equal(t, tt.expectChanged, changed, "changed flag mismatch")
-			field := tt.checkField(tt.kf)
-			for k, v := range tt.desired {
-				assert.Equal(t, v, field[k], "field value mismatch for key %s", k)
-			}
+			assert.Equal(t, tt.expectResult, result, "result map mismatch")
 		})
 	}
 }
@@ -505,71 +446,59 @@ func TestHasUserModifiedMetadataComprehensive(t *testing.T) {
 func TestApplyMetadataMapEdgeCases(t *testing.T) {
 	tests := []struct {
 		name          string
-		kf            *kptfilev1.KptFile
+		current       map[string]string
 		desired       map[string]string
-		isLabels      bool
 		expectChanged bool
-		verify        func(*testing.T, *kptfilev1.KptFile)
+		verify        func(*testing.T, map[string]string)
 	}{
 		{
-			name:          "very large label value",
-			kf:            &kptfilev1.KptFile{},
+			name:          "very large value",
+			current:       nil,
 			desired:       map[string]string{"large": string(make([]byte, 1000))},
-			isLabels:      true,
 			expectChanged: true,
-			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, 1000, len(kf.Labels["large"]))
+			verify: func(t *testing.T, result map[string]string) {
+				assert.Equal(t, 1000, len(result["large"]))
 			},
 		},
 		{
-			name:          "label key with special characters",
-			kf:            &kptfilev1.KptFile{},
+			name:          "key with special characters",
+			current:       nil,
 			desired:       map[string]string{"app.io/env": "prod"},
-			isLabels:      true,
 			expectChanged: true,
-			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "prod", kf.Labels["app.io/env"])
+			verify: func(t *testing.T, result map[string]string) {
+				assert.Equal(t, "prod", result["app.io/env"])
 			},
 		},
 		{
-			name:          "annotation with empty string value",
-			kf:            &kptfilev1.KptFile{},
+			name:          "empty string value",
+			current:       nil,
 			desired:       map[string]string{"empty": ""},
-			isLabels:      false,
 			expectChanged: true,
-			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "", kf.Annotations["empty"])
+			verify: func(t *testing.T, result map[string]string) {
+				assert.Equal(t, "", result["empty"])
 			},
 		},
 		{
-			name: "overwrite annotation with empty string",
-			kf: &kptfilev1.KptFile{
-				ResourceMeta: yaml.ResourceMeta{
-					ObjectMeta: yaml.ObjectMeta{
-						Annotations: map[string]string{"key": "old-value"},
-					},
-				},
-			},
+			name:          "overwrite with empty string",
+			current:       map[string]string{"key": "old-value"},
 			desired:       map[string]string{"key": ""},
-			isLabels:      false,
 			expectChanged: true,
-			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "", kf.Annotations["key"])
+			verify: func(t *testing.T, result map[string]string) {
+				assert.Equal(t, "", result["key"])
 			},
 		},
 		{
-			name: "add many labels at once",
-			kf:   &kptfilev1.KptFile{},
+			name:    "add many entries at once",
+			current: nil,
 			desired: map[string]string{
 				"l1": "v1", "l2": "v2", "l3": "v3", "l4": "v4", "l5": "v5",
 			},
-			isLabels:      true,
 			expectChanged: true,
-			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
+			verify: func(t *testing.T, result map[string]string) {
 				for i := 1; i <= 5; i++ {
 					key := fmt.Sprintf("l%d", i)
 					val := fmt.Sprintf("v%d", i)
-					assert.Equal(t, val, kf.Labels[key])
+					assert.Equal(t, val, result[key])
 				}
 			},
 		},
@@ -577,10 +506,10 @@ func TestApplyMetadataMapEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			changed := applyMetadataMap(tt.kf, tt.desired, tt.isLabels)
+			result, changed := applyMetadataMap(tt.current, tt.desired)
 			assert.Equal(t, tt.expectChanged, changed)
 			if tt.verify != nil {
-				tt.verify(t, tt.kf)
+				tt.verify(t, result)
 			}
 		})
 	}
@@ -1161,7 +1090,7 @@ func TestTriggerRenderIfNeededNotRendered(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := newTestPR()
 
-	result, err := r.triggerRenderIfNeeded(ctx, pr, true)
+	result, err := r.triggerRenderIfNeeded(ctx, pr)
 	assert.NoError(t, err)
 	assert.Nil(t, result)
 }
@@ -1183,7 +1112,7 @@ func TestTriggerRenderIfNeededAlreadyRendered(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := newTestPR(withConditions(metav1.Condition{Type: porchv1alpha2.ConditionRendered, Status: metav1.ConditionTrue}))
 
-	result, err := r.triggerRenderIfNeeded(ctx, pr, true)
+	result, err := r.triggerRenderIfNeeded(ctx, pr)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.True(t, result.Requeue)
