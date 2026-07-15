@@ -50,13 +50,13 @@ func (r *PackageRevisionReconciler) reconcilePackageMetadata(ctx context.Context
 	}
 
 	// Read and parse current package content.
-	kf, err := r.readAndParseKptfile(ctx, repoKey, pr)
+	resources, kf, err := r.readAndParseKptfile(ctx, repoKey, pr)
 	if err != nil {
 		return nil, nil
 	}
 
 	// Apply metadata changes and sync to draft.
-	result, err := r.applyAndWriteMetadata(ctx, repoKey, pr, kf)
+	result, err := r.applyAndWriteMetadata(ctx, repoKey, pr, resources, kf)
 	if err != nil {
 		return nil, nil
 	}
@@ -84,33 +84,33 @@ func shouldSkipMetadataSync(pr *porchv1alpha2.PackageRevision) bool {
 	return false
 }
 
-// readAndParseKptfile reads package content and parses the Kptfile.
-func (r *PackageRevisionReconciler) readAndParseKptfile(ctx context.Context, repoKey repository.RepositoryKey, pr *porchv1alpha2.PackageRevision) (kptfilev1.KptFile, error) {
+// readAndParseKptfile reads all package resources and parses the Kptfile.
+func (r *PackageRevisionReconciler) readAndParseKptfile(ctx context.Context, repoKey repository.RepositoryKey, pr *porchv1alpha2.PackageRevision) (map[string]string, kptfilev1.KptFile, error) {
 	log := log.FromContext(ctx)
 
 	content, err := r.ContentCache.GetPackageContent(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 	if err != nil {
 		log.Error(err, "failed to get package content")
-		return kptfilev1.KptFile{}, err
+		return nil, kptfilev1.KptFile{}, err
 	}
 
 	resources, err := content.GetResourceContents(ctx)
 	if err != nil {
 		log.Error(err, "failed to read resources")
-		return kptfilev1.KptFile{}, err
+		return nil, kptfilev1.KptFile{}, err
 	}
 
 	kf, err := kptfileFromResources(resources)
 	if err != nil {
 		log.Error(err, "failed to parse Kptfile")
-		return kptfilev1.KptFile{}, err
+		return nil, kptfilev1.KptFile{}, err
 	}
 
-	return kf, nil
+	return resources, kf, nil
 }
 
 // applyAndWriteMetadata applies metadata changes and writes to a draft.
-func (r *PackageRevisionReconciler) applyAndWriteMetadata(ctx context.Context, repoKey repository.RepositoryKey, pr *porchv1alpha2.PackageRevision, kf kptfilev1.KptFile) (bool, error) {
+func (r *PackageRevisionReconciler) applyAndWriteMetadata(ctx context.Context, repoKey repository.RepositoryKey, pr *porchv1alpha2.PackageRevision, resources map[string]string, kf kptfilev1.KptFile) (bool, error) {
 	log := log.FromContext(ctx)
 
 	// Apply spec.packageMetadata to Kptfile (merge mode).
@@ -132,8 +132,10 @@ func (r *PackageRevisionReconciler) applyAndWriteMetadata(ctx context.Context, r
 		return false, err
 	}
 
-	updatedResources := map[string]string{"Kptfile": string(updatedKfBytes)}
-	if err := draft.UpdateResources(ctx, updatedResources, "metadata-sync"); err != nil {
+	// UpdateResources is a full replace — include all files to avoid data loss.
+	resources["Kptfile"] = string(updatedKfBytes)
+	log.Info("metadata sync writing resources", "resourceCount", len(resources))
+	if err := draft.UpdateResources(ctx, resources, "metadata-sync"); err != nil {
 		log.Error(err, "failed to write resources")
 		return false, err
 	}

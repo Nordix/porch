@@ -252,6 +252,12 @@ func TestUpdateKptfileFields(t *testing.T) {
 	var specPatch porchv1alpha2.PackageRevisionSpec
 	var statusPatch porchv1alpha2.PackageRevisionStatus
 
+	// Get for generation check
+	mockClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything).
+		Run(func(_ context.Context, _ client.ObjectKey, obj client.Object, _ ...client.GetOption) {
+			*obj.(*porchv1alpha2.PackageRevision) = *basePR()
+		}).Return(nil).Maybe()
+
 	// Spec apply (Patch on the object)
 	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) {
@@ -330,6 +336,12 @@ func TestUpdateKptfileFieldsConditionsOnly(t *testing.T) {
 
 func TestUpdateKptfileFieldsGatesOnly(t *testing.T) {
 	mockClient := mockclient.NewMockClient(t)
+
+	// Get for generation check
+	mockClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything).
+		Run(func(_ context.Context, _ client.ObjectKey, obj client.Object, _ ...client.GetOption) {
+			*obj.(*porchv1alpha2.PackageRevision) = *basePR()
+		}).Return(nil).Maybe()
 
 	// Only spec patch expected (no status patch since no conditions).
 	var specPatch porchv1alpha2.PackageRevisionSpec

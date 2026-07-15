@@ -1018,7 +1018,7 @@ metadata:
 	r := &PackageRevisionReconciler{Client: mockClient, ContentCache: mockContentCache}
 	pr := newTestPR()
 
-	kf, err := r.readAndParseKptfile(ctx, repoKey, pr)
+	_, kf, err := r.readAndParseKptfile(ctx, repoKey, pr)
 	assert.NoError(t, err)
 	assert.NotNil(t, kf)
 }
@@ -1037,7 +1037,7 @@ func TestReadAndParseKptfileGetContentError(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient, ContentCache: mockContentCache}
 	pr := newTestPR()
 
-	_, err := r.readAndParseKptfile(ctx, repoKey, pr)
+	_, _, err := r.readAndParseKptfile(ctx, repoKey, pr)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "connection failed")
 }
@@ -1061,7 +1061,7 @@ func TestReadAndParseKptfileGetResourcesError(t *testing.T) {
 	r := &PackageRevisionReconciler{Client: mockClient, ContentCache: mockContentCache}
 	pr := newTestPR()
 
-	_, err := r.readAndParseKptfile(ctx, repoKey, pr)
+	_, _, err := r.readAndParseKptfile(ctx, repoKey, pr)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "read failed")
 }
@@ -1078,7 +1078,7 @@ func TestApplyAndWriteMetadataNoChanges(t *testing.T) {
 	pr.Spec.PackageMetadata = nil
 
 	kf := newTestKptfile()
-	synced, err := r.applyAndWriteMetadata(ctx, repoKey, pr, kf)
+	synced, err := r.applyAndWriteMetadata(ctx, repoKey, pr, nil, kf)
 	assert.NoError(t, err)
 	assert.False(t, synced)
 }
@@ -1134,7 +1134,7 @@ func TestApplyAndWriteMetadataSuccess(t *testing.T) {
 		Return(nil, fmt.Errorf("test")).
 		Maybe()
 
-	synced, err := r.applyAndWriteMetadata(ctx, repoKey, pr, kf)
+	synced, err := r.applyAndWriteMetadata(ctx, repoKey, pr, nil, kf)
 	assert.Error(t, err)
 	assert.False(t, synced)
 }
@@ -1154,7 +1154,7 @@ func TestApplyAndWriteMetadataCreateDraftError(t *testing.T) {
 	pr := newTestPR(withMetadata(map[string]string{"app": "test"}, nil))
 	kf := newTestKptfile()
 
-	synced, err := r.applyAndWriteMetadata(ctx, repoKey, pr, kf)
+	synced, err := r.applyAndWriteMetadata(ctx, repoKey, pr, nil, kf)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "draft creation failed")
 	assert.False(t, synced)

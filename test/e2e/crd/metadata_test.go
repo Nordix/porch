@@ -421,6 +421,12 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 				g.Expect(resources["Kptfile"]).NotTo(ContainSubstring("iteration: \"1\""))
 				g.Expect(resources["Kptfile"]).NotTo(ContainSubstring("iteration: \"2\""))
 			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
+
+			By("verifying no resource data loss (all init files preserved)")
+			resources := getPRRResources(env.Ctx, env.Namespace, pr.Name)
+			Expect(resources).To(HaveKey("Kptfile"))
+			Expect(resources).To(HaveKey("README.md"))
+			Expect(resources).To(HaveKey("package-context.yaml"))
 		})
 
 		It("should sync spec.packageMetadata set at creation time", func() {
