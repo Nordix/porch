@@ -33,13 +33,13 @@ import (
 func (r *PackageRevisionReconciler) reconcilePackageMetadata(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Check early exit conditions.
-	if shouldSkipMetadataSync(pr) {
-		if pr.Spec.Lifecycle != porchv1alpha2.PackageRevisionLifecycleDraft && hasUserModifiedMetadata(pr) {
-			log.V(3).Info("skipping metadata sync: non-Draft lifecycle")
-		} else if !hasUserModifiedMetadata(pr) && pr.Spec.Lifecycle == porchv1alpha2.PackageRevisionLifecycleDraft {
-			log.V(3).Info("skipping metadata sync: no user modifications")
-		}
+	// Only Draft packages can have metadata synced.
+	if pr.Spec.Lifecycle != porchv1alpha2.PackageRevisionLifecycleDraft {
+		return nil, nil
+	}
+
+	// Nothing to sync if user hasn't set packageMetadata.
+	if pr.Spec.PackageMetadata == nil {
 		return nil, nil
 	}
 
@@ -49,39 +49,29 @@ func (r *PackageRevisionReconciler) reconcilePackageMetadata(ctx context.Context
 		return nil, nil
 	}
 
+	// Skip if source render hasn't completed yet — content is still being initialized.
+	if pr.Status.CreationSource != "" && !isRenderedTrue(pr) {
+		log.V(3).Info("source render pending, skipping metadata sync")
+		return nil, nil
+	}
+
 	// Read and parse current package content.
 	resources, kf, err := r.readAndParseKptfile(ctx, repoKey, pr)
 	if err != nil {
 		return nil, nil
 	}
 
-	// Apply metadata changes and sync to draft.
+	// Apply metadata changes and sync to draft. Returns false if Kptfile already matches spec.
 	result, err := r.applyAndWriteMetadata(ctx, repoKey, pr, resources, kf)
 	if err != nil {
 		return nil, nil
 	}
 
-	// Trigger render if package is already rendered.
 	if result {
 		return r.triggerRenderIfNeeded(ctx, pr)
 	}
 
 	return nil, nil
-}
-
-// shouldSkipMetadataSync returns true if metadata sync should be skipped based on lifecycle and metadata state.
-func shouldSkipMetadataSync(pr *porchv1alpha2.PackageRevision) bool {
-	// Only for Draft packages. Proposed/Published are immutable (v1alpha1 alignment).
-	if pr.Spec.Lifecycle != porchv1alpha2.PackageRevisionLifecycleDraft {
-		return true
-	}
-
-	// Skip if user hasn't modified metadata.
-	if !hasUserModifiedMetadata(pr) {
-		return true
-	}
-
-	return false
 }
 
 // readAndParseKptfile reads all package resources and parses the Kptfile.
@@ -168,28 +158,6 @@ func (r *PackageRevisionReconciler) triggerRenderIfNeeded(ctx context.Context, p
 
 	log.Info("metadata synced to new package, render will trigger via sourceTrigger")
 	return nil, nil
-}
-
-// hasUserModifiedMetadata checks if spec.packageMetadata was set by a non-controller field manager.
-// Returns true only if packageMetadata is managed by someone other than the packagerev-controller.
-func hasUserModifiedMetadata(pr *porchv1alpha2.PackageRevision) bool {
-	if pr.Spec.PackageMetadata == nil {
-		return false
-	}
-
-	// Check if any non-controller manager has touched this object.
-	// If metadata exists and only the controller owns it, return false (no user changes).
-	// If any other manager owns or co-owns the object, assume user set the metadata.
-	for _, mf := range pr.ManagedFields {
-		if mf.Manager != fieldManagerPRControllerKptfile {
-			// Another manager (likely kubectl/user) has claimed fields on this object.
-			// If metadata is present, user likely set it.
-			return true
-		}
-	}
-
-	// Only our field manager has touched the object, no user changes to metadata.
-	return false
 }
 
 // applyPackageMetadataToKptfile applies labels and annotations to Kptfile (merge mode).

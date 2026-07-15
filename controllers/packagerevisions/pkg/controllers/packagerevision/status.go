@@ -183,6 +183,8 @@ func renderedCondition(generation int64, status metav1.ConditionStatus, reason, 
 // Uses the main PR controller field manager with ForceOwnership to take
 // ownership from the repo controller (which sets these on create).
 func (r *PackageRevisionReconciler) updateKptfileFields(ctx context.Context, pr *porchv1alpha2.PackageRevision, kf kptfilev1.KptFile) {
+	log := log.FromContext(ctx)
+
 	gates := porchv1alpha2.KptfileToReadinessGates(kf)
 	meta := porchv1alpha2.KptfileToPackageMetadata(kf)
 	conds := porchv1alpha2.KptfileToPackageConditions(kf)
@@ -191,31 +193,43 @@ func (r *PackageRevisionReconciler) updateKptfileFields(ctx context.Context, pr 
 		return
 	}
 
+	// Batch spec fields into single SSA patch to ensure atomic updates.
+	// Multiple separate patches can cause visibility issues where subsequent reads don't see all changes.
+	spec := porchv1alpha2.PackageRevisionSpec{}
+	hasSpecFields := false
+
 	if len(gates) > 0 {
-		r.applySpec(ctx, pr, porchv1alpha2.PackageRevisionSpec{ReadinessGates: gates})
+		spec.ReadinessGates = gates
+		hasSpecFields = true
 	}
 
-	// Sync packageMetadata from Kptfile→CRD. Skip if spec already matches (no-op)
-	// or if we'd overwrite a user-set value that differs (CRD→Kptfile handles it).
-	if meta != nil {
-		if pr.Spec.PackageMetadata == nil || !packageMetadataEqual(pr.Spec.PackageMetadata, meta) {
-			r.applySpec(ctx, pr, porchv1alpha2.PackageRevisionSpec{PackageMetadata: meta})
-		}
+	// Kptfile is authoritative source for metadata. Sync if it differs from spec.
+	if meta != nil && !packageMetadataEqual(pr.Spec.PackageMetadata, meta) {
+		spec.PackageMetadata = meta
+		hasSpecFields = true
 	}
 
+	if hasSpecFields {
+		r.applySpec(ctx, pr, spec)
+	}
+
+	// Apply conditions via status API (separate endpoint from spec).
 	if len(conds) > 0 {
+		log.V(3).Info("syncing package conditions from Kptfile", "conditionCount", len(conds))
 		r.applyStatus(ctx, pr, porchv1alpha2.PackageRevisionStatus{PackageConditions: conds})
 	}
 }
 
 func (r *PackageRevisionReconciler) applySpec(ctx context.Context, pr *porchv1alpha2.PackageRevision, spec porchv1alpha2.PackageRevisionSpec) {
+	log := log.FromContext(ctx)
+
 	obj := &porchv1alpha2.PackageRevision{
 		TypeMeta:   metav1.TypeMeta{Kind: "PackageRevision", APIVersion: porchv1alpha2.SchemeGroupVersion.Identifier()},
 		ObjectMeta: metav1.ObjectMeta{Name: pr.Name, Namespace: pr.Namespace},
 		Spec:       spec,
 	}
 	if err := r.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerPRControllerKptfile), client.ForceOwnership); err != nil {
-		log.FromContext(ctx).Error(err, "failed to apply spec fields")
+		log.Error(err, "failed to apply spec fields")
 	}
 }
 

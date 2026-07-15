@@ -74,14 +74,6 @@ func withMetadata(labels, annotations map[string]string) func(*porchv1alpha2.Pac
 	}
 }
 
-func withManagedFields(managers ...string) func(*porchv1alpha2.PackageRevision) {
-	return func(pr *porchv1alpha2.PackageRevision) {
-		for _, m := range managers {
-			pr.ObjectMeta.ManagedFields = append(pr.ObjectMeta.ManagedFields, metav1.ManagedFieldsEntry{Manager: m})
-		}
-	}
-}
-
 func withConditions(conditions ...metav1.Condition) func(*porchv1alpha2.PackageRevision) {
 	return func(pr *porchv1alpha2.PackageRevision) {
 		pr.Status.Conditions = conditions
@@ -172,47 +164,6 @@ func TestApplyPackageMetadataToKptfile(t *testing.T) {
 			assert.Equal(t, tt.expectChanged, changed, "changed flag mismatch")
 			assert.Equal(t, tt.expectLabels, tt.kf.Labels, "labels mismatch")
 			assert.Equal(t, tt.expectAnnos, tt.kf.Annotations, "annotations mismatch")
-		})
-	}
-}
-
-func TestHasUserModifiedMetadata(t *testing.T) {
-	tests := []struct {
-		name   string
-		prOpts []func(*porchv1alpha2.PackageRevision)
-		expect bool
-	}{
-		{
-			name:   "no metadata, no managedFields",
-			expect: false,
-		},
-		{
-			name:   "metadata exists, managed by controller kptfile",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"app": "test"}, nil), withManagedFields(fieldManagerPRControllerKptfile)},
-			expect: false,
-		},
-		{
-			name:   "metadata exists, managed by different manager (user)",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"app": "test"}, nil), withManagedFields("kubectl")},
-			expect: true,
-		},
-		{
-			name:   "no metadata, but other manager exists",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withManagedFields("kubectl")},
-			expect: false,
-		},
-		{
-			name:   "metadata exists, multiple managers including controller",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"app": "test"}, nil), withManagedFields(fieldManagerPRControllerKptfile, "kubectl")},
-			expect: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			pr := newTestPR(tt.prOpts...)
-			result := hasUserModifiedMetadata(pr)
-			assert.Equal(t, tt.expect, result, "hasUserModifiedMetadata mismatch")
 		})
 	}
 }
@@ -313,8 +264,8 @@ func TestApplyPackageMetadataToKptfileComprehensive(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"l1": "v1"}, map[string]string{"a1": "v1"})},
 			expectChanged: true,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "v1", kf.Labels["l1"])
-				assert.Equal(t, "v1", kf.Annotations["a1"])
+				assert.Equal(t, "v1", kf.ResourceMeta.ObjectMeta.Labels["l1"])
+				assert.Equal(t, "v1", kf.ResourceMeta.ObjectMeta.Annotations["a1"])
 			},
 		},
 		{
@@ -323,8 +274,8 @@ func TestApplyPackageMetadataToKptfileComprehensive(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"l1": "v1"}, nil)},
 			expectChanged: true,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "v1", kf.Labels["l1"])
-				assert.Nil(t, kf.Annotations)
+				assert.Equal(t, "v1", kf.ResourceMeta.ObjectMeta.Labels["l1"])
+				assert.Nil(t, kf.ResourceMeta.ObjectMeta.Annotations)
 			},
 		},
 		{
@@ -333,8 +284,8 @@ func TestApplyPackageMetadataToKptfileComprehensive(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(nil, map[string]string{"a1": "v1"})},
 			expectChanged: true,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Nil(t, kf.Labels)
-				assert.Equal(t, "v1", kf.Annotations["a1"])
+				assert.Nil(t, kf.ResourceMeta.ObjectMeta.Labels)
+				assert.Equal(t, "v1", kf.ResourceMeta.ObjectMeta.Annotations["a1"])
 			},
 		},
 		{
@@ -350,10 +301,10 @@ func TestApplyPackageMetadataToKptfileComprehensive(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"new-l": "val"}, map[string]string{"new-a": "val"})},
 			expectChanged: true,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "val", kf.Labels["existing-l"])
-				assert.Equal(t, "val", kf.Labels["new-l"])
-				assert.Equal(t, "val", kf.Annotations["existing-a"])
-				assert.Equal(t, "val", kf.Annotations["new-a"])
+				assert.Equal(t, "val", kf.ResourceMeta.ObjectMeta.Labels["existing-l"])
+				assert.Equal(t, "val", kf.ResourceMeta.ObjectMeta.Labels["new-l"])
+				assert.Equal(t, "val", kf.ResourceMeta.ObjectMeta.Annotations["existing-a"])
+				assert.Equal(t, "val", kf.ResourceMeta.ObjectMeta.Annotations["new-a"])
 			},
 		},
 		{
@@ -369,8 +320,8 @@ func TestApplyPackageMetadataToKptfileComprehensive(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"l1": "v1"}, map[string]string{"a1": "v1"})},
 			expectChanged: false,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "v1", kf.Labels["l1"])
-				assert.Equal(t, "v1", kf.Annotations["a1"])
+				assert.Equal(t, "v1", kf.ResourceMeta.ObjectMeta.Labels["l1"])
+				assert.Equal(t, "v1", kf.ResourceMeta.ObjectMeta.Annotations["a1"])
 			},
 		},
 	}
@@ -383,62 +334,6 @@ func TestApplyPackageMetadataToKptfileComprehensive(t *testing.T) {
 			if tt.verify != nil {
 				tt.verify(t, tt.kf)
 			}
-		})
-	}
-}
-
-func TestHasUserModifiedMetadataComprehensive(t *testing.T) {
-	tests := []struct {
-		name   string
-		prOpts []func(*porchv1alpha2.PackageRevision)
-		expect bool
-	}{
-		{
-			name:   "metadata nil, no managedFields",
-			expect: false,
-		},
-		{
-			name:   "metadata present but empty labels and annotations",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(nil, nil), withManagedFields(fieldManagerPRControllerKptfile)},
-			expect: false,
-		},
-		{
-			name:   "metadata with labels, controller manager only",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"l": "v"}, nil), withManagedFields(fieldManagerPRControllerKptfile)},
-			expect: false,
-		},
-		{
-			name:   "metadata with labels, user manager only",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"l": "v"}, nil), withManagedFields("kubectl")},
-			expect: true,
-		},
-		{
-			name:   "metadata nil with user manager (user didn't set it)",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withManagedFields("kubectl")},
-			expect: false,
-		},
-		{
-			name:   "metadata with labels, mixed managers (controller + kubectl)",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"l": "v"}, nil), withManagedFields(fieldManagerPRControllerKptfile, "kubectl")},
-			expect: true,
-		},
-		{
-			name:   "metadata with multiple user managers",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"l": "v"}, nil), withManagedFields("kubectl", "another-tool")},
-			expect: true,
-		},
-		{
-			name:   "metadata with annotations, controller manager",
-			prOpts: []func(*porchv1alpha2.PackageRevision){withMetadata(nil, map[string]string{"a": "v"}), withManagedFields(fieldManagerPRControllerKptfile)},
-			expect: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			pr := newTestPR(tt.prOpts...)
-			result := hasUserModifiedMetadata(pr)
-			assert.Equal(t, tt.expect, result, "hasUserModifiedMetadata mismatch")
 		})
 	}
 }
@@ -529,8 +424,8 @@ func TestApplyPackageMetadataToKptfileEdgeCases(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(nil, map[string]string{"a": "v"})},
 			expectChanged: true,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Nil(t, kf.Labels)
-				assert.Equal(t, "v", kf.Annotations["a"])
+				assert.Nil(t, kf.ResourceMeta.ObjectMeta.Labels)
+				assert.Equal(t, "v", kf.ResourceMeta.ObjectMeta.Annotations["a"])
 			},
 		},
 		{
@@ -546,8 +441,8 @@ func TestApplyPackageMetadataToKptfileEdgeCases(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(nil, nil)},
 			expectChanged: false,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "v", kf.Labels["l"])
-				assert.Equal(t, "v", kf.Annotations["a"])
+				assert.Equal(t, "v", kf.ResourceMeta.ObjectMeta.Labels["l"])
+				assert.Equal(t, "v", kf.ResourceMeta.ObjectMeta.Annotations["a"])
 			},
 		},
 		{
@@ -556,8 +451,8 @@ func TestApplyPackageMetadataToKptfileEdgeCases(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{}, map[string]string{})},
 			expectChanged: false,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Empty(t, kf.Labels)
-				assert.Empty(t, kf.Annotations)
+				assert.Empty(t, kf.ResourceMeta.ObjectMeta.Labels)
+				assert.Empty(t, kf.ResourceMeta.ObjectMeta.Annotations)
 			},
 		},
 		{
@@ -574,10 +469,10 @@ func TestApplyPackageMetadataToKptfileEdgeCases(t *testing.T) {
 			prOpts:        []func(*porchv1alpha2.PackageRevision){withMetadata(map[string]string{"b": "updated"}, nil)},
 			expectChanged: true,
 			verify: func(t *testing.T, kf *kptfilev1.KptFile) {
-				assert.Equal(t, "1", kf.Labels["a"])
-				assert.Equal(t, "updated", kf.Labels["b"])
-				assert.Equal(t, "3", kf.Labels["c"])
-				assert.Equal(t, "4", kf.Labels["d"])
+				assert.Equal(t, "1", kf.ResourceMeta.ObjectMeta.Labels["a"])
+				assert.Equal(t, "updated", kf.ResourceMeta.ObjectMeta.Labels["b"])
+				assert.Equal(t, "3", kf.ResourceMeta.ObjectMeta.Labels["c"])
+				assert.Equal(t, "4", kf.ResourceMeta.ObjectMeta.Labels["d"])
 			},
 		},
 	}
@@ -590,66 +485,6 @@ func TestApplyPackageMetadataToKptfileEdgeCases(t *testing.T) {
 			if tt.verify != nil {
 				tt.verify(t, tt.kf)
 			}
-		})
-	}
-}
-
-func TestReconcilePackageMetadataControlFlow(t *testing.T) {
-	tests := []struct {
-		name       string
-		prOpts     []func(*porchv1alpha2.PackageRevision)
-		expectSkip bool
-	}{
-		{
-			name:       "skip Proposed lifecycle",
-			prOpts:     []func(*porchv1alpha2.PackageRevision){withLifecycle(porchv1alpha2.PackageRevisionLifecycleProposed), withMetadata(map[string]string{"app": "test"}, nil)},
-			expectSkip: true,
-		},
-		{
-			name:       "skip Published lifecycle",
-			prOpts:     []func(*porchv1alpha2.PackageRevision){withLifecycle(porchv1alpha2.PackageRevisionLifecyclePublished), withMetadata(map[string]string{"app": "test"}, nil)},
-			expectSkip: true,
-		},
-		{
-			name:       "skip when no metadata",
-			prOpts:     []func(*porchv1alpha2.PackageRevision){withLifecycle(porchv1alpha2.PackageRevisionLifecycleDraft)},
-			expectSkip: true,
-		},
-		{
-			name: "skip when render pending",
-			prOpts: []func(*porchv1alpha2.PackageRevision){
-				withLifecycle(porchv1alpha2.PackageRevisionLifecycleDraft),
-				withMetadata(map[string]string{"app": "test"}, nil),
-				func(pr *porchv1alpha2.PackageRevision) {
-					pr.Annotations[porchv1alpha2.AnnotationRenderRequest] = "2026-07-08T12:00:00.000000001Z"
-					pr.Status.ObservedPrrResourceVersion = "2026-07-08T12:00:00.000000000Z"
-				},
-			},
-			expectSkip: true,
-		},
-		{
-			name:       "process Draft with metadata",
-			prOpts:     []func(*porchv1alpha2.PackageRevision){withLifecycle(porchv1alpha2.PackageRevisionLifecycleDraft), withMetadata(map[string]string{"app": "test"}, nil), withManagedFields("kubectl")},
-			expectSkip: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			pr := newTestPR(tt.prOpts...)
-
-			shouldSkip := false
-			if pr.Spec.Lifecycle != porchv1alpha2.PackageRevisionLifecycleDraft {
-				shouldSkip = true
-			}
-			if !shouldSkip && !hasUserModifiedMetadata(pr) {
-				shouldSkip = true
-			}
-			if !shouldSkip && pr.Annotations[porchv1alpha2.AnnotationRenderRequest] != pr.Status.ObservedPrrResourceVersion {
-				shouldSkip = true
-			}
-
-			assert.Equal(t, tt.expectSkip, shouldSkip)
 		})
 	}
 }
@@ -911,84 +746,6 @@ metadata:
 	// Log-and-continue pattern: returns nil, nil on any error after logging
 	assert.NoError(t, err)
 	assert.Nil(t, result)
-}
-
-// Tests for refactored helper functions
-
-// TestShouldSkipMetadataSync tests the shouldSkipMetadataSync helper function
-func TestShouldSkipMetadataSync(t *testing.T) {
-	tests := []struct {
-		name      string
-		lifecycle porchv1alpha2.PackageRevisionLifecycle
-		metadata  *porchv1alpha2.PackageMetadata
-		managers  []string
-		expect    bool
-		desc      string
-	}{
-		{
-			name:      "skip Proposed",
-			lifecycle: porchv1alpha2.PackageRevisionLifecycleProposed,
-			metadata:  &porchv1alpha2.PackageMetadata{Labels: map[string]string{"a": "b"}},
-			managers:  []string{"kubectl"},
-			expect:    true,
-			desc:      "Proposed packages are skipped",
-		},
-		{
-			name:      "skip Published",
-			lifecycle: porchv1alpha2.PackageRevisionLifecyclePublished,
-			metadata:  &porchv1alpha2.PackageMetadata{Labels: map[string]string{"a": "b"}},
-			managers:  []string{"kubectl"},
-			expect:    true,
-			desc:      "Published packages are skipped",
-		},
-		{
-			name:      "skip Draft no metadata",
-			lifecycle: porchv1alpha2.PackageRevisionLifecycleDraft,
-			metadata:  nil,
-			managers:  []string{"kubectl"},
-			expect:    true,
-			desc:      "Draft with no metadata is skipped",
-		},
-		{
-			name:      "skip Draft controller-only manager",
-			lifecycle: porchv1alpha2.PackageRevisionLifecycleDraft,
-			metadata:  &porchv1alpha2.PackageMetadata{Labels: map[string]string{"a": "b"}},
-			managers:  []string{fieldManagerPRControllerKptfile},
-			expect:    true,
-			desc:      "Draft with controller-only manager is skipped",
-		},
-		{
-			name:      "process Draft with user manager",
-			lifecycle: porchv1alpha2.PackageRevisionLifecycleDraft,
-			metadata:  &porchv1alpha2.PackageMetadata{Labels: map[string]string{"a": "b"}},
-			managers:  []string{"kubectl"},
-			expect:    false,
-			desc:      "Draft with user manager should be processed",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			pr := &porchv1alpha2.PackageRevision{
-				Spec: porchv1alpha2.PackageRevisionSpec{
-					Lifecycle:       tt.lifecycle,
-					PackageMetadata: tt.metadata,
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					ManagedFields: func() []metav1.ManagedFieldsEntry {
-						var mf []metav1.ManagedFieldsEntry
-						for _, manager := range tt.managers {
-							mf = append(mf, metav1.ManagedFieldsEntry{Manager: manager})
-						}
-						return mf
-					}(),
-				},
-			}
-
-			skip := shouldSkipMetadataSync(pr)
-			assert.Equal(t, tt.expect, skip, tt.desc)
-		})
-	}
 }
 
 // TestReadAndParseKptfileSuccess tests successful reading and parsing of Kptfile
