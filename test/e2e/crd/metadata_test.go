@@ -447,7 +447,14 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 			waitForReady(env.Ctx, pr)
 			waitForPRRVisible(env.Ctx, env.Namespace, pr.Name)
 
-			By("verifying metadata was synced to Kptfile on initial render")
+			By("waiting for initial render to complete (source render)")
+			// Note: metadata sync happens AFTER source render completes, not during source execution.
+			// The source (init/clone/copy/upgrade) creates the initial package structure in git,
+			// then reconcileRender executes. After render, reconcilePackageMetadata applies the
+			// spec.packageMetadata to the Kptfile in the next reconcile cycle.
+			waitForRendered(env.Ctx, pr)
+
+			By("verifying metadata was synced to Kptfile after initial render completes")
 			Eventually(func(g Gomega) {
 				resources := getPRRResources(env.Ctx, env.Namespace, pr.Name)
 				g.Expect(resources).To(HaveKey("Kptfile"))
