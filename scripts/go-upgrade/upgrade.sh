@@ -52,18 +52,19 @@ usage() {
 Usage: $(basename "$0") <subcommand> [options]
 
 Subcommands:
-  go-version    Bump Go version in all go.mod files, tidy, and build
-  lint-version  Bump golangci-lint version in all Makefiles
-  cross-deps    Upgrade cross-repository dependencies to latest published version
-  all           Run go-version + lint-version + cross-deps in sequence
-  push          Create branch, commit, push, and raise PR for pending changes
+  go-version      Bump Go version in all go.mod files, tidy, and build
+  lint-version    Bump golangci-lint version in all Makefiles
+  cross-deps      Upgrade cross-repository dependencies to latest published version
+  generate-docs   Generate/sync Hugo doc pages in krm-functions-catalog
+  all             Run go-version + lint-version + cross-deps in sequence
+  push            Create branch, commit, push, and raise PR for pending changes
 
 Options:
   --repo=NAME   Run only against the specified repository
   --dry-run     Show what would change without modifying files
   --push        After operations, create branch, commit, push, and raise PR
   --for=CMD     With 'push' subcommand: specify which upgrade was done
-                (go-version, lint-version, cross-deps, all). Default: all
+                (go-version, lint-version, cross-deps, generate-docs, all). Default: all
 
 Environment:
   FORK_OWNER    Override fork owner (default: Nordix). Used to derive clone URLs.
@@ -80,7 +81,7 @@ parse_args() {
 
   for arg in "$@"; do
     case "$arg" in
-      go-version|lint-version|cross-deps|all|push)
+      go-version|lint-version|cross-deps|generate-docs|all|push)
         if [[ -n "$SUBCOMMAND" && "$SUBCOMMAND" != "$arg" ]]; then
           err "Multiple subcommands provided: ${SUBCOMMAND} and ${arg}"
           usage
@@ -123,10 +124,10 @@ parse_args() {
   # Validate --for value when push subcommand is used
   if [[ "$SUBCOMMAND" == "push" && -n "$PUSH_FOR" ]]; then
     case "$PUSH_FOR" in
-      go-version|lint-version|cross-deps|all) ;;
+      go-version|lint-version|cross-deps|generate-docs|all) ;;
       *)
         err "Invalid --for value: ${PUSH_FOR}"
-        err "Valid values: go-version, lint-version, cross-deps, all"
+        err "Valid values: go-version, lint-version, cross-deps, generate-docs, all"
         exit 1 ;;
     esac
   fi
@@ -149,9 +150,12 @@ main() {
 
   # cross-deps needs all repos present to build the module-path→repo map,
   # so temporarily disable filtering for the clone step.
+  # generate-docs only needs krm-functions-catalog.
   local orig_filter="$FILTER_REPO"
   if [[ "$SUBCOMMAND" == "cross-deps" || "$SUBCOMMAND" == "all" ]]; then
     FILTER_REPO=""
+  elif [[ "$SUBCOMMAND" == "generate-docs" && -z "$FILTER_REPO" ]]; then
+    FILTER_REPO="krm-functions-catalog"
   fi
   ensure_workspace
   FILTER_REPO="$orig_filter"
@@ -159,9 +163,10 @@ main() {
 
   local push_done=false
   case "$SUBCOMMAND" in
-    go-version)  cmd_go_version ;;
-    lint-version) cmd_lint_version ;;
-    cross-deps)  cmd_cross_deps ;;
+    go-version)    cmd_go_version ;;
+    lint-version)  cmd_lint_version ;;
+    cross-deps)    cmd_cross_deps ;;
+    generate-docs) cmd_generate_docs ;;
     all)
       cmd_go_version
       cmd_lint_version

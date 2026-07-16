@@ -102,3 +102,34 @@ cmd_lint_version() {
     log "  ${name}: ${current} → ${TARGET_GOLANGCI_LINT_VERSION}"
   done < <(active_repos)
 }
+
+# --- Subcommand: generate-docs ---
+cmd_generate_docs() {
+  log "=== Generating catalog documentation ==="
+
+  local catalog_dir="$(ws)/krm-functions-catalog"
+
+  if [[ ! -d "$catalog_dir" ]]; then
+    record_failure "generate-docs: krm-functions-catalog not found in workspace"
+    return
+  fi
+
+  # Respect --repo filter: skip if filtering to a different repo
+  if [[ -n "$FILTER_REPO" && "$FILTER_REPO" != "krm-functions-catalog" ]]; then
+    log "  skipped: generate-docs only applies to krm-functions-catalog"
+    return
+  fi
+
+  if [[ "$DRY_RUN" == true ]]; then
+    log "  [dry-run] would run: make generate-docs in krm-functions-catalog"
+    (cd "$catalog_dir" && cd scripts/generate_docs && go run . generate --dry-run 2>&1) || true
+    return
+  fi
+
+  if ! (cd "$catalog_dir" && make generate-docs 2>&1); then
+    record_failure "generate-docs: make generate-docs failed"
+    return
+  fi
+
+  log "  Done."
+}

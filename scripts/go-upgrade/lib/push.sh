@@ -22,10 +22,11 @@ cmd_push() {
 
   local branch_name
   case "$SUBCOMMAND" in
-    go-version)   branch_name="upgrade-go-${TARGET_GO_VERSION}-$(date +%Y%m%d)" ;;
-    lint-version) branch_name="upgrade-golangci-lint-${TARGET_GOLANGCI_LINT_VERSION}-$(date +%Y%m%d)" ;;
-    cross-deps)   branch_name="update-cross-deps-$(date +%Y%m%d)" ;;
-    all)          branch_name="upgrade-go-${TARGET_GO_VERSION}-deps-$(date +%Y%m%d)" ;;
+    go-version)     branch_name="upgrade-go-${TARGET_GO_VERSION}-$(date +%Y%m%d)" ;;
+    lint-version)   branch_name="upgrade-golangci-lint-${TARGET_GOLANGCI_LINT_VERSION}-$(date +%Y%m%d)" ;;
+    cross-deps)     branch_name="update-cross-deps-$(date +%Y%m%d)" ;;
+    generate-docs)  branch_name="generate-docs-$(date +%Y%m%d)" ;;
+    all)            branch_name="upgrade-go-${TARGET_GO_VERSION}-deps-$(date +%Y%m%d)" ;;
   esac
   local -a created_prs=()
 
@@ -68,6 +69,10 @@ cmd_push() {
     # Stage modified tracked files and any new go.sum files
     (cd "$dir" && git add -u)
     (cd "$dir" && find . -name 'go.sum' -not -path '*/.git/*' -exec git add {} + 2>/dev/null) || true
+    # Stage generated documentation files
+    if [[ "$SUBCOMMAND" == "generate-docs" ]]; then
+      (cd "$dir" && git add documentation/content/ 2>/dev/null) || true
+    fi
 
     # Build commit message based on what was actually done
     local commit_msg="" pr_title="" pr_body_items=""
@@ -87,6 +92,11 @@ cmd_push() {
         pr_title="Update cross-repository dependencies"
         pr_body_items="- Cross-repository dependencies updated to latest"
         ;;
+      generate-docs)
+        commit_msg="Regenerate catalog documentation"
+        pr_title="Regenerate catalog documentation"
+        pr_body_items="- Hugo doc pages regenerated from function source"
+        ;;
       all)
         commit_msg="Upgrade Go to ${TARGET_GO_VERSION} and update dependencies"
         pr_title="Upgrade Go to ${TARGET_GO_VERSION} and update dependencies"
@@ -95,16 +105,24 @@ cmd_push() {
 - Cross-repository dependencies updated to latest"
         ;;
     esac
+    local verified_line=""
+    if [[ "$SUBCOMMAND" != "generate-docs" ]]; then
+      verified_line="
+- All modules verified (go mod tidy, go fmt, go vet, go build)"
+    fi
     commit_msg="${commit_msg}
 
-${pr_body_items}
-- All modules verified (go mod tidy, go fmt, go vet, go build)"
+${pr_body_items}${verified_line}"
 
+    local pr_body_verified=""
+    if [[ "$SUBCOMMAND" != "generate-docs" ]]; then
+      pr_body_verified="
+- All modules verified (\`go mod tidy\`, \`go fmt\`, \`go vet\`, \`go build\`)"
+    fi
     local pr_body
     pr_body="## Description
 
-${pr_body_items}
-- All modules verified (\`go mod tidy\`, \`go fmt\`, \`go vet\`, \`go build\`)
+${pr_body_items}${pr_body_verified}
 
 ## AI Disclosure
 

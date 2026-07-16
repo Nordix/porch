@@ -34,6 +34,9 @@ krm-functions-sdk  (leaf — no upstream deps)
 # Full upgrade + push PRs (one-shot)
 ./upgrade.sh all --push
 
+# Regenerate catalog documentation
+./upgrade.sh generate-docs
+
 # Two-step workflow: upgrade, review diffs, then push separately
 ./upgrade.sh go-version
 # ... inspect git diff in workspace/ ...
@@ -47,6 +50,7 @@ krm-functions-sdk  (leaf — no upstream deps)
 | `go-version` | Bump `go` directive in all `go.mod` files, then verify (tidy, fmt, vet, build) |
 | `lint-version` | Bump `GOLANGCI_LINT_VERSION` in Makefiles |
 | `cross-deps` | Upgrade dependencies owned by other repos in the set to their latest version |
+| `generate-docs` | Generate/sync Hugo doc pages in krm-functions-catalog |
 | `all` | Run `go-version` + `lint-version` + `cross-deps` sequentially |
 | `push` | Create branch, commit, push, and raise draft PR for pending workspace changes |
 
