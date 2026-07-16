@@ -166,15 +166,13 @@ func applyPackageMetadataToKptfile(kf *kptfilev1.KptFile, pr *porchv1alpha2.Pack
 		return false
 	}
 
-	var changed bool
-
-	kf.Labels, changed = applyMetadataMap(kf.Labels, pr.Spec.PackageMetadata.Labels)
+	var labelsChanged bool
+	kf.Labels, labelsChanged = applyMetadataMap(kf.Labels, pr.Spec.PackageMetadata.Labels)
 
 	var annotationsChanged bool
 	kf.Annotations, annotationsChanged = applyMetadataMap(kf.Annotations, pr.Spec.PackageMetadata.Annotations)
-	changed = changed || annotationsChanged
 
-	return changed
+	return labelsChanged || annotationsChanged
 }
 
 // applyMetadataMap merges desired key-value pairs into current, returning the resulting map and whether any changes were made.
