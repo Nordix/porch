@@ -281,6 +281,7 @@ func (r *packageRevisionResources) getRepoPkgRevForResources(ctx context.Context
 
 	revisions, err := r.cad.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{Key: prKey})
 	if err != nil {
+		klog.Errorf("getRepoPkgRevForResources: error listing package revisions for %q in namespace %q: %v", name, namespace, err)
 		return nil, err
 	}
 	for _, rev := range revisions {
@@ -289,5 +290,6 @@ func (r *packageRevisionResources) getRepoPkgRevForResources(ctx context.Context
 		}
 	}
 
+	klog.Warningf("getRepoPkgRevForResources: package revision %q not found in namespace %q", name, namespace)
 	return nil, apierrors.NewNotFound(r.gr, name)
 }

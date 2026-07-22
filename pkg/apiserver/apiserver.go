@@ -110,6 +110,7 @@ type PorchServer struct {
 	periodicRepoSyncFrequency  time.Duration
 	listTimeoutPerRepository   time.Duration
 	repoOperationRetryAttempts int
+	MaxConcurrentLists         int
 	ExtraConfig                *ExtraConfig
 }
 
@@ -453,6 +454,7 @@ func (c completedConfig) New(ctx context.Context) (*PorchServer, error) {
 		periodicRepoSyncFrequency:  c.ExtraConfig.CacheOptions.RepoSyncFrequency,
 		listTimeoutPerRepository:   c.ExtraConfig.CacheOptions.CRCacheOptions.ListTimeoutPerRepository,
 		repoOperationRetryAttempts: c.ExtraConfig.CacheOptions.RepoOperationRetryAttempts,
+		MaxConcurrentLists:         c.ExtraConfig.CacheOptions.CRCacheOptions.MaxConcurrentLists,
 	}
 
 	// Install the groups.
@@ -475,5 +477,60 @@ func (s *PorchServer) Run(ctx context.Context) error {
 	} else {
 		klog.Infoln("Cert storage dir not provided, skipping webhook setup")
 	}
+
+	// Warmup: open all known repositories so the cache is populated before
+	// serving traffic. Without this, the first API request for a package
+	// revision in a given repo would fail with "no associated repository"
+	// because the repo hadn't been opened in the cache yet.
+	s.warmupRepositories(ctx)
+
 	return s.GenericAPIServer.PrepareRun().RunWithContext(ctx)
+}
+
+// warmupRepositories lists all Repository CRs and opens each one in the cache.
+// This ensures that package revisions loaded from the database can resolve
+// their parent repository immediately, rather than waiting for the first API
+// request to trigger a lazy open.
+func (s *PorchServer) warmupRepositories(ctx context.Context) {
+	var repoList configapi.RepositoryList
+	if err := s.coreClient.List(ctx, &repoList); err != nil {
+		klog.Warningf("Cache warmup: failed to list repositories: %v", err)
+		return
+	}
+
+	repoCount := len(repoList.Items)
+	if repoCount == 0 {
+		klog.Infof("Cache warmup: no repositories found")
+		return
+	}
+
+	batchSize := s.MaxConcurrentLists
+	if batchSize == 0 {
+		batchSize = repoCount
+	}
+
+	klog.Infof("Cache warmup: opening %d repositories (max %d concurrent, timeout %v per repo)", repoCount, batchSize, s.listTimeoutPerRepository)
+
+	sem := make(chan struct{}, batchSize)
+	var wg sync.WaitGroup
+
+	for i := range repoList.Items {
+		repo := &repoList.Items[i]
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(r *configapi.Repository) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			repoCtx, cancel := context.WithTimeout(ctx, s.listTimeoutPerRepository)
+			defer cancel()
+			if _, err := s.cache.OpenRepository(repoCtx, r); err != nil {
+				klog.Warningf("Cache warmup: failed to open repository %s/%s: %v", r.Namespace, r.Name, err)
+			} else {
+				klog.Infof("Cache warmup: opened repository %s/%s", r.Namespace, r.Name)
+			}
+		}(repo)
+	}
+
+	wg.Wait()
+	klog.Infof("Cache warmup: completed")
 }

@@ -25,6 +25,7 @@ import (
 	kptfile "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/kptfile/kptfileutil"
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
+	cachetypes "github.com/kptdev/porch/pkg/cache/types"
 	"github.com/kptdev/porch/pkg/engine"
 	"github.com/kptdev/porch/pkg/repository"
 	"github.com/kptdev/porch/pkg/util"
@@ -181,6 +182,13 @@ func (pr *dbPackageRevision) UpdateLifecycle(ctx context.Context, newLifecycle p
 	_, span := tracer.Start(ctx, "dbPackageRevision::UpdateLifecycle", trace.WithAttributes())
 	defer span.End()
 
+	if pr.repo == nil {
+		if repo := cachetypes.CacheInstance.GetRepository(pr.pkgRevKey.PkgKey.RepoKey); repo != nil {
+			if dbRepo, ok := repo.(*dbRepository); ok {
+				pr.repo = dbRepo
+			}
+		}
+	}
 	if pr.repo == nil {
 		return fmt.Errorf("cannot update lifecycle for package revision %s: no associated repository", pr.KubeObjectName())
 	}
@@ -465,6 +473,13 @@ func (pr *dbPackageRevision) UpdateResources(ctx context.Context, new *porchapi.
 	_, span := tracer.Start(ctx, "dbPackageRevision::UpdateResources", trace.WithAttributes())
 	defer span.End()
 
+	if pr.repo == nil {
+		if repo := cachetypes.CacheInstance.GetRepository(pr.pkgRevKey.PkgKey.RepoKey); repo != nil {
+			if dbRepo, ok := repo.(*dbRepository); ok {
+				pr.repo = dbRepo
+			}
+		}
+	}
 	if pr.repo == nil {
 		return fmt.Errorf("cannot update resources for package revision %s: no associated repository", pr.KubeObjectName())
 	}
