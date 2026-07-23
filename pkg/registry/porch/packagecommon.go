@@ -214,7 +214,6 @@ func (r *packageCommon) getRepoPkgRev(ctx context.Context, name string) (reposit
 
 	revisions, err := r.cad.ListPackageRevisions(ctx, repository.ListPackageRevisionFilter{Key: prKey})
 	if err != nil {
-		klog.Errorf("getRepoPkgRev: error listing package revisions for %q in namespace %q: %v", name, namespace, err)
 		return nil, err
 	}
 	for _, rev := range revisions {
@@ -223,7 +222,6 @@ func (r *packageCommon) getRepoPkgRev(ctx context.Context, name string) (reposit
 		}
 	}
 
-	klog.Warningf("getRepoPkgRev: package revision %q not found in namespace %q", name, namespace)
 	return nil, apierrors.NewNotFound(r.gr, name)
 }
 
@@ -253,7 +251,6 @@ func (r *packageCommon) getPackage(ctx context.Context, name string) (repository
 
 	revisions, err := r.cad.ListPackages(ctx, repositoryObj, repository.ListPackageFilter{Key: pkgKey})
 	if err != nil {
-		klog.Errorf("getPackage: error listing packages for %q in namespace %q: %v", name, namespace, err)
 		return nil, err
 	}
 	for _, rev := range revisions {
@@ -262,7 +259,6 @@ func (r *packageCommon) getPackage(ctx context.Context, name string) (repository
 		}
 	}
 
-	klog.Warningf("getPackage: package %q not found in namespace %q", name, namespace)
 	return nil, apierrors.NewNotFound(r.gr, name)
 }
 
