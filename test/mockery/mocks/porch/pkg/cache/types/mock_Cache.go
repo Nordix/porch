@@ -159,6 +159,63 @@ func (_c *MockCache_CloseRepository_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
+// CreateCachedRepository provides a mock function for the type MockCache
+func (_mock *MockCache) CreateCachedRepository(ctx context.Context, repositorySpec *v1alpha1.Repository) error {
+	ret := _mock.Called(ctx, repositorySpec)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateCachedRepository")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *v1alpha1.Repository) error); ok {
+		r0 = returnFunc(ctx, repositorySpec)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCache_CreateCachedRepository_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateCachedRepository'
+type MockCache_CreateCachedRepository_Call struct {
+	*mock.Call
+}
+
+// CreateCachedRepository is a helper method to define mock.On call
+//   - ctx context.Context
+//   - repositorySpec *v1alpha1.Repository
+func (_e *MockCache_Expecter) CreateCachedRepository(ctx interface{}, repositorySpec interface{}) *MockCache_CreateCachedRepository_Call {
+	return &MockCache_CreateCachedRepository_Call{Call: _e.mock.On("CreateCachedRepository", ctx, repositorySpec)}
+}
+
+func (_c *MockCache_CreateCachedRepository_Call) Run(run func(ctx context.Context, repositorySpec *v1alpha1.Repository)) *MockCache_CreateCachedRepository_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *v1alpha1.Repository
+		if args[1] != nil {
+			arg1 = args[1].(*v1alpha1.Repository)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCache_CreateCachedRepository_Call) Return(err error) *MockCache_CreateCachedRepository_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCache_CreateCachedRepository_Call) RunAndReturn(run func(ctx context.Context, repositorySpec *v1alpha1.Repository) error) *MockCache_CreateCachedRepository_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteDBRepository provides a mock function for the type MockCache
 func (_mock *MockCache) DeleteDBRepository(ctx context.Context, repoKey repository.RepositoryKey) error {
 	ret := _mock.Called(ctx, repoKey)
@@ -212,6 +269,63 @@ func (_c *MockCache_DeleteDBRepository_Call) Return(err error) *MockCache_Delete
 }
 
 func (_c *MockCache_DeleteDBRepository_Call) RunAndReturn(run func(ctx context.Context, repoKey repository.RepositoryKey) error) *MockCache_DeleteDBRepository_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// EvictCachedRepository provides a mock function for the type MockCache
+func (_mock *MockCache) EvictCachedRepository(ctx context.Context, repositorySpec *v1alpha1.Repository) error {
+	ret := _mock.Called(ctx, repositorySpec)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EvictCachedRepository")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *v1alpha1.Repository) error); ok {
+		r0 = returnFunc(ctx, repositorySpec)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCache_EvictCachedRepository_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EvictCachedRepository'
+type MockCache_EvictCachedRepository_Call struct {
+	*mock.Call
+}
+
+// EvictCachedRepository is a helper method to define mock.On call
+//   - ctx context.Context
+//   - repositorySpec *v1alpha1.Repository
+func (_e *MockCache_Expecter) EvictCachedRepository(ctx interface{}, repositorySpec interface{}) *MockCache_EvictCachedRepository_Call {
+	return &MockCache_EvictCachedRepository_Call{Call: _e.mock.On("EvictCachedRepository", ctx, repositorySpec)}
+}
+
+func (_c *MockCache_EvictCachedRepository_Call) Run(run func(ctx context.Context, repositorySpec *v1alpha1.Repository)) *MockCache_EvictCachedRepository_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *v1alpha1.Repository
+		if args[1] != nil {
+			arg1 = args[1].(*v1alpha1.Repository)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCache_EvictCachedRepository_Call) Return(err error) *MockCache_EvictCachedRepository_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCache_EvictCachedRepository_Call) RunAndReturn(run func(ctx context.Context, repositorySpec *v1alpha1.Repository) error) *MockCache_EvictCachedRepository_Call {
 	_c.Call.Return(run)
 	return _c
 }

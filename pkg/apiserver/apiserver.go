@@ -104,13 +104,10 @@ type Config struct {
 
 // PorchServer contains state for a Kubernetes cluster master/api server.
 type PorchServer struct {
-	GenericAPIServer           *genericapiserver.GenericAPIServer
-	coreClient                 client.WithWatch
-	cache                      cachetypes.Cache
-	periodicRepoSyncFrequency  time.Duration
-	listTimeoutPerRepository   time.Duration
-	repoOperationRetryAttempts int
-	ExtraConfig                *ExtraConfig
+	GenericAPIServer *genericapiserver.GenericAPIServer
+	coreClient       client.WithWatch
+	cache            cachetypes.Cache
+	ExtraConfig      *ExtraConfig
 }
 
 type completedConfig struct {
@@ -449,10 +446,7 @@ func (c completedConfig) New(ctx context.Context) (*PorchServer, error) {
 		GenericAPIServer: genericServer,
 		coreClient:       coreClient,
 		cache:            cacheImpl,
-		// Set background job periodic frequency the same as repo sync frequency.
-		periodicRepoSyncFrequency:  c.ExtraConfig.CacheOptions.RepoSyncFrequency,
-		listTimeoutPerRepository:   c.ExtraConfig.CacheOptions.CRCacheOptions.ListTimeoutPerRepository,
-		repoOperationRetryAttempts: c.ExtraConfig.CacheOptions.RepoOperationRetryAttempts,
+		ExtraConfig:      c.ExtraConfig,
 	}
 
 	// Install the groups.
@@ -475,6 +469,13 @@ func (s *PorchServer) Run(ctx context.Context) error {
 	} else {
 		klog.Infoln("Cert storage dir not provided, skipping webhook setup")
 	}
+
+	// Start the repo cache handler. This watches Repository CRs for
+	// changes and opens/closes them in the cache accordingly.
+	runRepoCacheHandler(ctx, s.coreClient, s.cache,
+		s.ExtraConfig.CacheOptions.CRCacheOptions.MaxConcurrentLists,
+		s.ExtraConfig.CacheOptions.CRCacheOptions.ListTimeoutPerRepository,
+	)
 
 	return s.GenericAPIServer.PrepareRun().RunWithContext(ctx)
 }

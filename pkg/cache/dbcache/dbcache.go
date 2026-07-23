@@ -141,6 +141,82 @@ func (c *dbCache) CloseRepository(ctx context.Context, repositorySpec *configapi
 	return nil
 }
 
+// CreateCachedRepository loads a repository into the in-memory cache map and establishes
+// the git clone, but does NOT write to the database. This is used by porch-server's
+// cache handler to keep the cache warm without racing the controller on DB writes.
+func (c *dbCache) CreateCachedRepository(ctx context.Context, repositorySpec *configapi.Repository) error {
+	_, span := tracer.Start(ctx, "dbCache::CreateCachedRepository", trace.WithAttributes())
+	defer span.End()
+
+	repoKey, err := externalrepo.RepositoryKey(repositorySpec)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.repositories.LoadOrCreate(repoKey, func() (repository.Repository, error) {
+		return c.warmRepository(ctx, repoKey, repositorySpec)
+	})
+	return err
+}
+
+func (c *dbCache) warmRepository(ctx context.Context, key repository.RepositoryKey, repositorySpec *configapi.Repository) (repository.Repository, error) {
+	klog.Infof("Caching repository (memory-only): %v", key)
+
+	dbRepo := &dbRepository{
+		repoKey:              key,
+		meta:                 repositorySpec.ObjectMeta,
+		spec:                 repositorySpec,
+		updated:              time.Now(),
+		updatedBy:            getCurrentUser(),
+		deployment:           repositorySpec.Spec.Deployment,
+		repoPRChangeNotifier: c.options.RepoPRChangeNotifier,
+		pushDraftsToGit:      c.options.DbPushDraftsToGit,
+	}
+
+	if dbRepo.pushDraftsToGit {
+		dbRepo.gitPRCache = make(map[string]repository.PackageRevision)
+	}
+
+	externalRepo, err := externalrepo.CreateRepositoryImpl(ctx, repositorySpec, c.options.ExternalRepoOptions)
+	if err != nil {
+		return nil, err
+	}
+	dbRepo.externalRepo = externalRepo
+
+	return dbRepo, nil
+}
+
+// EvictCachedRepository removes a repository from the in-memory cache map and closes
+// the git clone, but does NOT delete from the database. This is used by porch-server's
+// cache handler to clean up memory without racing the controller on DB deletes.
+func (c *dbCache) EvictCachedRepository(ctx context.Context, repositorySpec *configapi.Repository) error {
+	_, span := tracer.Start(ctx, "dbCache::EvictCachedRepository", trace.WithAttributes())
+	defer span.End()
+
+	repoKey, err := externalrepo.RepositoryKey(repositorySpec)
+	if err != nil {
+		return err
+	}
+
+	repo, ok := c.repositories.LoadAndDelete(repoKey)
+	if !ok {
+		klog.V(4).Infof("dbCache.EvictCachedRepository: repo %+v not found in cache", repoKey)
+		return nil
+	}
+
+	if repo != nil {
+		dbRepo := repo.(*dbRepository)
+		if dbRepo.externalRepo != nil {
+			if err := dbRepo.externalRepo.Close(ctx); err != nil {
+				return pkgerrors.Wrapf(err, "failed to close external repo for %+v", repoKey)
+			}
+		}
+	}
+
+	klog.Infof("Evicted repository from cache (memory-only): %v", repoKey)
+	return nil
+}
+
 func (c *dbCache) GetRepositories() []*configapi.Repository {
 	var repositories []*configapi.Repository
 
