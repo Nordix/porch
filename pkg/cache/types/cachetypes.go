@@ -71,6 +71,8 @@ type Cache interface {
 	CheckRepositoryConnectivity(ctx context.Context, repositorySpec *configapi.Repository) error
 	FindAllUpstreamReferencesInRepositories(ctx context.Context, namespace, prName string) (string, error)
 	ListPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error)
+	ListDBRepositories(ctx context.Context) ([]repository.RepositoryKey, error)
+	DeleteDBRepository(ctx context.Context, repoKey repository.RepositoryKey) error
 }
 
 var (

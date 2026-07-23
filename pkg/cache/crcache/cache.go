@@ -82,6 +82,16 @@ func (c *Cache) UpdateRepository(context.Context, *configapi.Repository) error {
 	panic("Update on CR cached repositories is not applicable")
 }
 
+func (c *Cache) ListDBRepositories(context.Context) ([]repository.RepositoryKey, error) {
+	// CR cache does not use a database; return nil.
+	return nil, nil
+}
+
+func (c *Cache) DeleteDBRepository(context.Context, repository.RepositoryKey) error {
+	// CR cache does not use a database; no-op.
+	return nil
+}
+
 func (c *Cache) CloseRepository(ctx context.Context, repositorySpec *configapi.Repository, allRepos []configapi.Repository) error {
 	_, span := tracer.Start(ctx, "Cache::CloseRepository", trace.WithAttributes())
 	defer span.End()
