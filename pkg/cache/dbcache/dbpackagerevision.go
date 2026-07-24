@@ -99,6 +99,23 @@ type dbPackageRevision struct {
 	gitPR repository.PackageRevision
 }
 
+// ensureRepo resolves the repository from the cache if pr.repo is nil.
+// This handles the case where package revisions are loaded from the DB
+// before the repo has been opened in the cache (e.g. after a restart).
+func (pr *dbPackageRevision) ensureRepo() error {
+	if pr.repo != nil {
+		return nil
+	}
+	if repo := cachetypes.CacheInstance.GetRepository(pr.pkgRevKey.PkgKey.RepoKey); repo != nil {
+		if dbRepo, ok := repo.(*dbRepository); ok {
+			pr.repo = dbRepo
+			return nil
+		}
+		klog.Warningf("ensureRepo: repository %+v has unexpected type %T", pr.pkgRevKey.PkgKey.RepoKey, repo)
+	}
+	return fmt.Errorf("no associated repository")
+}
+
 func (pr *dbPackageRevision) specReadinessGates() []porchapi.ReadinessGate {
 	if pr.spec == nil {
 		return nil
@@ -182,15 +199,8 @@ func (pr *dbPackageRevision) UpdateLifecycle(ctx context.Context, newLifecycle p
 	_, span := tracer.Start(ctx, "dbPackageRevision::UpdateLifecycle", trace.WithAttributes())
 	defer span.End()
 
-	if pr.repo == nil {
-		if repo := cachetypes.CacheInstance.GetRepository(pr.pkgRevKey.PkgKey.RepoKey); repo != nil {
-			if dbRepo, ok := repo.(*dbRepository); ok {
-				pr.repo = dbRepo
-			}
-		}
-	}
-	if pr.repo == nil {
-		return fmt.Errorf("cannot update lifecycle for package revision %s: no associated repository", pr.KubeObjectName())
+	if err := pr.ensureRepo(); err != nil {
+		return fmt.Errorf("cannot update lifecycle for package revision %s: %w", pr.KubeObjectName(), err)
 	}
 
 	// Only Approve (Proposed → Published) pushes to external repo
@@ -473,15 +483,8 @@ func (pr *dbPackageRevision) UpdateResources(ctx context.Context, new *porchapi.
 	_, span := tracer.Start(ctx, "dbPackageRevision::UpdateResources", trace.WithAttributes())
 	defer span.End()
 
-	if pr.repo == nil {
-		if repo := cachetypes.CacheInstance.GetRepository(pr.pkgRevKey.PkgKey.RepoKey); repo != nil {
-			if dbRepo, ok := repo.(*dbRepository); ok {
-				pr.repo = dbRepo
-			}
-		}
-	}
-	if pr.repo == nil {
-		return fmt.Errorf("cannot update resources for package revision %s: no associated repository", pr.KubeObjectName())
+	if err := pr.ensureRepo(); err != nil {
+		return fmt.Errorf("cannot update resources for package revision %s: %w", pr.KubeObjectName(), err)
 	}
 
 	if pr.repo.pushDraftsToGit && pr.gitPRDraft != nil {
