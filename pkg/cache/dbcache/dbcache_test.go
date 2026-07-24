@@ -352,3 +352,79 @@ func (t *DbTestSuite) createTestPRs(packages []dbPackage, wsNamePrefix string, c
 	}
 	return testPRs
 }
+
+func (t *DbTestSuite) TestEvictCachedRepository() {
+	externalrepo.ExternalRepoInUnitTestMode = true
+	defer func() { externalrepo.ExternalRepoInUnitTestMode = false }()
+
+	ctx := t.Context()
+	scheme := runtime.NewScheme()
+	_ = configapi.AddToScheme(scheme)
+
+	tests := []struct {
+		name           string
+		setupRepo      bool // whether to open the repo before evicting
+		expectInDB     bool // whether repo should remain in DB after eviction
+		expectCacheLen int  // expected cache length after eviction
+		expectEvictErr bool
+	}{
+		{
+			name:           "evicts opened repo from cache but keeps in DB",
+			setupRepo:      true,
+			expectInDB:     true,
+			expectCacheLen: 0,
+		},
+		{
+			name:           "evicting repo not in cache does not error",
+			setupRepo:      false,
+			expectCacheLen: 0,
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func() {
+			repoName := fmt.Sprintf("evict-repo-%d", i)
+			repositorySpec := &configapi.Repository{
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: "evict-ns",
+					Name:      repoName,
+				},
+			}
+			fakeClient := testutil.NewFakeClientWithStatus(scheme, repositorySpec)
+			options := cachetypes.CacheOptions{CoreClient: fakeClient}
+			dbCache, err := new(DBCacheFactory).NewCache(ctx, options)
+			t.NoError(err)
+
+			if tt.setupRepo {
+				repo, err := dbCache.OpenRepository(ctx, repositorySpec)
+				t.NoError(err)
+				t.Equal(repoName, repo.Key().Name)
+
+				defer func() {
+					_ = dbCache.DeleteDBRepository(ctx, repo.Key())
+				}()
+			}
+
+			err = dbCache.EvictCachedRepository(ctx, repositorySpec)
+			if tt.expectEvictErr {
+				t.Error(err)
+			} else {
+				t.NoError(err)
+			}
+			t.Equal(tt.expectCacheLen, len(dbCache.GetRepositories()))
+
+			if tt.expectInDB {
+				dbRepoKeys, err := dbCache.ListDBRepositories(ctx)
+				t.NoError(err)
+				found := false
+				for _, key := range dbRepoKeys {
+					if key.Name == repoName && key.Namespace == "evict-ns" {
+						found = true
+						break
+					}
+				}
+				t.True(found, "Expected repo to still exist in DB after eviction")
+			}
+		})
+	}
+}

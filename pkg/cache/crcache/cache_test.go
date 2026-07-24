@@ -443,3 +443,67 @@ func TestFindUpstreamReference(t *testing.T) {
 		})
 	}
 }
+
+func TestEvictCachedRepository(t *testing.T) {
+	ctx := context.Background()
+	cache := &Cache{repositories: repomap.SafeRepoMap{}}
+
+	fakeRepo := &fakeCloseableRepo{}
+	repoKey := repository.RepositoryKey{Namespace: "test-ns", Name: "evict-repo"}
+	mockRepo := &cachedRepository{
+		key:      repoKey,
+		repoSpec: &v1alpha1.Repository{ObjectMeta: metav1.ObjectMeta{Name: "evict-repo", Namespace: "test-ns"}},
+		repo:     fakeRepo,
+	}
+
+	_, err := cache.repositories.LoadOrCreate(repoKey, func() (repository.Repository, error) {
+		return mockRepo, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(cache.GetRepositories()))
+
+	apiRepo := &v1alpha1.Repository{
+		ObjectMeta: metav1.ObjectMeta{Name: "evict-repo", Namespace: "test-ns"},
+		Spec: v1alpha1.RepositorySpec{
+			Type: v1alpha1.RepositoryTypeGit,
+			Git: &v1alpha1.GitRepository{
+				Repo: "http://example.com/repo.git",
+			},
+		},
+	}
+
+	err = cache.EvictCachedRepository(ctx, apiRepo)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(cache.GetRepositories()))
+	assert.True(t, fakeRepo.closed)
+}
+
+func TestEvictCachedRepositoryNotFound(t *testing.T) {
+	ctx := context.Background()
+	cache := &Cache{repositories: repomap.SafeRepoMap{}}
+
+	apiRepo := &v1alpha1.Repository{
+		ObjectMeta: metav1.ObjectMeta{Name: "nonexistent", Namespace: "test-ns"},
+		Spec: v1alpha1.RepositorySpec{
+			Type: v1alpha1.RepositoryTypeGit,
+			Git: &v1alpha1.GitRepository{
+				Repo: "http://example.com/repo.git",
+			},
+		},
+	}
+
+	// Should not error when repo doesn't exist
+	err := cache.EvictCachedRepository(ctx, apiRepo)
+	require.NoError(t, err)
+}
+
+// fakeCloseableRepo is a minimal repository that tracks Close calls
+type fakeCloseableRepo struct {
+	repository.Repository
+	closed bool
+}
+
+func (f *fakeCloseableRepo) Close(ctx context.Context) error {
+	f.closed = true
+	return nil
+}

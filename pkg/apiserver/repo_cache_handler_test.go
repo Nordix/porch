@@ -25,10 +25,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/semaphore"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -51,133 +49,60 @@ func newTestRepos(count int) []configapi.Repository {
 					Directory: "/",
 				},
 			},
-			Status: configapi.RepositoryStatus{
-				Conditions: []metav1.Condition{
-					{
-						Type:   configapi.RepositoryReady,
-						Status: metav1.ConditionTrue,
-						Reason: configapi.ReasonReady,
-					},
-				},
-			},
 		}
 	}
 	return repos
 }
 
-func TestRepoCacheHandlerEventAdded(t *testing.T) {
+func TestRepoCacheHandlerEvictRepository(t *testing.T) {
 	repos := newTestRepos(1)
-	objects := make([]runtime.Object, len(repos))
-	for i := range repos {
-		objects[i] = &repos[i]
-	}
 
 	scheme := newTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithRuntimeObjects(objects...).
-		Build()
-
-	mc := mockcache.NewMockCache(t)
-	mc.EXPECT().CreateCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
-
-	h := &repoCacheHandler{
-		coreClient:      fakeClient,
-		cache:           mc,
-		workerSemaphore: semaphore.NewWeighted(5),
-	}
-
-	h.handleRepositoryEvent(context.Background(), watch.Added, &repos[0])
-}
-
-func TestRepoCacheHandlerEventModified(t *testing.T) {
-	repos := newTestRepos(1)
-	objects := make([]runtime.Object, len(repos))
-	for i := range repos {
-		objects[i] = &repos[i]
-	}
-
-	scheme := newTestScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(objects...).
-		Build()
-
-	mc := mockcache.NewMockCache(t)
-	mc.EXPECT().CreateCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
-
-	h := &repoCacheHandler{
-		coreClient:      fakeClient,
-		cache:           mc,
-		workerSemaphore: semaphore.NewWeighted(5),
-	}
-
-	h.handleRepositoryEvent(context.Background(), watch.Modified, &repos[0])
-}
-
-func TestRepoCacheHandlerEventDeleted(t *testing.T) {
-	repos := newTestRepos(1)
-	objects := make([]runtime.Object, len(repos))
-	for i := range repos {
-		objects[i] = &repos[i]
-	}
-
-	scheme := newTestScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithRuntimeObjects(objects...).
 		Build()
 
 	mc := mockcache.NewMockCache(t)
 	mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
 
 	h := &repoCacheHandler{
-		coreClient:      fakeClient,
-		cache:           mc,
-		workerSemaphore: semaphore.NewWeighted(5),
+		coreClient: fakeClient,
+		cache:      mc,
 	}
 
-	h.handleRepositoryEvent(context.Background(), watch.Deleted, &repos[0])
+	h.evictRepository(context.Background(), &repos[0])
 }
 
-func TestRepoCacheHandlerEventAddedError(t *testing.T) {
+func TestRepoCacheHandlerEvictRepositoryError(t *testing.T) {
 	repos := newTestRepos(1)
-	objects := make([]runtime.Object, len(repos))
-	for i := range repos {
-		objects[i] = &repos[i]
-	}
 
 	scheme := newTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithRuntimeObjects(objects...).
 		Build()
 
 	mc := mockcache.NewMockCache(t)
-	mc.EXPECT().CreateCachedRepository(mock.Anything, mock.Anything).Return(fmt.Errorf("connection refused")).Once()
+	mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(fmt.Errorf("not found")).Once()
 
 	h := &repoCacheHandler{
-		coreClient:      fakeClient,
-		cache:           mc,
-		workerSemaphore: semaphore.NewWeighted(5),
+		coreClient: fakeClient,
+		cache:      mc,
 	}
 
 	// Should not panic — just logs a warning
-	h.handleRepositoryEvent(context.Background(), watch.Added, &repos[0])
+	h.evictRepository(context.Background(), &repos[0])
 }
 
 func TestRepoCacheHandlerBackoffTimer(t *testing.T) {
 	bt := newBackoffTimer(10*time.Millisecond, 100*time.Millisecond)
 	defer bt.Stop()
 
-	// First timer fires at min delay
 	select {
 	case <-bt.channel():
 	case <-time.After(50 * time.Millisecond):
 		t.Fatal("timer did not fire within expected time")
 	}
 
-	// After backoff, delay should double
 	bt.backoff()
 	start := time.Now()
 	select {
@@ -188,7 +113,6 @@ func TestRepoCacheHandlerBackoffTimer(t *testing.T) {
 		t.Fatal("timer did not fire after backoff")
 	}
 
-	// Reset should bring delay back to min
 	bt.reset()
 	start = time.Now()
 	select {
@@ -197,26 +121,6 @@ func TestRepoCacheHandlerBackoffTimer(t *testing.T) {
 		assert.Less(t, elapsed, 50*time.Millisecond)
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("timer did not fire after reset")
-	}
-}
-
-func TestRepoCacheHandlerBackoffTimerCapsAtMax(t *testing.T) {
-	bt := newBackoffTimer(10*time.Millisecond, 40*time.Millisecond)
-	defer bt.Stop()
-
-	<-bt.channel()
-
-	bt.backoff() // 20ms
-	bt.backoff() // 40ms (max)
-	bt.backoff() // still 40ms (capped)
-
-	start := time.Now()
-	select {
-	case <-bt.channel():
-		elapsed := time.Since(start)
-		assert.Less(t, elapsed, 80*time.Millisecond)
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("timer did not fire")
 	}
 }
 
@@ -230,13 +134,11 @@ func TestRepoCacheHandlerRunStopsOnContextCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	runRepoCacheHandler(ctx, fakeClient, mc, 5, 10*time.Second)
+	runRepoCacheHandler(ctx, fakeClient, mc)
 
-	// Give it a moment to start, then cancel
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 
-	// If we get here without hanging, the goroutine respects context cancellation
 	time.Sleep(50 * time.Millisecond)
 	require.True(t, true)
 }

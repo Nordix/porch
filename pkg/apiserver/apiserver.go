@@ -470,12 +470,9 @@ func (s *PorchServer) Run(ctx context.Context) error {
 		klog.Infoln("Cert storage dir not provided, skipping webhook setup")
 	}
 
-	// Start the repo cache handler. This watches Repository CRs for
-	// changes and opens/closes them in the cache accordingly.
-	runRepoCacheHandler(ctx, s.coreClient, s.cache,
-		s.ExtraConfig.CacheOptions.CRCacheOptions.MaxConcurrentLists,
-		s.ExtraConfig.CacheOptions.CRCacheOptions.ListTimeoutPerRepository,
-	)
+	// Start the repo cache handler. Watches for Repository deletions and
+	// evicts them from the in-memory cache to prevent git clone leaks.
+	runRepoCacheHandler(ctx, s.coreClient, s.cache)
 
 	return s.GenericAPIServer.PrepareRun().RunWithContext(ctx)
 }

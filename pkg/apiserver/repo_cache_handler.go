@@ -17,12 +17,10 @@ package apiserver
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/kptdev/porch/pkg/cache/types"
-	"golang.org/x/sync/semaphore"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
@@ -31,45 +29,32 @@ import (
 )
 
 const (
-	minReconnectDelay     = 1 * time.Second
-	maxReconnectDelay     = 30 * time.Second
-	defaultMaxConcurrency = 5
+	minReconnectDelay = 1 * time.Second
+	maxReconnectDelay = 30 * time.Second
 )
 
-// repoCacheHandler watches Repository CRs and keeps the in-memory cache in sync
-// by opening repos on add/modify and closing them on delete.
+// repoCacheHandler watches Repository CRs for DELETE events and evicts them
+// from porch-server's in-memory cache to prevent git clone leaks.
+// ADD/MODIFIED are not handled — the cache is populated lazily on first API call.
 type repoCacheHandler struct {
-	coreClient      client.WithWatch
-	cache           cachetypes.Cache
-	workerSemaphore *semaphore.Weighted
-	timeoutPerRepo  time.Duration
-	// Per-repo mutexes ensure events for the same repo are processed in order.
-	repoMutexes     map[string]*sync.Mutex
-	repoMutexesLock sync.Mutex
+	coreClient client.WithWatch
+	cache      cachetypes.Cache
 }
 
-// runRepoCacheHandler starts the repo handler loop. It watches Repository CRs
-// and opens/closes them in the cache as they appear or disappear.
-// maxConcurrency controls how many repo operations can run in parallel.
-// timeoutPerRepo is the max duration for a single repo open/close operation.
+// runRepoCacheHandler starts the repo cache handler loop. It watches Repository CRs
+// and evicts them from the cache when deleted.
 // This function launches a goroutine and returns immediately.
-func runRepoCacheHandler(ctx context.Context, coreClient client.WithWatch, cache cachetypes.Cache, maxConcurrency int, timeoutPerRepo time.Duration) {
-	if maxConcurrency <= 0 {
-		maxConcurrency = defaultMaxConcurrency
-	}
+func runRepoCacheHandler(ctx context.Context, coreClient client.WithWatch, cache cachetypes.Cache) {
 	h := &repoCacheHandler{
-		coreClient:      coreClient,
-		cache:           cache,
-		workerSemaphore: semaphore.NewWeighted(int64(maxConcurrency)),
-		timeoutPerRepo:  timeoutPerRepo,
-		repoMutexes:     make(map[string]*sync.Mutex),
+		coreClient: coreClient,
+		cache:      cache,
 	}
 	go h.run(ctx)
 }
 
-// run is the main loop: watches for Repository CR events and opens/closes the cache.
+// run is the main loop: watches for Repository CR delete events.
 func (h *repoCacheHandler) run(ctx context.Context) {
-	klog.Infof("Repo cache handler starting")
+	klog.Infof("Repo cache handler starting (eviction only)")
 
 	var events <-chan watch.Event
 	var watcher watch.Interface
@@ -164,110 +149,29 @@ func (h *repoCacheHandler) handleWatchEvent(ctx context.Context, event watch.Eve
 		}
 		reconnect.reset()
 
-	default: // ADDED, MODIFIED, DELETED
-		if repository, ok := event.Object.(*configapi.Repository); ok {
-			*consecutiveFailures = 0
-			h.processEvent(ctx, event.Type, repository)
-		} else {
-			klog.V(5).Infof("Repo cache handler: unexpected watch event object type: %T", event.Object)
-		}
-	}
-}
-
-// processEvent dispatches a repo event into a goroutine with per-repo mutex ordering.
-func (h *repoCacheHandler) processEvent(ctx context.Context, eventType watch.EventType, repo *configapi.Repository) {
-	repoKey := fmt.Sprintf("%s/%s", repo.Namespace, repo.Name)
-
-	go func() {
-		mutex := h.getRepoMutex(repoKey)
-		mutex.Lock()
-		defer mutex.Unlock()
-
-		h.handleRepositoryEvent(ctx, eventType, repo)
-	}()
-}
-
-// getRepoMutex returns a per-repository mutex, creating one if it doesn't exist.
-func (h *repoCacheHandler) getRepoMutex(repoKey string) *sync.Mutex {
-	h.repoMutexesLock.Lock()
-	defer h.repoMutexesLock.Unlock()
-
-	mutex, exists := h.repoMutexes[repoKey]
-	if !exists {
-		mutex = &sync.Mutex{}
-		h.repoMutexes[repoKey] = mutex
-	}
-	return mutex
-}
-
-// handleRepositoryEvent opens or closes a repository in the cache.
-func (h *repoCacheHandler) handleRepositoryEvent(ctx context.Context, eventType watch.EventType, repo *configapi.Repository) {
-	repoKey := fmt.Sprintf("%s/%s", repo.Namespace, repo.Name)
-
-	// Apply per-repo timeout to prevent hung operations from blocking indefinitely
-	if h.timeoutPerRepo > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, h.timeoutPerRepo)
-		defer cancel()
-	}
-
-	switch eventType {
-	case watch.Added, watch.Modified:
-		// Skip repos that are being deleted — a DELETE event will follow shortly.
-		if repo.DeletionTimestamp != nil {
-			klog.V(3).Infof("Repo cache handler: skipping %s (deletion in progress)", repoKey)
-			return
-		}
-
-		// Only cache repos that the controller has confirmed as Ready.
-		// This avoids wasting time cloning repos with bad URLs or unreachable servers.
-		if !isRepositoryReady(repo) {
-			klog.V(3).Infof("Repo cache handler: skipping %s (not Ready)", repoKey)
-			return
-		}
-
-		start := time.Now()
-		klog.Infof("Repo cache handler: starting %s event for %s", eventType, repoKey)
-
-		// Rate limit concurrent git operations
-		if err := h.workerSemaphore.Acquire(ctx, 1); err != nil {
-			klog.Warningf("Repo cache handler: context cancelled waiting for semaphore for %s: %v [%s]", repoKey, err, time.Since(start))
-			return
-		}
-		defer h.workerSemaphore.Release(1)
-
-		if err := h.cache.CreateCachedRepository(ctx, repo); err != nil {
-			klog.Warningf("Repo cache handler: failed to cache %s: %v [%s]", repoKey, err, time.Since(start))
-		} else {
-			klog.Infof("Repo cache handler: finished %s event for %s [%s]", eventType, repoKey, time.Since(start))
-		}
-
 	case watch.Deleted:
-		start := time.Now()
-		klog.Infof("Repo cache handler: starting %s event for %s", eventType, repoKey)
-
-		if err := h.workerSemaphore.Acquire(ctx, 1); err != nil {
-			klog.Warningf("Repo cache handler: context cancelled waiting for semaphore for %s: %v [%s]", repoKey, err, time.Since(start))
-			return
+		if repo, ok := event.Object.(*configapi.Repository); ok {
+			*consecutiveFailures = 0
+			h.evictRepository(ctx, repo)
 		}
-		defer h.workerSemaphore.Release(1)
 
-		if err := h.cache.EvictCachedRepository(ctx, repo); err != nil {
-			klog.Warningf("Repo cache handler: failed to evict %s: %v [%s]", repoKey, err, time.Since(start))
-		} else {
-			klog.Infof("Repo cache handler: finished %s event for %s [%s]", eventType, repoKey, time.Since(start))
-		}
+	default:
+		// ADDED/MODIFIED — ignored. Cache is populated lazily on first API call.
 	}
 }
 
-// isRepositoryReady checks if the repo controller has marked this repository as Ready.
-func isRepositoryReady(repo *configapi.Repository) bool {
-	for _, c := range repo.Status.Conditions {
-		if c.Type == configapi.RepositoryReady && c.Status == "True" {
-			return true
-		}
+// evictRepository removes a repository from the in-memory cache and releases the git clone.
+func (h *repoCacheHandler) evictRepository(ctx context.Context, repo *configapi.Repository) {
+	repoKey := fmt.Sprintf("%s/%s", repo.Namespace, repo.Name)
+	start := time.Now()
+
+	klog.Infof("Repo cache handler: starting eviction for %s", repoKey)
+
+	if err := h.cache.EvictCachedRepository(ctx, repo); err != nil {
+		klog.Warningf("Repo cache handler: failed to evict %s: %v [%s]", repoKey, err, time.Since(start))
+	} else {
+		klog.Infof("Repo cache handler: finished eviction for %s [%s]", repoKey, time.Since(start))
 	}
-	return false
 }
 
 // backoffTimer implements exponential backoff for watch reconnection.

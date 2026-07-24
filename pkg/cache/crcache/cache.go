@@ -114,14 +114,6 @@ func (c *Cache) CloseRepository(ctx context.Context, repositorySpec *configapi.R
 	return nil
 }
 
-// CreateCachedRepository loads a repository into the in-memory cache and establishes
-// the git clone. For crcache there is no database, so this behaves the same
-// as OpenRepository.
-func (c *Cache) CreateCachedRepository(ctx context.Context, repositorySpec *configapi.Repository) error {
-	_, err := c.OpenRepository(ctx, repositorySpec)
-	return err
-}
-
 // EvictCachedRepository removes a repository from the in-memory cache and closes
 // the git clone. For crcache there is no database, so this behaves the same
 // as CloseRepository.
@@ -136,8 +128,12 @@ func (c *Cache) EvictCachedRepository(ctx context.Context, repositorySpec *confi
 
 	repo, ok := c.repositories.LoadAndDelete(key)
 	if ok && repo != nil {
-		if err := repo.Close(ctx); err != nil {
-			return err
+		cachedRepo := repo.(*cachedRepository)
+		cachedRepo.refreshWg.Wait()
+		if cachedRepo.repo != nil {
+			if err := cachedRepo.repo.Close(ctx); err != nil {
+				return err
+			}
 		}
 	}
 

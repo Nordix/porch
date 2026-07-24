@@ -66,12 +66,6 @@ type Cache interface {
 	// Full lifecycle (used by porch-controller)
 	OpenRepository(ctx context.Context, repositorySpec *configapi.Repository) (repository.Repository, error)
 	CloseRepository(ctx context.Context, repositorySpec *configapi.Repository, allRepos []configapi.Repository) error
-
-	// Memory-only operations (used by porch-server's cache handler)
-	// These never touch the database — only the in-memory map and git clone.
-	CreateCachedRepository(ctx context.Context, repositorySpec *configapi.Repository) error
-	EvictCachedRepository(ctx context.Context, repositorySpec *configapi.Repository) error
-
 	GetRepositories() []*configapi.Repository
 	GetRepository(repository.RepositoryKey) repository.Repository
 	UpdateRepository(ctx context.Context, repositorySpec *configapi.Repository) error
@@ -80,6 +74,9 @@ type Cache interface {
 	ListPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error)
 	ListDBRepositories(ctx context.Context) ([]repository.RepositoryKey, error)
 	DeleteDBRepository(ctx context.Context, repoKey repository.RepositoryKey) error
+	// Memory-only operations (used by v1alpha1 porch-server's cache handler)
+	// These never touch the database — only the in-memory map and git clone.
+	EvictCachedRepository(ctx context.Context, repositorySpec *configapi.Repository) error
 }
 
 var (
