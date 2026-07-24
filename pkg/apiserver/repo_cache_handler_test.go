@@ -27,6 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -141,4 +143,155 @@ func TestRepoCacheHandlerRunStopsOnContextCancel(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 	require.True(t, true)
+}
+
+func TestRepoCacheHandlerHandleWatchEvent(t *testing.T) {
+	repos := newTestRepos(1)
+
+	scheme := newTestScheme()
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	tests := []struct {
+		name        string
+		event       watch.Event
+		expectEvict bool
+	}{
+		{
+			name: "DELETE event triggers eviction",
+			event: watch.Event{
+				Type:   watch.Deleted,
+				Object: &repos[0],
+			},
+			expectEvict: true,
+		},
+		{
+			name: "ADDED event is ignored",
+			event: watch.Event{
+				Type:   watch.Added,
+				Object: &repos[0],
+			},
+			expectEvict: false,
+		},
+		{
+			name: "MODIFIED event is ignored",
+			event: watch.Event{
+				Type:   watch.Modified,
+				Object: &repos[0],
+			},
+			expectEvict: false,
+		},
+		{
+			name: "BOOKMARK event updates bookmark",
+			event: watch.Event{
+				Type: watch.Bookmark,
+				Object: &configapi.Repository{
+					ObjectMeta: metav1.ObjectMeta{
+						ResourceVersion: "12345",
+					},
+				},
+			},
+			expectEvict: false,
+		},
+		{
+			name: "ERROR event with expired status resets bookmark",
+			event: watch.Event{
+				Type: watch.Error,
+				Object: &metav1.Status{
+					Reason: metav1.StatusReasonExpired,
+					Code:   410,
+				},
+			},
+			expectEvict: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mc := mockcache.NewMockCache(t)
+			if tt.expectEvict {
+				mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
+			}
+
+			h := &repoCacheHandler{
+				coreClient: fakeClient,
+				cache:      mc,
+			}
+
+			var bookmark string
+			var consecutiveFailures int
+			reconnect := newBackoffTimer(1*time.Second, 30*time.Second)
+			defer reconnect.Stop()
+			// Drain initial timer fire
+			<-reconnect.channel()
+
+			h.handleWatchEvent(context.Background(), tt.event, &bookmark, &consecutiveFailures, reconnect)
+
+			if tt.event.Type == watch.Bookmark {
+				assert.Equal(t, "12345", bookmark)
+			}
+			if tt.event.Type == watch.Error {
+				assert.Empty(t, bookmark)
+				assert.Equal(t, 0, consecutiveFailures)
+			}
+		})
+	}
+}
+
+// fakeWithWatch wraps a real client and overrides Watch behavior for testing.
+type fakeWithWatch struct {
+	client.WithWatch
+	watchFn func(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) (watch.Interface, error)
+}
+
+func (f *fakeWithWatch) Watch(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) (watch.Interface, error) {
+	return f.watchFn(ctx, obj, opts...)
+}
+
+func TestRepoCacheHandlerWatchFailureThenSuccess(t *testing.T) {
+	mc := mockcache.NewMockCache(t)
+	mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
+
+	scheme := newTestScheme()
+	realClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	callCount := 0
+	fakeWatcher := watch.NewFake()
+
+	fw := &fakeWithWatch{
+		WithWatch: realClient,
+		watchFn: func(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) (watch.Interface, error) {
+			callCount++
+			if callCount <= 2 {
+				return nil, fmt.Errorf("connection refused")
+			}
+			return fakeWatcher, nil
+		},
+	}
+
+	h := &repoCacheHandler{
+		coreClient: fw,
+		cache:      mc,
+		minBackoff: 10 * time.Millisecond,
+		maxBackoff: 50 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go h.run(ctx)
+
+	// Wait for reconnection attempts and successful watch
+	time.Sleep(200 * time.Millisecond)
+
+	// Send a DELETE event through the fake watcher
+	repo := &configapi.Repository{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-repo", Namespace: "test-ns"},
+	}
+	fakeWatcher.Delete(repo)
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	fakeWatcher.Stop()
+
+	assert.GreaterOrEqual(t, callCount, 3, "expected at least 3 Watch calls (2 failures + 1 success)")
 }

@@ -39,6 +39,8 @@ const (
 type repoCacheHandler struct {
 	coreClient client.WithWatch
 	cache      cachetypes.Cache
+	minBackoff time.Duration
+	maxBackoff time.Duration
 }
 
 // runRepoCacheHandler starts the repo cache handler loop. It watches Repository CRs
@@ -48,6 +50,8 @@ func runRepoCacheHandler(ctx context.Context, coreClient client.WithWatch, cache
 	h := &repoCacheHandler{
 		coreClient: coreClient,
 		cache:      cache,
+		minBackoff: minReconnectDelay,
+		maxBackoff: maxReconnectDelay,
 	}
 	go h.run(ctx)
 }
@@ -67,7 +71,7 @@ func (h *repoCacheHandler) run(ctx context.Context) {
 		}
 	}()
 
-	reconnect := newBackoffTimer(minReconnectDelay, maxReconnectDelay)
+	reconnect := newBackoffTimer(h.minBackoff, h.maxBackoff)
 	defer reconnect.Stop()
 
 loop:
