@@ -82,6 +82,14 @@ func (r *RepoCacheReconciler) Reconcile(ctx context.Context, req reconcile.Reque
 		return reconcile.Result{}, nil
 	}
 
+	// Add finalizer first — guarantees eviction even if we crash after OpenRepository
+	if !controllerutil.ContainsFinalizer(repo, repoCacheFinalizer) {
+		controllerutil.AddFinalizer(repo, repoCacheFinalizer)
+		if err := r.client.Update(ctx, repo); err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to add finalizer to %s: %w", req.NamespacedName, err)
+		}
+	}
+
 	// Open (or re-open on spec change) the repository in the cache
 	start := time.Now()
 	klog.Infof("Repo cache handler: opening %s", req.NamespacedName)
@@ -92,14 +100,6 @@ func (r *RepoCacheReconciler) Reconcile(ctx context.Context, req reconcile.Reque
 	}
 
 	klog.Infof("Repo cache handler: opened %s [%s]", req.NamespacedName, time.Since(start))
-
-	// Add finalizer to guarantee eviction on delete
-	if !controllerutil.ContainsFinalizer(repo, repoCacheFinalizer) {
-		controllerutil.AddFinalizer(repo, repoCacheFinalizer)
-		if err := r.client.Update(ctx, repo); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to add finalizer to %s: %w", req.NamespacedName, err)
-		}
-	}
 
 	return reconcile.Result{}, nil
 }
