@@ -144,31 +144,35 @@ func (c *dbCache) CloseRepository(ctx context.Context, repositorySpec *configapi
 // EvictCachedRepository removes a repository from the in-memory cache map and closes
 // the git clone, but does NOT delete from the database. This is used by porch-server's
 // cache handler to clean up memory without racing the controller on DB deletes.
-func (c *dbCache) EvictCachedRepository(ctx context.Context, repositorySpec *configapi.Repository) error {
+func (c *dbCache) EvictCachedRepository(ctx context.Context, namespace, name string) error {
 	_, span := tracer.Start(ctx, "dbCache::EvictCachedRepository", trace.WithAttributes())
 	defer span.End()
 
-	repoKey, err := externalrepo.RepositoryKey(repositorySpec)
-	if err != nil {
-		return err
-	}
-
-	repo, ok := c.repositories.LoadAndDelete(repoKey)
-	if !ok {
-		klog.V(4).Infof("dbCache.EvictCachedRepository: repo %+v not found in cache", repoKey)
-		return nil
-	}
-
-	if repo != nil {
-		dbRepo := repo.(*dbRepository)
-		if dbRepo.externalRepo != nil {
-			if err := dbRepo.externalRepo.Close(ctx); err != nil {
-				return pkgerrors.Wrapf(err, "failed to close external repo for %+v", repoKey)
+	var found bool
+	c.repositories.Range(func(key, value any) bool {
+		repoKey := key.(repository.RepositoryKey)
+		if repoKey.Namespace == namespace && repoKey.Name == name {
+			c.repositories.LoadAndDelete(repoKey)
+			if value != nil {
+				dbRepo := value.(*dbRepository)
+				if dbRepo.externalRepo != nil {
+					if err := dbRepo.externalRepo.Close(ctx); err != nil {
+						klog.Warningf("dbCache.EvictCachedRepository: failed to close external repo %s/%s: %v", namespace, name, err)
+					}
+				}
 			}
+			found = true
+			return false // stop iteration
 		}
+		return true
+	})
+
+	if !found {
+		klog.V(4).Infof("dbCache.EvictCachedRepository: repo %s/%s not found in cache", namespace, name)
+	} else {
+		klog.Infof("Evicted repository from cache: %s/%s", namespace, name)
 	}
 
-	klog.Infof("Evicted repository from cache (memory-only): %v", repoKey)
 	return nil
 }
 

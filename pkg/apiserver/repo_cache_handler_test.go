@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	mockcache "github.com/kptdev/porch/test/mockery/mocks/porch/pkg/cache/types"
@@ -27,9 +26,11 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 func newTestScheme() *runtime.Scheme {
@@ -38,260 +39,162 @@ func newTestScheme() *runtime.Scheme {
 	return scheme
 }
 
-func newTestRepos(count int) []configapi.Repository {
-	repos := make([]configapi.Repository, count)
-	for i := range repos {
-		repos[i] = configapi.Repository{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("repo-%d", i+1),
-				Namespace: "test-ns",
-			},
-			Spec: configapi.RepositorySpec{
-				Git: &configapi.GitRepository{
-					Directory: "/",
+func readyRepo(name, namespace string) *configapi.Repository {
+	return &configapi.Repository{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Status: configapi.RepositoryStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:   configapi.RepositoryReady,
+					Status: metav1.ConditionTrue,
+					Reason: configapi.ReasonReady,
 				},
 			},
-		}
+		},
 	}
-	return repos
 }
 
-func TestRepoCacheHandlerEvictRepository(t *testing.T) {
-	repos := newTestRepos(1)
 
+func TestReconcileReadyRepoOpensAndAddsFinalizer(t *testing.T) {
 	scheme := newTestScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
+	repo := readyRepo("my-repo", "test-ns")
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(repo).WithStatusSubresource(repo).Build()
 
 	mc := mockcache.NewMockCache(t)
-	mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
+	mc.EXPECT().OpenRepository(mock.Anything, mock.Anything).Return(nil, nil).Once()
 
-	h := &repoCacheHandler{
-		coreClient: fakeClient,
-		cache:      mc,
-	}
+	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
 
-	h.evictRepository(context.Background(), &repos[0])
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "my-repo", Namespace: "test-ns"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, reconcile.Result{}, result)
+
+	// Verify finalizer was added
+	updated := &configapi.Repository{}
+	require.NoError(t, fakeClient.Get(context.Background(), types.NamespacedName{Name: "my-repo", Namespace: "test-ns"}, updated))
+	assert.Contains(t, updated.Finalizers, repoCacheFinalizer)
 }
 
-func TestRepoCacheHandlerEvictRepositoryError(t *testing.T) {
-	repos := newTestRepos(1)
-
+func TestReconcileNotReadyRepoIsSkipped(t *testing.T) {
 	scheme := newTestScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
-
-	mc := mockcache.NewMockCache(t)
-	mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(fmt.Errorf("not found")).Once()
-
-	h := &repoCacheHandler{
-		coreClient: fakeClient,
-		cache:      mc,
-	}
-
-	// Should not panic — just logs a warning
-	h.evictRepository(context.Background(), &repos[0])
-}
-
-func TestRepoCacheHandlerBackoffTimer(t *testing.T) {
-	bt := newBackoffTimer(10*time.Millisecond, 100*time.Millisecond)
-	defer bt.Stop()
-
-	select {
-	case <-bt.channel():
-	case <-time.After(50 * time.Millisecond):
-		t.Fatal("timer did not fire within expected time")
-	}
-
-	bt.backoff()
-	start := time.Now()
-	select {
-	case <-bt.channel():
-		elapsed := time.Since(start)
-		assert.GreaterOrEqual(t, elapsed, 15*time.Millisecond)
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("timer did not fire after backoff")
-	}
-
-	bt.reset()
-	start = time.Now()
-	select {
-	case <-bt.channel():
-		elapsed := time.Since(start)
-		assert.Less(t, elapsed, 50*time.Millisecond)
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("timer did not fire after reset")
-	}
-}
-
-func TestRepoCacheHandlerRunStopsOnContextCancel(t *testing.T) {
-	scheme := newTestScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
-
-	mc := mockcache.NewMockCache(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	runRepoCacheHandler(ctx, fakeClient, mc)
-
-	time.Sleep(50 * time.Millisecond)
-	cancel()
-
-	time.Sleep(50 * time.Millisecond)
-	require.True(t, true)
-}
-
-func TestRepoCacheHandlerHandleWatchEvent(t *testing.T) {
-	repos := newTestRepos(1)
-
-	scheme := newTestScheme()
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
-
-	tests := []struct {
-		name        string
-		event       watch.Event
-		expectEvict bool
-	}{
-		{
-			name: "DELETE event triggers eviction",
-			event: watch.Event{
-				Type:   watch.Deleted,
-				Object: &repos[0],
-			},
-			expectEvict: true,
-		},
-		{
-			name: "ADDED event is ignored",
-			event: watch.Event{
-				Type:   watch.Added,
-				Object: &repos[0],
-			},
-			expectEvict: false,
-		},
-		{
-			name: "MODIFIED event is ignored",
-			event: watch.Event{
-				Type:   watch.Modified,
-				Object: &repos[0],
-			},
-			expectEvict: false,
-		},
-		{
-			name: "BOOKMARK event updates bookmark",
-			event: watch.Event{
-				Type: watch.Bookmark,
-				Object: &configapi.Repository{
-					ObjectMeta: metav1.ObjectMeta{
-						ResourceVersion: "12345",
-					},
-				},
-			},
-			expectEvict: false,
-		},
-		{
-			name: "ERROR event with expired status resets bookmark",
-			event: watch.Event{
-				Type: watch.Error,
-				Object: &metav1.Status{
-					Reason: metav1.StatusReasonExpired,
-					Code:   410,
-				},
-			},
-			expectEvict: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mc := mockcache.NewMockCache(t)
-			if tt.expectEvict {
-				mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
-			}
-
-			h := &repoCacheHandler{
-				coreClient: fakeClient,
-				cache:      mc,
-			}
-
-			var bookmark string
-			var consecutiveFailures int
-			reconnect := newBackoffTimer(1*time.Second, 30*time.Second)
-			defer reconnect.Stop()
-			// Drain initial timer fire
-			<-reconnect.channel()
-
-			h.handleWatchEvent(context.Background(), tt.event, &bookmark, &consecutiveFailures, reconnect)
-
-			if tt.event.Type == watch.Bookmark {
-				assert.Equal(t, "12345", bookmark)
-			}
-			if tt.event.Type == watch.Error {
-				assert.Empty(t, bookmark)
-				assert.Equal(t, 0, consecutiveFailures)
-			}
-		})
-	}
-}
-
-// fakeWithWatch wraps a real client and overrides Watch behavior for testing.
-type fakeWithWatch struct {
-	client.WithWatch
-	watchFn func(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) (watch.Interface, error)
-}
-
-func (f *fakeWithWatch) Watch(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) (watch.Interface, error) {
-	return f.watchFn(ctx, obj, opts...)
-}
-
-func TestRepoCacheHandlerWatchFailureThenSuccess(t *testing.T) {
-	mc := mockcache.NewMockCache(t)
-	mc.EXPECT().EvictCachedRepository(mock.Anything, mock.Anything).Return(nil).Once()
-
-	scheme := newTestScheme()
-	realClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	callCount := 0
-	fakeWatcher := watch.NewFake()
-
-	fw := &fakeWithWatch{
-		WithWatch: realClient,
-		watchFn: func(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) (watch.Interface, error) {
-			callCount++
-			if callCount <= 2 {
-				return nil, fmt.Errorf("connection refused")
-			}
-			return fakeWatcher, nil
-		},
-	}
-
-	h := &repoCacheHandler{
-		coreClient: fw,
-		cache:      mc,
-		minBackoff: 10 * time.Millisecond,
-		maxBackoff: 50 * time.Millisecond,
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go h.run(ctx)
-
-	// Wait for reconnection attempts and successful watch
-	time.Sleep(200 * time.Millisecond)
-
-	// Send a DELETE event through the fake watcher
 	repo := &configapi.Repository{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-repo", Namespace: "test-ns"},
+		ObjectMeta: metav1.ObjectMeta{Name: "not-ready", Namespace: "test-ns"},
 	}
-	fakeWatcher.Delete(repo)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(repo).Build()
 
-	time.Sleep(100 * time.Millisecond)
-	cancel()
-	fakeWatcher.Stop()
+	mc := mockcache.NewMockCache(t)
+	// No OpenRepository or EvictCachedRepository calls expected
 
-	assert.GreaterOrEqual(t, callCount, 3, "expected at least 3 Watch calls (2 failures + 1 success)")
+	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "not-ready", Namespace: "test-ns"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, reconcile.Result{}, result)
+}
+
+func TestReconcileDeletingRepoEvictsAndRemovesFinalizer(t *testing.T) {
+	scheme := newTestScheme()
+	// The fake client doesn't properly simulate the finalizer dance (DeletionTimestamp + finalizer
+	// keeping the object alive). So we test the deletion path by constructing the object state
+	// directly in the reconciler's logic — using a wrapper client that returns the deleting object.
+	now := metav1.Now()
+	repo := &configapi.Repository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "del-repo",
+			Namespace:         "test-ns",
+			DeletionTimestamp: &now,
+			Finalizers:        []string{repoCacheFinalizer},
+			ResourceVersion:   "1",
+		},
+	}
+
+	mc := mockcache.NewMockCache(t)
+	mc.EXPECT().EvictCachedRepository(mock.Anything, "test-ns", "del-repo").Return(nil).Once()
+
+	// Use a wrapper that returns the deleting repo on Get and accepts Update
+	fakeClient := &deletingClient{
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+		repo:   repo,
+	}
+
+	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "del-repo", Namespace: "test-ns"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, reconcile.Result{}, result)
+	// Mock assertion verifies EvictCachedRepository was called
+}
+
+// deletingClient wraps a client and returns a pre-set repo on Get
+type deletingClient struct {
+	client.Client
+	repo *configapi.Repository
+}
+
+func (d *deletingClient) Get(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+	if key.Name == d.repo.Name && key.Namespace == d.repo.Namespace {
+		r := obj.(*configapi.Repository)
+		*r = *d.repo
+		return nil
+	}
+	return d.Client.Get(ctx, key, obj, opts...)
+}
+
+func (d *deletingClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	// Accept the update (finalizer removal)
+	return nil
+}
+
+func TestReconcileOpenRepositoryError(t *testing.T) {
+	scheme := newTestScheme()
+	repo := readyRepo("fail-repo", "test-ns")
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(repo).WithStatusSubresource(repo).Build()
+
+	mc := mockcache.NewMockCache(t)
+	mc.EXPECT().OpenRepository(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("connection refused")).Once()
+
+	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "fail-repo", Namespace: "test-ns"},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection refused")
+	assert.Equal(t, reconcile.Result{}, result)
+}
+
+func TestReconcileNotFoundIsNoOp(t *testing.T) {
+	scheme := newTestScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	mc := mockcache.NewMockCache(t)
+
+	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+
+	result, err := r.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "gone", Namespace: "test-ns"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, reconcile.Result{}, result)
+}
+
+func TestRepoCachePredicate(t *testing.T) {
+	p := repoCachePredicate()
+	repo := &configapi.Repository{ObjectMeta: metav1.ObjectMeta{Name: "test"}}
+
+	assert.True(t, p.Create(event.CreateEvent{Object: repo}), "create should pass (startup resync)")
+	assert.True(t, p.Update(event.UpdateEvent{ObjectOld: repo, ObjectNew: repo}), "update should pass")
+	assert.False(t, p.Delete(event.DeleteEvent{Object: repo}), "delete should be filtered (handled via finalizer)")
+	assert.False(t, p.Generic(event.GenericEvent{Object: repo}), "generic should be filtered")
 }

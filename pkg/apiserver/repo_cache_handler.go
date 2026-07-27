@@ -1,4 +1,4 @@
-// Copyright 2026 The kpt Authors
+// Copyright 2022, 2025-2026 The kpt Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,196 +21,137 @@ import (
 
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/kptdev/porch/pkg/cache/types"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/klog/v2"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const (
-	minReconnectDelay = 1 * time.Second
-	maxReconnectDelay = 30 * time.Second
-)
+const repoCacheFinalizer = "config.porch.kpt.dev/porch-server"
 
-// repoCacheHandler watches Repository CRs for DELETE events and evicts them
-// from porch-server's in-memory cache to prevent git clone leaks.
-// ADD/MODIFIED are not handled — the cache is populated lazily on first API call.
-type repoCacheHandler struct {
-	coreClient client.WithWatch
-	cache      cachetypes.Cache
-	minBackoff time.Duration
-	maxBackoff time.Duration
+// RepoCacheReconciler watches Repository CRs and manages the porch-server
+// in-memory cache:
+//   - When the repo controller marks a Repository as Ready: opens it in the cache
+//     and adds a finalizer to guarantee cleanup.
+//   - When a Repository is being deleted (DeletionTimestamp set): evicts from cache
+//     and removes the finalizer so the object can be garbage collected.
+//   - When a spec change occurs (generation change): re-opens the repository.
+type RepoCacheReconciler struct {
+	client client.Client
+	cache  cachetypes.Cache
 }
 
-// runRepoCacheHandler starts the repo cache handler loop. It watches Repository CRs
-// and evicts them from the cache when deleted.
-// This function launches a goroutine and returns immediately.
-func runRepoCacheHandler(ctx context.Context, coreClient client.WithWatch, cache cachetypes.Cache) {
-	h := &repoCacheHandler{
-		coreClient: coreClient,
-		cache:      cache,
-		minBackoff: minReconnectDelay,
-		maxBackoff: maxReconnectDelay,
+func (r *RepoCacheReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
+	repo := &configapi.Repository{}
+	if err := r.client.Get(ctx, req.NamespacedName, repo); err != nil {
+		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
-	go h.run(ctx)
-}
 
-// run is the main loop: watches for Repository CR delete events.
-func (h *repoCacheHandler) run(ctx context.Context) {
-	klog.Infof("Repo cache handler starting (eviction only)")
-
-	var events <-chan watch.Event
-	var watcher watch.Interface
-	var bookmark string
-	var consecutiveFailures int
-
-	defer func() {
-		if watcher != nil {
-			watcher.Stop()
-		}
-	}()
-
-	reconnect := newBackoffTimer(h.minBackoff, h.maxBackoff)
-	defer reconnect.Stop()
-
-loop:
-	for {
-		select {
-		case <-reconnect.channel():
-			if consecutiveFailures >= 3 {
-				klog.Warningf("Repo cache handler: resetting bookmark after %d consecutive failures, was %q", consecutiveFailures, bookmark)
-				bookmark = ""
-				consecutiveFailures = 0
-			}
-
-			klog.Infof("Repo cache handler: starting Repository watch (bookmark=%q)", bookmark)
-			var obj configapi.RepositoryList
-			var err error
-			watcher, err = h.coreClient.Watch(ctx, &obj, &client.ListOptions{
-				Raw: &v1.ListOptions{
-					AllowWatchBookmarks: true,
-					ResourceVersion:     bookmark,
-				},
-			})
-			if err != nil {
-				consecutiveFailures++
-				if apierrors.IsResourceExpired(err) || apierrors.IsGone(err) {
-					klog.Warningf("Repo cache handler: watch start failed (expired/gone): %v. Resetting bookmark.", err)
-					bookmark = ""
-					consecutiveFailures = 0
-				} else {
-					klog.Errorf("Repo cache handler: cannot start Repository watch: %v; will retry", err)
-				}
-				reconnect.backoff()
-			} else {
-				klog.Infof("Repo cache handler: Repository watch started successfully")
-				events = watcher.ResultChan()
-			}
-
-		case event, eventOk := <-events:
-			if eventOk {
-				h.handleWatchEvent(ctx, event, &bookmark, &consecutiveFailures, reconnect)
-			} else {
-				klog.Errorf("Repo cache handler: watch event stream closed. Will restart from bookmark %q", bookmark)
-				watcher.Stop()
-				events = nil
-				watcher = nil
-				consecutiveFailures++
-				reconnect.backoff()
-			}
-
-		case <-ctx.Done():
-			klog.Infof("Repo cache handler exiting: %v", ctx.Err())
-			break loop
-		}
+	// Skip repos managed by v1alpha2 — porch-server should not handle these
+	if repo.Annotations[configapi.AnnotationKeyV1Alpha2Migration] == configapi.AnnotationValueMigrationEnabled {
+		return reconcile.Result{}, nil
 	}
-}
 
-// handleWatchEvent processes a single watch event.
-func (h *repoCacheHandler) handleWatchEvent(ctx context.Context, event watch.Event, bookmark *string, consecutiveFailures *int, reconnect *backoffTimer) {
-	switch event.Type {
-	case watch.Bookmark:
-		if repository, ok := event.Object.(*configapi.Repository); ok {
-			*consecutiveFailures = 0
-			*bookmark = repository.ResourceVersion
-			klog.V(2).Infof("Repo cache handler: bookmark updated to %q", *bookmark)
+	// Handle deletion — evict from cache and remove finalizer
+	if repo.DeletionTimestamp != nil {
+		klog.Infof("Repo cache handler: evicting %s", req.NamespacedName)
+		start := time.Now()
+
+		if err := r.cache.EvictCachedRepository(ctx, req.Namespace, req.Name); err != nil {
+			klog.Warningf("Repo cache handler: failed to evict %s: %v [%s]", req.NamespacedName, err, time.Since(start))
+			return reconcile.Result{}, err
 		}
 
-	case watch.Error:
-		if status, ok := event.Object.(*v1.Status); ok {
-			if status.Reason == v1.StatusReasonExpired || status.Reason == v1.StatusReasonGone {
-				klog.Warningf("Repo cache handler: watch error %s (code %d): %s. Resetting bookmark.", status.Reason, status.Code, status.Message)
-				*bookmark = ""
-				*consecutiveFailures = 0
-			} else {
-				klog.Errorf("Repo cache handler: watch error %s (code %d): %s", status.Reason, status.Code, status.Message)
-				(*consecutiveFailures)++
+		if controllerutil.ContainsFinalizer(repo, repoCacheFinalizer) {
+			controllerutil.RemoveFinalizer(repo, repoCacheFinalizer)
+			if err := r.client.Update(ctx, repo); err != nil {
+				return reconcile.Result{}, fmt.Errorf("failed to remove finalizer from %s: %w", req.NamespacedName, err)
 			}
-		} else {
-			klog.Errorf("Repo cache handler: watch error with unexpected object type: %T", event.Object)
-			(*consecutiveFailures)++
-		}
-		reconnect.reset()
-
-	case watch.Deleted:
-		if repo, ok := event.Object.(*configapi.Repository); ok {
-			*consecutiveFailures = 0
-			h.evictRepository(ctx, repo)
 		}
 
-	default:
-		// ADDED/MODIFIED — ignored. Cache is populated lazily on first API call.
+		klog.Infof("Repo cache handler: evicted %s [%s]", req.NamespacedName, time.Since(start))
+		return reconcile.Result{}, nil
 	}
-}
 
-// evictRepository removes a repository from the in-memory cache and releases the git clone.
-func (h *repoCacheHandler) evictRepository(ctx context.Context, repo *configapi.Repository) {
-	repoKey := fmt.Sprintf("%s/%s", repo.Namespace, repo.Name)
+	// Only act on repos that are Ready (repo controller has validated connectivity)
+	if !isRepositoryReady(repo) {
+		return reconcile.Result{}, nil
+	}
+
+	// Open (or re-open on spec change) the repository in the cache
 	start := time.Now()
+	klog.Infof("Repo cache handler: opening %s", req.NamespacedName)
 
-	klog.Infof("Repo cache handler: starting eviction for %s", repoKey)
-
-	if err := h.cache.EvictCachedRepository(ctx, repo); err != nil {
-		klog.Warningf("Repo cache handler: failed to evict %s: %v [%s]", repoKey, err, time.Since(start))
-	} else {
-		klog.Infof("Repo cache handler: finished eviction for %s [%s]", repoKey, time.Since(start))
+	if _, err := r.cache.OpenRepository(ctx, repo); err != nil {
+		klog.Warningf("Repo cache handler: failed to open %s: %v [%s]", req.NamespacedName, err, time.Since(start))
+		return reconcile.Result{}, err
 	}
-}
 
-// backoffTimer implements exponential backoff for watch reconnection.
-type backoffTimer struct {
-	min, max, curr time.Duration
-	timer          *time.Timer
-}
+	klog.Infof("Repo cache handler: opened %s [%s]", req.NamespacedName, time.Since(start))
 
-func newBackoffTimer(min, max time.Duration) *backoffTimer {
-	return &backoffTimer{
-		min:   min,
-		max:   max,
-		curr:  min,
-		timer: time.NewTimer(min),
+	// Add finalizer to guarantee eviction on delete
+	if !controllerutil.ContainsFinalizer(repo, repoCacheFinalizer) {
+		controllerutil.AddFinalizer(repo, repoCacheFinalizer)
+		if err := r.client.Update(ctx, repo); err != nil {
+			return reconcile.Result{}, fmt.Errorf("failed to add finalizer to %s: %w", req.NamespacedName, err)
+		}
 	}
+
+	return reconcile.Result{}, nil
 }
 
-func (t *backoffTimer) Stop() bool {
-	return t.timer.Stop()
-}
-
-func (t *backoffTimer) channel() <-chan time.Time {
-	return t.timer.C
-}
-
-func (t *backoffTimer) reset() bool {
-	t.curr = t.min
-	return t.timer.Reset(t.curr)
-}
-
-func (t *backoffTimer) backoff() bool {
-	curr := t.curr * 2
-	if curr > t.max {
-		curr = t.max
+// setupRepoCacheController registers the repo cache controller with the given manager.
+func setupRepoCacheController(mgr ctrl.Manager, cache cachetypes.Cache, maxConcurrency int) error {
+	if maxConcurrency <= 0 {
+		maxConcurrency = 20
 	}
-	t.curr = curr
-	return t.timer.Reset(curr)
+	r := &RepoCacheReconciler{
+		client: mgr.GetClient(),
+		cache:  cache,
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&configapi.Repository{}).
+		WithEventFilter(repoCachePredicate()).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxConcurrency,
+		}).
+		Named("repo-cache").
+		Complete(r)
+}
+
+// isRepositoryReady checks if the repo controller has marked this repository as Ready.
+func isRepositoryReady(repo *configapi.Repository) bool {
+	for _, c := range repo.Status.Conditions {
+		if c.Type == configapi.RepositoryReady && c.Status == "True" {
+			return true
+		}
+	}
+	return false
+}
+
+// repoCachePredicate filters events for the repo cache controller.
+// - Create: passed (handles startup resync and new repos)
+// - Update: passed (handles Ready status, spec changes, DeletionTimestamp)
+// - Delete: ignored (handled via finalizer on DeletionTimestamp update)
+// - Generic: ignored
+func repoCachePredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
 }

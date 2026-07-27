@@ -405,7 +405,7 @@ func (t *DbTestSuite) TestEvictCachedRepository() {
 				}()
 			}
 
-			err = dbCache.EvictCachedRepository(ctx, repositorySpec)
+			err = dbCache.EvictCachedRepository(ctx, "evict-ns", repoName)
 			if tt.expectEvictErr {
 				t.Error(err)
 			} else {

@@ -217,16 +217,16 @@ func (_c *MockCache_DeleteDBRepository_Call) RunAndReturn(run func(ctx context.C
 }
 
 // EvictCachedRepository provides a mock function for the type MockCache
-func (_mock *MockCache) EvictCachedRepository(ctx context.Context, repositorySpec *v1alpha1.Repository) error {
-	ret := _mock.Called(ctx, repositorySpec)
+func (_mock *MockCache) EvictCachedRepository(ctx context.Context, namespace string, name string) error {
+	ret := _mock.Called(ctx, namespace, name)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EvictCachedRepository")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *v1alpha1.Repository) error); ok {
-		r0 = returnFunc(ctx, repositorySpec)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, namespace, name)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -240,24 +240,30 @@ type MockCache_EvictCachedRepository_Call struct {
 
 // EvictCachedRepository is a helper method to define mock.On call
 //   - ctx context.Context
-//   - repositorySpec *v1alpha1.Repository
-func (_e *MockCache_Expecter) EvictCachedRepository(ctx interface{}, repositorySpec interface{}) *MockCache_EvictCachedRepository_Call {
-	return &MockCache_EvictCachedRepository_Call{Call: _e.mock.On("EvictCachedRepository", ctx, repositorySpec)}
+//   - namespace string
+//   - name string
+func (_e *MockCache_Expecter) EvictCachedRepository(ctx interface{}, namespace interface{}, name interface{}) *MockCache_EvictCachedRepository_Call {
+	return &MockCache_EvictCachedRepository_Call{Call: _e.mock.On("EvictCachedRepository", ctx, namespace, name)}
 }
 
-func (_c *MockCache_EvictCachedRepository_Call) Run(run func(ctx context.Context, repositorySpec *v1alpha1.Repository)) *MockCache_EvictCachedRepository_Call {
+func (_c *MockCache_EvictCachedRepository_Call) Run(run func(ctx context.Context, namespace string, name string)) *MockCache_EvictCachedRepository_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *v1alpha1.Repository
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(*v1alpha1.Repository)
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -268,7 +274,7 @@ func (_c *MockCache_EvictCachedRepository_Call) Return(err error) *MockCache_Evi
 	return _c
 }
 
-func (_c *MockCache_EvictCachedRepository_Call) RunAndReturn(run func(ctx context.Context, repositorySpec *v1alpha1.Repository) error) *MockCache_EvictCachedRepository_Call {
+func (_c *MockCache_EvictCachedRepository_Call) RunAndReturn(run func(ctx context.Context, namespace string, name string) error) *MockCache_EvictCachedRepository_Call {
 	_c.Call.Return(run)
 	return _c
 }

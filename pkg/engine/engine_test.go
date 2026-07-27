@@ -267,8 +267,8 @@ func (m *mockCache) CloseRepository(ctx context.Context, repositoryObj *configap
 	return args.Error(0)
 }
 
-func (m *mockCache) EvictCachedRepository(ctx context.Context, repositoryObj *configapi.Repository) error {
-	args := m.Called(ctx, repositoryObj)
+func (m *mockCache) EvictCachedRepository(ctx context.Context, namespace, name string) error {
+	args := m.Called(ctx, namespace, name)
 	return args.Error(0)
 }
 
