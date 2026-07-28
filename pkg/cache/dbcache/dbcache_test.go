@@ -395,15 +395,17 @@ func (t *DbTestSuite) TestEvictCachedRepository() {
 			dbCache, err := new(DBCacheFactory).NewCache(ctx, options)
 			t.NoError(err)
 
+			var repoKey repository.RepositoryKey
 			if tt.setupRepo {
 				repo, err := dbCache.OpenRepository(ctx, repositorySpec)
 				t.NoError(err)
 				t.Equal(repoName, repo.Key().Name)
+				repoKey = repo.Key()
 
 				defer func() {
 					// Cleanup: EvictCachedRepository only removes from the in-memory map,
 					// so we need to delete the DB row directly to avoid test pollution.
-					_ = repoDeleteFromDB(ctx, repo.Key())
+					_ = repoDeleteFromDB(ctx, repoKey)
 				}()
 			}
 
@@ -416,16 +418,8 @@ func (t *DbTestSuite) TestEvictCachedRepository() {
 			t.Equal(tt.expectCacheLen, len(dbCache.GetRepositories()))
 
 			if tt.expectInDB {
-				dbRepoKeys, err := repoListFromDB(ctx)
-				t.NoError(err)
-				found := false
-				for _, key := range dbRepoKeys {
-					if key.Name == repoName && key.Namespace == "evict-ns" {
-						found = true
-						break
-					}
-				}
-				t.True(found, "Expected repo to still exist in DB after eviction")
+				_, err := repoReadFromDB(ctx, repoKey)
+				t.NoError(err, "Expected repo to still exist in DB after eviction")
 			}
 		})
 	}

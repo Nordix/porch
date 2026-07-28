@@ -132,27 +132,3 @@ func repoDeleteFromDB(ctx context.Context, rk repository.RepositoryKey) error {
 
 	return err
 }
-
-func repoListFromDB(ctx context.Context) ([]repository.RepositoryKey, error) {
-	_, span := tracer.Start(ctx, "dbrepositorysql::repoListKeysFromDB", trace.WithAttributes())
-	defer span.End()
-
-	sqlStatement := `SELECT k8s_name_space, k8s_name, directory, default_ws_name FROM repositories`
-
-	rows, err := GetDB().db.Query(ctx, sqlStatement)
-	if err != nil {
-		return nil, fmt.Errorf("repoListKeysFromDB: query failed: %w", err)
-	}
-	defer rows.Close()
-
-	var keys []repository.RepositoryKey
-	for rows.Next() {
-		var key repository.RepositoryKey
-		if err := rows.Scan(&key.Namespace, &key.Name, &key.Path, &key.PlaceholderWSname); err != nil {
-			return nil, fmt.Errorf("repoListKeysFromDB: scan failed: %w", err)
-		}
-		keys = append(keys, key)
-	}
-
-	return keys, nil
-}

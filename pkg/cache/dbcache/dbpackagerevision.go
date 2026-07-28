@@ -106,6 +106,9 @@ func (pr *dbPackageRevision) ensureRepo() error {
 	if pr.repo != nil {
 		return nil
 	}
+	if cachetypes.CacheInstance == nil {
+		return fmt.Errorf("no associated repository for %+v: cache not initialized", pr.pkgRevKey.PkgKey.RepoKey)
+	}
 	if repo := cachetypes.CacheInstance.GetRepository(pr.pkgRevKey.PkgKey.RepoKey); repo != nil {
 		if dbRepo, ok := repo.(*dbRepository); ok {
 			pr.repo = dbRepo
@@ -113,7 +116,7 @@ func (pr *dbPackageRevision) ensureRepo() error {
 		}
 		klog.Warningf("ensureRepo: repository %+v has unexpected type %T", pr.pkgRevKey.PkgKey.RepoKey, repo)
 	}
-	return fmt.Errorf("no associated repository")
+	return fmt.Errorf("no associated repository for %+v", pr.pkgRevKey.PkgKey.RepoKey)
 }
 
 func (pr *dbPackageRevision) specReadinessGates() []porchapi.ReadinessGate {
