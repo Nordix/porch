@@ -662,13 +662,16 @@ func (t *FunctionRunnerSuite) loadTestCases(functionName string) map[string]func
 func (t *FunctionRunnerSuite) updateWithRetryF(obj client.Object, retries int, timeout time.Duration, opts ...client.UpdateOption) {
 
 	var err error
-	for i := retries; i > 0; i-- {
-		if err = t.Client.Update(t.GetContext(), obj); err == nil {
+	for i := retries; i >= 0; i-- {
+		if err = t.Client.Update(t.GetContext(), obj, opts...); err == nil {
 			break
 		}
-		t.Logf("failed to update resources for test case %s: %v", obj, err)
-		t.Logf("retrying update of resources for test case %s . . .", obj)
-		time.Sleep(timeout)
+		t.Logf("failed to update resources for test case %s: %v", obj.GetName(), err)
+		t.Logf("retrying update of resources for test case %s . . .", obj.GetName())
+
+		if i > 0 {
+			time.Sleep(timeout)
+		}
 	}
 
 	if err != nil {
