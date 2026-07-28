@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	mockcache "github.com/kptdev/porch/test/mockery/mocks/porch/pkg/cache/types"
@@ -27,9 +28,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -53,7 +57,6 @@ func readyRepo(name, namespace string) *configapi.Repository {
 		},
 	}
 }
-
 
 func TestReconcileReadyRepoOpensAndAddsFinalizer(t *testing.T) {
 	scheme := newTestScheme()
@@ -95,7 +98,7 @@ func TestReconcileNotReadyRepoIsSkipped(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, reconcile.Result{}, result)
+	assert.Equal(t, reconcile.Result{RequeueAfter: 30 * time.Second}, result)
 }
 
 func TestReconcileDeletingRepoEvictsAndRemovesFinalizer(t *testing.T) {
@@ -197,4 +200,23 @@ func TestRepoCachePredicate(t *testing.T) {
 	assert.True(t, p.Update(event.UpdateEvent{ObjectOld: repo, ObjectNew: repo}), "update should pass")
 	assert.False(t, p.Delete(event.DeleteEvent{Object: repo}), "delete should be filtered (handled via finalizer)")
 	assert.False(t, p.Generic(event.GenericEvent{Object: repo}), "generic should be filtered")
+}
+
+func TestSetupRepoCacheController(t *testing.T) {
+	scheme := newTestScheme()
+	mc := mockcache.NewMockCache(t)
+
+	// Use a fake rest.Config pointing to a non-existent server.
+	// We only need the manager to accept the controller registration — not actually run.
+	cfg := &rest.Config{Host: "https://127.0.0.1:0"}
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:                 scheme,
+		Metrics:                metricsserver.Options{BindAddress: "0"},
+		HealthProbeBindAddress: "0",
+	})
+	require.NoError(t, err)
+
+	err = setupRepoCacheController(mgr, mc, 5)
+	require.NoError(t, err)
 }

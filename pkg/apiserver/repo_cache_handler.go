@@ -35,11 +35,9 @@ const repoCacheFinalizer = "config.porch.kpt.dev/porch-server"
 
 // RepoCacheReconciler watches Repository CRs and manages the porch-server
 // in-memory cache:
-//   - When the repo controller marks a Repository as Ready: opens it in the cache
-//     and adds a finalizer to guarantee cleanup.
-//   - When a Repository is being deleted (DeletionTimestamp set): evicts from cache
-//     and removes the finalizer so the object can be garbage collected.
-//   - When a spec change occurs (generation change): re-opens the repository.
+//   - On Create/startup: requeues until the repo is Ready, then opens it.
+//   - On spec change (generation bump): re-opens the repository.
+//   - On deletion (DeletionTimestamp set): evicts from cache and removes finalizer.
 type RepoCacheReconciler struct {
 	client client.Client
 	cache  cachetypes.Cache
@@ -51,7 +49,7 @@ func (r *RepoCacheReconciler) Reconcile(ctx context.Context, req reconcile.Reque
 		return reconcile.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Skip repos managed by v1alpha2 — porch-server should not handle these
+	// Skip repos managed by v1alpha2
 	if repo.Annotations[configapi.AnnotationKeyV1Alpha2Migration] == configapi.AnnotationValueMigrationEnabled {
 		return reconcile.Result{}, nil
 	}
@@ -59,10 +57,9 @@ func (r *RepoCacheReconciler) Reconcile(ctx context.Context, req reconcile.Reque
 	// Handle deletion — evict from cache and remove finalizer
 	if repo.DeletionTimestamp != nil {
 		klog.Infof("Repo cache handler: evicting %s", req.NamespacedName)
-		start := time.Now()
 
 		if err := r.cache.EvictCachedRepository(ctx, req.Namespace, req.Name); err != nil {
-			klog.Warningf("Repo cache handler: failed to evict %s: %v [%s]", req.NamespacedName, err, time.Since(start))
+			klog.Warningf("Repo cache handler: failed to evict %s: %v", req.NamespacedName, err)
 			return reconcile.Result{}, err
 		}
 
@@ -73,34 +70,33 @@ func (r *RepoCacheReconciler) Reconcile(ctx context.Context, req reconcile.Reque
 			}
 		}
 
-		klog.Infof("Repo cache handler: evicted %s [%s]", req.NamespacedName, time.Since(start))
+		klog.Infof("Repo cache handler: evicted %s", req.NamespacedName)
 		return reconcile.Result{}, nil
 	}
 
-	// Only act on repos that are Ready (repo controller has validated connectivity)
+	// Not Ready yet — requeue and wait for the repo controller to set status
 	if !isRepositoryReady(repo) {
-		return reconcile.Result{}, nil
+		klog.Infof("Repo cache handler: %s not Ready, requeuing", req.NamespacedName)
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	// Add finalizer first — guarantees eviction even if we crash after OpenRepository
+	// Add finalizer — guarantees eviction on delete
 	if !controllerutil.ContainsFinalizer(repo, repoCacheFinalizer) {
 		controllerutil.AddFinalizer(repo, repoCacheFinalizer)
 		if err := r.client.Update(ctx, repo); err != nil {
 			return reconcile.Result{}, fmt.Errorf("failed to add finalizer to %s: %w", req.NamespacedName, err)
 		}
+		klog.Infof("Repo cache handler: added finalizer to %s", req.NamespacedName)
 	}
 
-	// Open (or re-open on spec change) the repository in the cache
-	start := time.Now()
-	klog.Infof("Repo cache handler: opening %s", req.NamespacedName)
-
+	// Open the repository in the cache
+	// LoadOrCreate is idempotent — returns existing entry if already cached
 	if _, err := r.cache.OpenRepository(ctx, repo); err != nil {
-		klog.Warningf("Repo cache handler: failed to open %s: %v [%s]", req.NamespacedName, err, time.Since(start))
+		klog.Warningf("Repo cache handler: failed to open %s: %v", req.NamespacedName, err)
 		return reconcile.Result{}, err
 	}
 
-	klog.Infof("Repo cache handler: opened %s [%s]", req.NamespacedName, time.Since(start))
-
+	klog.Infof("Repo cache handler: cached repository %s", req.NamespacedName)
 	return reconcile.Result{}, nil
 }
 
@@ -135,17 +131,37 @@ func isRepositoryReady(repo *configapi.Repository) bool {
 }
 
 // repoCachePredicate filters events for the repo cache controller.
-// - Create: passed (handles startup resync and new repos)
-// - Update: passed (handles Ready status, spec changes, DeletionTimestamp)
-// - Delete: ignored (handled via finalizer on DeletionTimestamp update)
-// - Generic: ignored
+//   - Create: passed (startup resync + new repos — reconciler requeues until Ready)
+//   - Update: passed only for generation change (spec) or DeletionTimestamp being set.
+//     Status-only updates are filtered out to avoid re-opening on every health check.
+//   - Delete: ignored (handled via finalizer when DeletionTimestamp is set)
+//   - Generic: ignored
 func repoCachePredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return true
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return false
+			}
+			// Already being deleted — we already handled this
+			if e.ObjectOld.GetDeletionTimestamp() != nil {
+				return false
+			}
+			// Spec changed — need to re-open
+			if e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() {
+				return true
+			}
+			// DeletionTimestamp just set — need to evict
+			if e.ObjectNew.GetDeletionTimestamp() != nil {
+				return true
+			}
+			// Finalizer missing — need to add it (repo was opened by API call or missed Create)
+			if !controllerutil.ContainsFinalizer(e.ObjectNew, repoCacheFinalizer) {
+				return true
+			}
+			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return false
