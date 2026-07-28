@@ -277,16 +277,6 @@ func (m *mockCache) GetRepositories() []*configapi.Repository {
 	return args.Get(0).([]*configapi.Repository)
 }
 
-func (m *mockCache) ListDBRepositories(ctx context.Context) ([]repository.RepositoryKey, error) {
-	args := m.Called(ctx)
-	return args.Get(0).([]repository.RepositoryKey), args.Error(1)
-}
-
-func (m *mockCache) DeleteDBRepository(ctx context.Context, repoKey repository.RepositoryKey) error {
-	args := m.Called(ctx, repoKey)
-	return args.Error(0)
-}
-
 func (m *mockCache) GetRepository(repoKey repository.RepositoryKey) repository.Repository {
 	args := m.Called()
 	return args.Get(0).(repository.Repository)

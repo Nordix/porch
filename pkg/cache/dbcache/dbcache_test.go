@@ -401,7 +401,9 @@ func (t *DbTestSuite) TestEvictCachedRepository() {
 				t.Equal(repoName, repo.Key().Name)
 
 				defer func() {
-					_ = dbCache.DeleteDBRepository(ctx, repo.Key())
+					// Cleanup: EvictCachedRepository only removes from the in-memory map,
+					// so we need to delete the DB row directly to avoid test pollution.
+					_ = repoDeleteFromDB(ctx, repo.Key())
 				}()
 			}
 
@@ -414,7 +416,7 @@ func (t *DbTestSuite) TestEvictCachedRepository() {
 			t.Equal(tt.expectCacheLen, len(dbCache.GetRepositories()))
 
 			if tt.expectInDB {
-				dbRepoKeys, err := dbCache.ListDBRepositories(ctx)
+				dbRepoKeys, err := repoListFromDB(ctx)
 				t.NoError(err)
 				found := false
 				for _, key := range dbRepoKeys {

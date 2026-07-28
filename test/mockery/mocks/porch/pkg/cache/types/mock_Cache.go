@@ -159,63 +159,6 @@ func (_c *MockCache_CloseRepository_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
-// DeleteDBRepository provides a mock function for the type MockCache
-func (_mock *MockCache) DeleteDBRepository(ctx context.Context, repoKey repository.RepositoryKey) error {
-	ret := _mock.Called(ctx, repoKey)
-
-	if len(ret) == 0 {
-		panic("no return value specified for DeleteDBRepository")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repository.RepositoryKey) error); ok {
-		r0 = returnFunc(ctx, repoKey)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockCache_DeleteDBRepository_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteDBRepository'
-type MockCache_DeleteDBRepository_Call struct {
-	*mock.Call
-}
-
-// DeleteDBRepository is a helper method to define mock.On call
-//   - ctx context.Context
-//   - repoKey repository.RepositoryKey
-func (_e *MockCache_Expecter) DeleteDBRepository(ctx interface{}, repoKey interface{}) *MockCache_DeleteDBRepository_Call {
-	return &MockCache_DeleteDBRepository_Call{Call: _e.mock.On("DeleteDBRepository", ctx, repoKey)}
-}
-
-func (_c *MockCache_DeleteDBRepository_Call) Run(run func(ctx context.Context, repoKey repository.RepositoryKey)) *MockCache_DeleteDBRepository_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 repository.RepositoryKey
-		if args[1] != nil {
-			arg1 = args[1].(repository.RepositoryKey)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCache_DeleteDBRepository_Call) Return(err error) *MockCache_DeleteDBRepository_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockCache_DeleteDBRepository_Call) RunAndReturn(run func(ctx context.Context, repoKey repository.RepositoryKey) error) *MockCache_DeleteDBRepository_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // EvictCachedRepository provides a mock function for the type MockCache
 func (_mock *MockCache) EvictCachedRepository(ctx context.Context, namespace string, name string) error {
 	ret := _mock.Called(ctx, namespace, name)
@@ -446,68 +389,6 @@ func (_c *MockCache_GetRepository_Call) Return(repository1 repository.Repository
 }
 
 func (_c *MockCache_GetRepository_Call) RunAndReturn(run func(repositoryKey repository.RepositoryKey) repository.Repository) *MockCache_GetRepository_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ListDBRepositories provides a mock function for the type MockCache
-func (_mock *MockCache) ListDBRepositories(ctx context.Context) ([]repository.RepositoryKey, error) {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ListDBRepositories")
-	}
-
-	var r0 []repository.RepositoryKey
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]repository.RepositoryKey, error)); ok {
-		return returnFunc(ctx)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) []repository.RepositoryKey); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]repository.RepositoryKey)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = returnFunc(ctx)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockCache_ListDBRepositories_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListDBRepositories'
-type MockCache_ListDBRepositories_Call struct {
-	*mock.Call
-}
-
-// ListDBRepositories is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *MockCache_Expecter) ListDBRepositories(ctx interface{}) *MockCache_ListDBRepositories_Call {
-	return &MockCache_ListDBRepositories_Call{Call: _e.mock.On("ListDBRepositories", ctx)}
-}
-
-func (_c *MockCache_ListDBRepositories_Call) Run(run func(ctx context.Context)) *MockCache_ListDBRepositories_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCache_ListDBRepositories_Call) Return(repositoryKeys []repository.RepositoryKey, err error) *MockCache_ListDBRepositories_Call {
-	_c.Call.Return(repositoryKeys, err)
-	return _c
-}
-
-func (_c *MockCache_ListDBRepositories_Call) RunAndReturn(run func(ctx context.Context) ([]repository.RepositoryKey, error)) *MockCache_ListDBRepositories_Call {
 	_c.Call.Return(run)
 	return _c
 }

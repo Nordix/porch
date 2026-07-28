@@ -64,9 +64,6 @@ type RepositoryReconciler struct {
 	GoGitRepoCacheSize    int   // In-memory cache size for git repositories (MiB)
 	GoGitCacheMaxFileSize int64 // Max file size (bytes) to read into the in-memory git cache
 
-	// GC configuration
-	GCInterval time.Duration // How often to run garbage collection for orphaned DB entries
-
 	// Configuration (set via flags or defaults)
 	cacheType              string // Cache type (DB or CR)
 	cacheDirectory         string // Directory for git repository cache
@@ -344,12 +341,6 @@ func (r *RepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	if err == nil {
 		log.V(1).Info("Repository controller successfully registered")
-
-		// Start periodic GC to clean up orphaned DB entries
-		gc := newRepositoryGC(r.Client, r.Cache, r.GCInterval)
-		if addErr := mgr.Add(gc); addErr != nil {
-			log.Error(addErr, "Failed to register repository GC")
-		}
 	}
 	return err
 }

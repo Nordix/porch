@@ -215,11 +215,3 @@ func (c *dbCache) ListPackageRevisions(ctx context.Context, filter repository.Li
 	return prs, nil
 }
 
-func (c *dbCache) ListDBRepositories(ctx context.Context) ([]repository.RepositoryKey, error) {
-	return repoListFromDB(ctx)
-}
-
-func (c *dbCache) DeleteDBRepository(ctx context.Context, repoKey repository.RepositoryKey) error {
-	c.repositories.LoadAndDelete(repoKey)
-	return repoDeleteFromDB(ctx, repoKey)
-}

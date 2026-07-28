@@ -72,8 +72,7 @@ type Cache interface {
 	CheckRepositoryConnectivity(ctx context.Context, repositorySpec *configapi.Repository) error
 	FindAllUpstreamReferencesInRepositories(ctx context.Context, namespace, prName string) (string, error)
 	ListPackageRevisions(ctx context.Context, filter repository.ListPackageRevisionFilter) ([]repository.PackageRevision, error)
-	ListDBRepositories(ctx context.Context) ([]repository.RepositoryKey, error)
-	DeleteDBRepository(ctx context.Context, repoKey repository.RepositoryKey) error
+
 	// Memory-only operations (used by porch-server's cache handler)
 	// These never touch the database — only the in-memory map and git clone.
 	EvictCachedRepository(ctx context.Context, namespace, name string) error

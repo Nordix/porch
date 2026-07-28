@@ -31,7 +31,6 @@ const (
 	defaultCacheDirectory             = "/cache"
 	defaultGoGitRepoCacheSize         = 8              // MiB
 	defaultGoGitCacheMaxFileSize      = 1 * 1024 * 512 // bytes (512 KiB)
-	defaultGCInterval                 = 10 * time.Minute
 )
 
 // InitDefaults initializes default values for standalone controller
@@ -64,7 +63,6 @@ func (r *RepositoryReconciler) BindFlags(prefix string, flags *flag.FlagSet) {
 	flags.BoolVar(&r.PushDraftsToGit, prefix+"push-drafts-to-git", false, "Push draft and proposed branches to git when using DB cache")
 	flags.IntVar(&r.GoGitRepoCacheSize, prefix+"gogit-repo-cache-size", defaultGoGitRepoCacheSize, "Size of the in-memory cache for git repositories when using gogit (in MiB)")
 	flags.Int64Var(&r.GoGitCacheMaxFileSize, prefix+"gogit-cache-max-file-size", defaultGoGitCacheMaxFileSize, "Maximum file size (in bytes) that will be read into the in-memory cache for git repositories when using gogit; files larger than this will be streamed from disk")
-	flags.DurationVar(&r.GCInterval, prefix+"gc-interval", defaultGCInterval, "Interval between repository garbage collection runs to clean up orphaned DB entries")
 }
 
 // validateConfig ensures configuration values are valid
