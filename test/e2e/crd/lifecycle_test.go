@@ -197,9 +197,7 @@ var _ = Describe("Lifecycle", Ordered, Label("lifecycle"), func() {
 	})
 
 	// --- Git branch cleanup tests (require push-drafts-to-git=true) ---
-	// These tests auto-skip when push-drafts-to-git is not enabled. For the v1alpha2 path
-	// that is --repositories.push-drafts-to-git=true on the porch-controllers deployment,
-	// which run-in-kind-v1alpha2 does not set.
+	// These tests auto-skip when push-drafts-to-git is not enabled.
 
 	It("should clean up draft git branch when a Draft package is deleted", func() {
 		By("creating a draft package")

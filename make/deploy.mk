@@ -29,9 +29,7 @@ export FN_RUNNER_WARM_UP_POD_CACHE ?= true
 # Enable v1alpha2 PackageRevision support (CRD install + controller flag + reconciler)
 export CREATE_V1ALPHA2_RPKG ?= false
 
-# Push draft and proposed package revisions to git when using the DB cache.
-# Must be exported: target-specific assignments only reach the deployment scripts'
-# environment for exported variables.
+# Push draft & proposed PR's to git rather than DB only
 export DB_PUSH_DRAFTS_TO_GIT ?= false
 
 # Reconciler configuration
