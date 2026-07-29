@@ -124,7 +124,16 @@ func (c *dbCache) CloseRepository(ctx context.Context, repositorySpec *configapi
 
 	dbRepo, ok := c.repositories.Load(repoKey)
 	if !ok {
-		klog.V(4).Infof("dbcache.CloseRepository: repo %+v not found in cache (may have failed to open)", repoKey)
+		// Not in the in-memory map (e.g. this process never opened it, or it failed
+		// to open, or a different process/pod restart cleared the map). The DB row
+		// can still exist independently, so we must still attempt the DB delete to
+		// avoid leaving orphaned rows behind. The DB schema cascades this delete to
+		// packages and package_revisions via ON DELETE CASCADE foreign keys.
+		klog.V(4).Infof("dbcache.CloseRepository: repo %+v not found in cache; deleting DB row directly", repoKey)
+
+		if err := repoDeleteFromDB(ctx, repoKey); err != nil {
+			return pkgerrors.Wrapf(err, "failed to delete repo %+v from DB", repoKey)
+		}
 		return nil
 	}
 

@@ -449,6 +449,9 @@ func (pr *dbPackageRevision) Delete(ctx context.Context, deleteExternal bool) er
 	defer span.End()
 
 	if deleteExternal && porchapi.LifecycleIsPublished(pr.lifecycle) {
+		if pr.repo == nil || pr.repo.externalRepo == nil {
+			return fmt.Errorf("cannot delete package revision %+v from external repo: repository or external repo not available", pr.Key())
+		}
 		if err := pr.repo.externalRepo.DeletePackageRevision(ctx, pr); err != nil {
 			// Check if the error indicates the package doesn't exist in external repo
 			if repository.IsNotFoundError(err) {
