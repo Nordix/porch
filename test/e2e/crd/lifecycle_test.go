@@ -197,11 +197,11 @@ var _ = Describe("Lifecycle", Ordered, Label("lifecycle"), func() {
 	})
 
 	// --- Git branch cleanup tests (require push-drafts-to-git=true) ---
-	// These tests auto-skip when push-drafts-to-git is not enabled.
-	// Known gap: dbPackageRevision.Delete only calls git delete for Published
-	// packages. Draft/proposed branches are not cleaned up. Tracked as Issue 36.
+	// These tests auto-skip when push-drafts-to-git is not enabled. For the v1alpha2 path
+	// that is --repositories.push-drafts-to-git=true on the porch-controllers deployment,
+	// which run-in-kind-v1alpha2 does not set.
 
-	PIt("should clean up draft git branch when a Draft package is deleted", func() {
+	It("should clean up draft git branch when a Draft package is deleted", func() {
 		By("creating a draft package")
 		pr := newPackageRevision(env.Namespace, env.RepoName, "del-draft-br", "v1", withInit("draft branch cleanup"))
 		Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
@@ -225,7 +225,7 @@ var _ = Describe("Lifecycle", Ordered, Label("lifecycle"), func() {
 		}).WithTimeout(defaultTimeout).Should(Not(ContainElement(ContainSubstring("del-draft-br"))))
 	})
 
-	PIt("should clean up proposed git branch when a Proposed package is deleted", func() {
+	It("should clean up proposed git branch when a Proposed package is deleted", func() {
 		By("creating and proposing a package")
 		pr := newPackageRevision(env.Namespace, env.RepoName, "del-prop-br", "v1", withInit("proposed branch cleanup"))
 		Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
