@@ -155,6 +155,10 @@ func (c *dbCache) EvictCachedRepository(ctx context.Context, namespace, name str
 			c.repositories.LoadAndDelete(repoKey)
 			if value != nil {
 				dbRepo := value.(*dbRepository)
+				// Wait for any in-flight sync to complete before closing
+				if dbRepo.repositorySync != nil {
+					dbRepo.repositorySync.syncWg.Wait()
+				}
 				if dbRepo.externalRepo != nil {
 					if err := dbRepo.externalRepo.Close(ctx); err != nil {
 						klog.Warningf("dbCache.EvictCachedRepository: failed to close external repo %s/%s: %v", namespace, name, err)
@@ -214,4 +218,3 @@ func (c *dbCache) ListPackageRevisions(ctx context.Context, filter repository.Li
 	}
 	return prs, nil
 }
-
