@@ -170,6 +170,11 @@ func (r *dbRepository) Close(ctx context.Context) error {
 		return err
 	}
 
+	if r.externalRepo == nil {
+		klog.V(5).Infof("dbRepository:close: repo %+v has no externalRepo to close", r.Key())
+		return nil
+	}
+
 	err = r.externalRepo.Close(ctx)
 
 	if err == nil {

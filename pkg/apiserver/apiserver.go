@@ -51,6 +51,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -104,13 +105,10 @@ type Config struct {
 
 // PorchServer contains state for a Kubernetes cluster master/api server.
 type PorchServer struct {
-	GenericAPIServer           *genericapiserver.GenericAPIServer
-	coreClient                 client.WithWatch
-	cache                      cachetypes.Cache
-	periodicRepoSyncFrequency  time.Duration
-	listTimeoutPerRepository   time.Duration
-	repoOperationRetryAttempts int
-	ExtraConfig                *ExtraConfig
+	GenericAPIServer *genericapiserver.GenericAPIServer
+	coreClient       client.WithWatch
+	cache            cachetypes.Cache
+	ExtraConfig      *ExtraConfig
 }
 
 type completedConfig struct {
@@ -449,10 +447,7 @@ func (c completedConfig) New(ctx context.Context) (*PorchServer, error) {
 		GenericAPIServer: genericServer,
 		coreClient:       coreClient,
 		cache:            cacheImpl,
-		// Set background job periodic frequency the same as repo sync frequency.
-		periodicRepoSyncFrequency:  c.ExtraConfig.CacheOptions.RepoSyncFrequency,
-		listTimeoutPerRepository:   c.ExtraConfig.CacheOptions.CRCacheOptions.ListTimeoutPerRepository,
-		repoOperationRetryAttempts: c.ExtraConfig.CacheOptions.RepoOperationRetryAttempts,
+		ExtraConfig:      c.ExtraConfig,
 	}
 
 	// Install the groups.
@@ -475,5 +470,58 @@ func (s *PorchServer) Run(ctx context.Context) error {
 	} else {
 		klog.Infoln("Cert storage dir not provided, skipping webhook setup")
 	}
+
+	// Start the repo cache eviction controller. Watches for Repository deletions
+	// and evicts them from the in-memory cache to prevent git clone leaks.
+	if err := s.startRepoCacheController(ctx); err != nil {
+		return fmt.Errorf("failed to start repo cache eviction controller: %w", err)
+	}
+
 	return s.GenericAPIServer.PrepareRun().RunWithContext(ctx)
+}
+
+func (s *PorchServer) startRepoCacheController(ctx context.Context) error {
+	kubeconfig := s.ExtraConfig.CoreAPIKubeconfigPath
+	var restConfig *rest.Config
+	var err error
+
+	if kubeconfig == "" {
+		restConfig, err = rest.InClusterConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load in-cluster config: %w", err)
+		}
+	} else {
+		loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
+		loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
+		restConfig, err = loader.ClientConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load config %q: %w", kubeconfig, err)
+		}
+	}
+
+	scheme, err := buildCompleteScheme()
+	if err != nil {
+		return err
+	}
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
+		Scheme:                 scheme,
+		Metrics:                metricsserver.Options{BindAddress: "0"}, // disable metrics
+		HealthProbeBindAddress: "0",                                     // disable health probes
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create manager for repo cache controller: %w", err)
+	}
+
+	if err := setupRepoCacheController(mgr, s.cache, s.ExtraConfig.CacheOptions.CRCacheOptions.MaxConcurrentLists); err != nil {
+		return fmt.Errorf("failed to setup repo cache controller: %w", err)
+	}
+
+	go func() {
+		if err := mgr.Start(ctx); err != nil {
+			klog.Errorf("repo cache controller manager stopped: %v", err)
+		}
+	}()
+
+	return nil
 }
