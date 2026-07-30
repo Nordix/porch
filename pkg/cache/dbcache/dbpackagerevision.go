@@ -114,7 +114,7 @@ func (pr *dbPackageRevision) ensureRepo() error {
 			pr.repo = dbRepo
 			return nil
 		}
-		klog.Warningf("ensureRepo: repository %+v has unexpected type %T", pr.pkgRevKey.PkgKey.RepoKey, repo)
+		klog.Errorf("ensureRepo: repository %+v has unexpected type %T", pr.pkgRevKey.PkgKey.RepoKey, repo)
 	}
 	return fmt.Errorf("no associated repository for %+v", pr.pkgRevKey.PkgKey.RepoKey)
 }

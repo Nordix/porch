@@ -89,8 +89,9 @@ func (r *RepoCacheReconciler) Reconcile(ctx context.Context, req reconcile.Reque
 		klog.Infof("Repo cache handler: added finalizer to %s", req.NamespacedName)
 	}
 
-	// Open the repository in the cache
-	// LoadOrCreate is idempotent — returns existing entry if already cached
+	// Open the repository in the cache. Internally this uses the cache's
+	// SafeRepoMap.LoadOrCreate, which is idempotent — it returns the existing
+	// map entry if the repo is already cached, so this is a no-op for repeated reconciles.
 	if _, err := r.cache.OpenRepository(ctx, repo); err != nil {
 		klog.Warningf("Repo cache handler: failed to open %s: %v", req.NamespacedName, err)
 		return reconcile.Result{}, err
