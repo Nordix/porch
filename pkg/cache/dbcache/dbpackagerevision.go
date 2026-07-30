@@ -210,6 +210,8 @@ func (pr *dbPackageRevision) UpdateLifecycle(ctx context.Context, newLifecycle p
 			pr.pkgRevKey.Revision = 0
 			return pkgerrors.Wrapf(err, "dbPackageRevision:UpdateLifecycle: could not publish package revision %+v", pr.Key())
 		}
+		// drops cached stale draft so it doesnt trigger closure
+		pr.gitPRDraft = nil
 	} else if porchapi.LifecycleIsPublished(pr.lifecycle) {
 		return pr.updateLifecycleOnPublishedPR(ctx, newLifecycle)
 	}
