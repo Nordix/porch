@@ -210,6 +210,8 @@ func (pr *dbPackageRevision) UpdateLifecycle(ctx context.Context, newLifecycle p
 			pr.pkgRevKey.Revision = 0
 			return pkgerrors.Wrapf(err, "dbPackageRevision:UpdateLifecycle: could not publish package revision %+v", pr.Key())
 		}
+		// drops cached stale draft so it doesnt trigger closure
+		pr.gitPRDraft = nil
 	} else if porchapi.LifecycleIsPublished(pr.lifecycle) {
 		return pr.updateLifecycleOnPublishedPR(ctx, newLifecycle)
 	}
@@ -427,7 +429,7 @@ func (pr *dbPackageRevision) Delete(ctx context.Context, deleteExternal bool) er
 	_, span := tracer.Start(ctx, "dbPackageRevision::Delete", trace.WithAttributes())
 	defer span.End()
 
-	if deleteExternal && porchapi.LifecycleIsPublished(pr.lifecycle) {
+	if deleteExternal && (porchapi.LifecycleIsPublished(pr.lifecycle) || pr.repo.pushDraftsToGit) {
 		if err := pr.repo.externalRepo.DeletePackageRevision(ctx, pr); err != nil {
 			// Check if the error indicates the package doesn't exist in external repo
 			if repository.IsNotFoundError(err) {
