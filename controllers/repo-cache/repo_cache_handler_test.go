@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package apiserver
+package repocache
 
 import (
 	"context"
@@ -28,12 +28,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -66,7 +63,7 @@ func TestReconcileReadyRepoOpensAndAddsFinalizer(t *testing.T) {
 	mc := mockcache.NewMockCache(t)
 	mc.EXPECT().OpenRepository(mock.Anything, mock.Anything).Return(nil, nil).Once()
 
-	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+	r := &Reconciler{Client: fakeClient, Cache: mc}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "my-repo", Namespace: "test-ns"},
@@ -91,7 +88,7 @@ func TestReconcileNotReadyRepoIsSkipped(t *testing.T) {
 	mc := mockcache.NewMockCache(t)
 	// No OpenRepository or EvictCachedRepository calls expected
 
-	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+	r := &Reconciler{Client: fakeClient, Cache: mc}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "not-ready", Namespace: "test-ns"},
@@ -126,7 +123,7 @@ func TestReconcileDeletingRepoEvictsAndRemovesFinalizer(t *testing.T) {
 		repo:   repo,
 	}
 
-	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+	r := &Reconciler{Client: fakeClient, Cache: mc}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "del-repo", Namespace: "test-ns"},
@@ -165,7 +162,7 @@ func TestReconcileOpenRepositoryError(t *testing.T) {
 	mc := mockcache.NewMockCache(t)
 	mc.EXPECT().OpenRepository(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("connection refused")).Once()
 
-	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+	r := &Reconciler{Client: fakeClient, Cache: mc}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "fail-repo", Namespace: "test-ns"},
@@ -182,7 +179,7 @@ func TestReconcileNotFoundIsNoOp(t *testing.T) {
 
 	mc := mockcache.NewMockCache(t)
 
-	r := &RepoCacheReconciler{client: fakeClient, cache: mc}
+	r := &Reconciler{Client: fakeClient, Cache: mc}
 
 	result, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "gone", Namespace: "test-ns"},
@@ -200,23 +197,4 @@ func TestRepoCachePredicate(t *testing.T) {
 	assert.True(t, p.Update(event.UpdateEvent{ObjectOld: repo, ObjectNew: repo}), "update should pass")
 	assert.False(t, p.Delete(event.DeleteEvent{Object: repo}), "delete should be filtered (handled via finalizer)")
 	assert.False(t, p.Generic(event.GenericEvent{Object: repo}), "generic should be filtered")
-}
-
-func TestSetupRepoCacheController(t *testing.T) {
-	scheme := newTestScheme()
-	mc := mockcache.NewMockCache(t)
-
-	// Use a fake rest.Config pointing to a non-existent server.
-	// We only need the manager to accept the controller registration — not actually run.
-	cfg := &rest.Config{Host: "https://127.0.0.1:0"}
-
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: "0"},
-		HealthProbeBindAddress: "0",
-	})
-	require.NoError(t, err)
-
-	err = setupRepoCacheController(mgr, mc, 5)
-	require.NoError(t, err)
 }
