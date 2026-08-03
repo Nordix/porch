@@ -29,6 +29,7 @@ import (
 // PorchServer contains state for a Kubernetes cluster master/api server.
 type PorchServer struct {
 	GenericAPIServer *genericapiserver.GenericAPIServer
+	Manager          manager.Manager
 
 	leaderElect bool
 	coreClient  client.WithWatch
@@ -50,6 +51,14 @@ func (s *PorchServer) Start(ctx context.Context) error {
 	} else {
 		klog.Infoln("Cert storage dir not provided, skipping webhook setup")
 	}
+
+	// Run both the manager (for reconcilers) and the GenericAPIServer concurrently
+	go func() {
+		if err := s.Manager.Start(ctx); err != nil {
+			klog.Errorf("manager failed: %v", err)
+		}
+	}()
+
 	return s.GenericAPIServer.PrepareRun().RunWithContext(ctx)
 }
 

@@ -26,7 +26,7 @@ import (
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	"github.com/kptdev/porch/controllers/functionconfigs"
-	"github.com/kptdev/porch/controllers/repo-cache"
+	repocache "github.com/kptdev/porch/controllers/repo-cache"
 	"github.com/kptdev/porch/pkg/cache"
 	cachetypes "github.com/kptdev/porch/pkg/cache/types"
 	"github.com/kptdev/porch/pkg/engine"
@@ -474,6 +474,7 @@ func (c *completedConfig) New(ctx context.Context) (manager.Manager, *PorchServe
 
 	porchServer := &PorchServer{
 		GenericAPIServer: genericServer,
+		Manager:          mgr,
 		coreClient:       coreClient,
 		cache:            cacheImpl,
 		leaderElect:      c.ExtraConfig.HAOptions.LeaderElection,
