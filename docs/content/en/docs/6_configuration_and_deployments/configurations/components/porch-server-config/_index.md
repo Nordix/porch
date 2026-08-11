@@ -72,7 +72,11 @@ For detailed Git repository authentication configuration, see [Git Authenticatio
 
 ## Webhook Certificate Management
 
-For cert-manager integration with Porch webhooks, see [Cert Manager Webhooks]({{% relref "cert-manager-webhooks" %}}) subsection.
+For cert-manager integration with Porch admission webhooks (which validate PackageRevision and Repository resources), see [Webhook Certificate Management]({{% relref "cert-manager-webhooks" %}}) subsection.
+
+{{% alert title="Note" color="primary" %}}
+Webhooks run in the porch-controllers pod, not the API server. They provide real-time validation at admission time.
+{{% /alert %}}
 
 ## Distributed Tracing
 
