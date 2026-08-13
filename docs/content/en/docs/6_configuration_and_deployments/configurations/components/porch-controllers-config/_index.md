@@ -5,7 +5,7 @@ weight: 2
 description: "Configure the Porch controllers component"
 ---
 
-The Porch controllers manage Repository synchronization, PackageVariants, PackageVariantSets, and PackageRevision validation via webhooks.
+The Porch controllers manage Repository synchronization, PackageVariants, PackageVariantSets, and PackageRevision. Also, validation is handled via webhooks for both PackageRevision and Repository resources.
 
 ## Enabling Controllers
 
