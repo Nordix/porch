@@ -70,14 +70,6 @@ env:
 
 For detailed Git repository authentication configuration, see [Git Authentication]({{% relref "git-authentication" %}}) subsection.
 
-## Webhook Certificate Management
-
-For cert-manager integration with Porch admission webhooks (which validate PackageRevision and Repository resources), see [Webhook Certificate Management]({{% relref "cert-manager-webhooks" %}}) subsection.
-
-{{% alert title="Note" color="primary" %}}
-Webhooks run in the porch-controllers pod, not the API server. They provide real-time validation at admission time.
-{{% /alert %}}
-
 ## Distributed Tracing
 
 For tracing and metrics configuration, see [OpenTelemetry Configuration]({{% relref "/docs/6_configuration_and_deployments/configurations/opentelemetry" %}}).
