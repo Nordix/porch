@@ -9,8 +9,6 @@ Porch uses Kubernetes [validating webhooks](https://kubernetes.io/docs/reference
 
 ## Overview
 
-Porch runs two webhooks on port 9443:
-
 **PackageRevision Webhook** (`porch.kpt.dev/v1alpha2`) validates CREATE, UPDATE, DELETE on PackageRevision resources. It enforces lifecycle transitions, immutable fields, render race prevention, and upstream reference protection. The endpoint is `/validate-porch-kpt-dev-v1alpha2-packagerevision`.
 
 **Repository Webhook** (`config.porch.kpt.dev/v1alpha1`) validates CREATE, UPDATE on Repository resources. It enforces git repository conflict detection, prevents duplicate git locations, and blocks directory nesting. The endpoint is `/validate-repository`.
