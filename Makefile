@@ -90,3 +90,7 @@ dev: build check ## Full development cycle (build + check)
 
 .PHONY: quick-test
 quick-test: fmt vet test ## Quick development test cycle
+
+.PHONY: check-versions
+check-versions: ## Check version consistency between source files and docs/config.toml
+	@$(CURDIR)/scripts/check-versions.sh
