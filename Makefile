@@ -96,5 +96,5 @@ check-versions: ## Check version consistency between source files and docs/confi
 	@$(CURDIR)/scripts/check-versions.sh
 
 .PHONY: check-versions-fix
-check-versions-fix: ## Auto-fix critical version mismatches (Go, kpt) in docs/config.toml
+check-versions-fix: ## Auto-fix all version mismatches (Go, kpt, kind, k8s) in docs/config.toml
 	@$(CURDIR)/scripts/check-versions.sh --fix

@@ -21,7 +21,7 @@ set -e
 #
 # Usage:
 #   scripts/check-versions.sh              - Check only, fail on mismatches
-#   scripts/check-versions.sh --fix        - Check and auto-fix critical mismatches (Go, kpt)
+#   scripts/check-versions.sh --fix        - Check and auto-fix all version mismatches (Go, kpt, kind, k8s)
 
 FIX_MODE=""
 if [ "$1" = "--fix" ]; then
@@ -39,13 +39,13 @@ echo "=== Extracting versions from source files ==="
 go_version=$(grep '^go ' go.mod | awk '{print $2}')
 echo "Go version (go.mod): $go_version"
 
-kpt_version=$(grep 'github.com/kptdev/kpt ' go.mod | grep -oP 'v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?' | head -1)
+kpt_version=$(awk '/github.com\/kptdev\/kpt / {print $2; exit}' go.mod)
 echo "kpt version (go.mod): $kpt_version"
 
 kind_version=$(awk '/helm\/kind-action@v1/,/version:/ {if (/version:/) print $2}' .github/workflows/porch-e2e-ci-jobs.yaml | head -1)
 echo "kind version (.github/workflows): $kind_version"
 
-kube_node_image=$(grep "kindest/node:" deployments/local/kind_porch_test_cluster.yaml | grep -oP 'v\d+\.\d+\.\d+' | head -1)
+kube_node_image=$(grep "kindest/node:" deployments/local/kind_porch_test_cluster.yaml | sed 's/.*\(v[0-9]*\.[0-9]*\.[0-9]*\).*/\1/' | head -1)
 echo "Kubernetes node image (local dev): $kube_node_image"
 
 echo ""
@@ -81,7 +81,7 @@ if [ "$go_version" != "$config_go" ]; then
     fixes_needed+=("version_go|$go_version")
   fi
 else
-  echo "✓ Go version matches: $go_version"
+  echo "✓ Go version matches: $config_go"
 fi
 
 # kpt version check (CRITICAL - core dependency in go.mod)
@@ -92,7 +92,7 @@ if [ "$kpt_version" != "$config_kpt" ]; then
     fixes_needed+=("version_kpt|$kpt_version")
   fi
 else
-  echo "✓ kpt version matches: $kpt_version"
+  echo "✓ kpt version matches: $config_kpt"
 fi
 
 # kind version check (WARNING - test environment, controls k8s version)
@@ -104,7 +104,7 @@ if [ "$kind_version" != "$config_kind" ]; then
     fixes_needed+=("version_kind|$kind_version")
   fi
 else
-  echo "✓ kind version matches: $kind_version"
+  echo "✓ kind version matches: $config_kind"
 fi
 
 # Kubernetes version check (compare dev config with config.toml)
@@ -115,7 +115,7 @@ if [ "$kube_node_image" != "$config_kube" ]; then
     fixes_needed+=("version_kube|$kube_node_image")
   fi
 else
-  echo "✓ Kubernetes version matches: $kube_node_image"
+  echo "✓ Kubernetes version matches: $config_kube"
 fi
 
 echo "(info) Kubernetes version (from config): $config_kube (derived from kind)"
@@ -128,17 +128,20 @@ if [ -n "$GITHUB_ACTIONS" ]; then
   git_version=$(git --version | awk '{print $3}')
   echo "Git version (runner): $git_version"
   
-  docker_version=$(docker --version | grep -oP 'version \K[0-9.]+')
+  docker_version=$(docker --version | sed 's/.*version \([0-9.]*\).*/\1/')
   echo "Docker version (runner): $docker_version"
   
-  # Compare with config
-  if [ "$git_version" != "$config_git" ]; then
+  # Compare with config (config has 'v' prefix, extract for comparison)
+  config_git_unprefixed="${config_git#v}"
+  config_docker_unprefixed="${config_docker#v}"
+  
+  if [ "$git_version" != "$config_git_unprefixed" ]; then
     echo "  (info) Git mismatch: runner has $git_version, config has $config_git"
   else
     echo "  ✓ Git matches config: $git_version"
   fi
   
-  if [ "$docker_version" != "$config_docker" ]; then
+  if [ "$docker_version" != "$config_docker_unprefixed" ]; then
     echo "  (info) Docker mismatch: runner has $docker_version, config has $config_docker"
   else
     echo "  ✓ Docker matches config: $docker_version"
@@ -150,12 +153,16 @@ echo ""
 # Handle auto-fix if requested
 if [ "$FIX_MODE" != "" ] && [ ${#fixes_needed[@]} -gt 0 ]; then
   echo "=== Auto-Fixing Versions ==="
+  temp_file=$(mktemp)
+  cp docs/config.toml "$temp_file"
   for fix in "${fixes_needed[@]}"; do
     key="${fix%|*}"
     value="${fix#*|}"
     echo "Updating $key = \"$value\""
-    sed -i "s/^$key = \"[^\"]*\"/$key = \"$value\"/" docs/config.toml
+    sed "s/^$key = \"[^\"]*\"/$key = \"$value\"/" "$temp_file" > "${temp_file}.tmp"
+    mv "${temp_file}.tmp" "$temp_file"
   done
+  mv "$temp_file" docs/config.toml
   echo "✓ Updated docs/config.toml"
   echo ""
   echo "Please review the changes and commit them:"
