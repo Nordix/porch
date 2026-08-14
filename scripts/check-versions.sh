@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2026 The kpt Authors
+# Copyright 2025-2026 The kpt Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,15 @@ set -e
 
 # Script to check version consistency between source files and docs/config.toml
 # Ensures public docs align with the code being built and tested.
+#
+# Usage:
+#   scripts/check-versions.sh              - Check only, fail on mismatches
+#   scripts/check-versions.sh --fix        - Check and auto-fix critical mismatches (Go, kpt)
+
+FIX_MODE=""
+if [ "$1" = "--fix" ]; then
+  FIX_MODE="true"
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -36,6 +45,9 @@ echo "kpt version (go.mod): $kpt_version"
 kind_version=$(awk '/helm\/kind-action@v1/,/version:/ {if (/version:/) print $2}' .github/workflows/porch-e2e-ci-jobs.yaml | head -1)
 echo "kind version (.github/workflows): $kind_version"
 
+kube_node_image=$(grep "kindest/node:" deployments/local/kind_porch_test_cluster.yaml | grep -oP 'v\d+\.\d+\.\d+' | head -1)
+echo "Kubernetes node image (local dev): $kube_node_image"
+
 echo ""
 echo "=== Versions in docs/config.toml ==="
 
@@ -51,48 +63,115 @@ echo "kind version (config): $config_kind"
 config_kube=$(grep '^version_kube = ' docs/config.toml | cut -d'"' -f2)
 echo "Kubernetes version (config): $config_kube"
 
+config_git=$(grep '^version_git = ' docs/config.toml | cut -d'"' -f2)
+config_docker=$(grep '^version_docker = ' docs/config.toml | cut -d'"' -f2)
+
 echo ""
 echo "=== Consistency Check ==="
 
 errors=0
+warnings=0
+declare -a fixes_needed
 
 # Go version check (CRITICAL - we control this in go.mod)
 if [ "$go_version" != "$config_go" ]; then
   echo "FAIL: Go version mismatch - source: $go_version, config: $config_go"
   errors=$((errors + 1))
+  if [ "$FIX_MODE" = "true" ]; then
+    fixes_needed+=("version_go|$go_version")
+  fi
 else
   echo "✓ Go version matches: $go_version"
 fi
 
 # kpt version check (CRITICAL - core dependency in go.mod)
-if [ "$kpt_version" != "v$config_kpt" ]; then
-  echo "FAIL: kpt version mismatch - source: $kpt_version, config: v$config_kpt"
+if [ "$kpt_version" != "$config_kpt" ]; then
+  echo "FAIL: kpt version mismatch - source: $kpt_version, config: $config_kpt"
   errors=$((errors + 1))
+  if [ "$FIX_MODE" = "true" ]; then
+    fixes_needed+=("version_kpt|$kpt_version")
+  fi
 else
   echo "✓ kpt version matches: $kpt_version"
 fi
 
 # kind version check (WARNING - test environment, controls k8s version)
-if [ "$kind_version" != "v$config_kind" ]; then
-  echo "WARN: kind version mismatch - source: $kind_version, config: v$config_kind"
+if [ "$kind_version" != "$config_kind" ]; then
+  echo "WARN: kind version mismatch - source: $kind_version, config: $config_kind"
   echo "      Consider updating docs/config.toml to match the test environment"
+  warnings=$((warnings + 1))
+  if [ "$FIX_MODE" = "true" ]; then
+    fixes_needed+=("version_kind|$kind_version")
+  fi
 else
   echo "✓ kind version matches: $kind_version"
 fi
 
-echo "ℹ Kubernetes version (from config): v$config_kube (derived from kind)"
+# Kubernetes version check (compare dev config with config.toml)
+if [ "$kube_node_image" != "$config_kube" ]; then
+  echo "WARN: Kubernetes version mismatch - dev config: $kube_node_image, docs config: $config_kube"
+  warnings=$((warnings + 1))
+  if [ "$FIX_MODE" = "true" ]; then
+    fixes_needed+=("version_kube|$kube_node_image")
+  fi
+else
+  echo "✓ Kubernetes version matches: $kube_node_image"
+fi
+
+echo "(info) Kubernetes version (from config): $config_kube (derived from kind)"
+
+# Only check runner versions if in CI
+if [ -n "$GITHUB_ACTIONS" ]; then
+  echo ""
+  echo "=== Runner Environment Checks (CI only) ==="
+  
+  git_version=$(git --version | awk '{print $3}')
+  echo "Git version (runner): $git_version"
+  
+  docker_version=$(docker --version | grep -oP 'version \K[0-9.]+')
+  echo "Docker version (runner): $docker_version"
+  
+  # Compare with config
+  if [ "$git_version" != "$config_git" ]; then
+    echo "  (info) Git mismatch: runner has $git_version, config has $config_git"
+  else
+    echo "  ✓ Git matches config: $git_version"
+  fi
+  
+  if [ "$docker_version" != "$config_docker" ]; then
+    echo "  (info) Docker mismatch: runner has $docker_version, config has $config_docker"
+  else
+    echo "  ✓ Docker matches config: $docker_version"
+  fi
+fi
+
+echo ""
+
+# Handle auto-fix if requested
+if [ "$FIX_MODE" != "" ] && [ ${#fixes_needed[@]} -gt 0 ]; then
+  echo "=== Auto-Fixing Versions ==="
+  for fix in "${fixes_needed[@]}"; do
+    key="${fix%|*}"
+    value="${fix#*|}"
+    echo "Updating $key = \"$value\""
+    sed -i "s/^$key = \"[^\"]*\"/$key = \"$value\"/" docs/config.toml
+  done
+  echo "✓ Updated docs/config.toml"
+  echo ""
+  echo "Please review the changes and commit them:"
+  echo "  git diff docs/config.toml"
+  echo "  git add docs/config.toml"
+  echo "  git commit -s -m 'chore: update version pinning in docs'"
+  exit 0
+fi
 
 echo ""
 if [ "$errors" -gt 0 ]; then
   echo "FAILED: $errors critical version mismatch(es) detected."
   echo ""
-  echo "To fix, update docs/config.toml:"
-  if [ "$go_version" != "$config_go" ]; then
-    echo "  version_go = \"$go_version\""
-  fi
-  if [ "$kpt_version" != "v$config_kpt" ]; then
-    echo "  version_kpt = \"${kpt_version#v}\""
-  fi
+  echo "To auto-fix critical mismatches, run:"
+  echo "  scripts/check-versions.sh --fix"
+  echo "  or: make check-versions-fix"
   exit 1
 fi
 

@@ -94,3 +94,7 @@ quick-test: fmt vet test ## Quick development test cycle
 .PHONY: check-versions
 check-versions: ## Check version consistency between source files and docs/config.toml
 	@$(CURDIR)/scripts/check-versions.sh
+
+.PHONY: check-versions-fix
+check-versions-fix: ## Auto-fix critical version mismatches (Go, kpt) in docs/config.toml
+	@$(CURDIR)/scripts/check-versions.sh --fix
