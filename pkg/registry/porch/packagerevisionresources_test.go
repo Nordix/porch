@@ -19,6 +19,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kptdev/porch/api/porch/v1alpha1"
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	"github.com/kptdev/porch/pkg/repository"
@@ -133,6 +134,7 @@ func TestGetResources(t *testing.T) {
 	}, nil).Once()
 	mockPkgRev.On("KubeObjectName").Return(pkgRevName)
 	mockPkgRev.On("GetResources", mock.Anything).Return(nil, errors.New("error getting resources"))
+	mockPkgRev.On("Lifecycle", mock.Anything).Return(v1alpha1.PackageRevisionLifecycle("Draft"))
 
 	result, err = packagerevisionresources.Get(ctx, pkgRevName, nil)
 	assert.Error(t, err)
