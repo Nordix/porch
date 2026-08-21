@@ -17,6 +17,7 @@ package packagerevision
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
@@ -43,7 +44,10 @@ import (
 //+kubebuilder:rbac:groups=config.porch.kpt.dev,resources=functionconfigs,verbs=get;list;watch;patch
 //+kubebuilder:rbac:groups=config.porch.kpt.dev,resources=functionconfigs/status,verbs=get;update;patch
 
-const reconcilerName = "packagerevisions"
+const (
+	reconcilerName  = "packagerevisions"
+	prTelemetryName = telemetry.ResourcePackageRevision
+)
 
 // PackageRevisionReconciler reconciles v1alpha2 PackageRevision CRDs.
 // It handles lifecycle transitions (draft/proposed/published) by executing
@@ -163,7 +167,10 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 
 	start := time.Now()
 	updated, err := r.ContentCache.UpdateLifecycle(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, desired)
-	telemetry.RecordControllerOperation(telemetry.ResourcePackageRevision, "UPDATE", start)
+
+	op := telemetry.Operations.Update
+	key, _ := repository.PkgRevK8sName2Key(pr.Namespace, pr.Name)
+	telemetry.RecordControllerOperation(ctx, prTelemetryName, op.AllCaps, op.TitleCase+prTelemetryName, time.Since(start), err, pr.Spec.Lifecycle, &key)
 	if err != nil {
 		log.Error(err, "lifecycle transition failed")
 		r.updateStatus(ctx, pr, nil, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
@@ -245,7 +252,10 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 		renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"))
 	r.ensureLatestRevisionLabel(ctx, pr)
 
-	telemetry.RecordControllerOperation(telemetry.ResourcePackageRevision, "CREATE", time.Now())
+	op := telemetry.Operations.Create
+	taskName := strings.ToTitle(creationSource)
+	key, _ := repository.PkgRevK8sName2Key(pr.Namespace, pr.Name)
+	telemetry.RecordControllerOperation(ctx, prTelemetryName, op.AllCaps, taskName+prTelemetryName, time.Since(start), err, pr.Spec.Lifecycle, &key)
 
 	result := ctrl.Result{Requeue: true}
 	return &result, nil
