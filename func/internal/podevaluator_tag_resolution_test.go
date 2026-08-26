@@ -31,10 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	testImageName = "test-image"
-)
-
 type fakeLister struct {
 	tags map[string][]string
 	err  string
