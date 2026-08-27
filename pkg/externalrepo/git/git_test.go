@@ -2663,7 +2663,10 @@ func TestGetAuthMethod_PicksUpSecretChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	basicAuth := auth.(*http.BasicAuth)
+	basicAuth, ok := auth.(*http.BasicAuth)
+	if !ok {
+		t.Fatalf("expected *http.BasicAuth, got %T", auth)
+	}
 	if basicAuth.Username != "user1" {
 		t.Fatalf("expected user1, got %s", basicAuth.Username)
 	}
@@ -2676,7 +2679,10 @@ func TestGetAuthMethod_PicksUpSecretChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	basicAuth = auth.(*http.BasicAuth)
+	basicAuth, ok = auth.(*http.BasicAuth)
+	if !ok {
+		t.Fatalf("expected *http.BasicAuth after secret change, got %T", auth)
+	}
 	if basicAuth.Username != "user2" {
 		t.Fatalf("expected user2 after secret change, got %s", basicAuth.Username)
 	}
