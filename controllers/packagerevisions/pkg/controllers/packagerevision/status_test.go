@@ -615,3 +615,155 @@ func TestPackageMetadataEqual(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateLabelKeyValue tests label key/value validation against Kubernetes constraints.
+func TestValidateLabelKeyValue(t *testing.T) {
+	testCases := []struct {
+		name      string
+		key       string
+		value     string
+		wantError bool
+	}{
+		{
+			name:      "valid simple labels",
+			key:       "env",
+			value:     "prod",
+			wantError: false,
+		},
+		{
+			name:      "valid with dots and dashes",
+			key:       "app.example.com/name",
+			value:     "my-app",
+			wantError: false,
+		},
+		{
+			name:      "valid with underscores",
+			key:       "my_app_key",
+			value:     "my_value",
+			wantError: false,
+		},
+		{
+			name:      "empty value is valid",
+			key:       "env",
+			value:     "",
+			wantError: false,
+		},
+		{
+			name:      "key exceeds 253 chars",
+			key:       string(make([]byte, 254)),
+			value:     "val",
+			wantError: true,
+		},
+		{
+			name:      "value exceeds 63 chars",
+			key:       "env",
+			value:     string(make([]byte, 64)),
+			wantError: true,
+		},
+		{
+			name:      "key starts with dash",
+			key:       "-invalid",
+			value:     "val",
+			wantError: true,
+		},
+		{
+			name:      "key ends with dash",
+			key:       "invalid-",
+			value:     "val",
+			wantError: true,
+		},
+		{
+			name:      "value starts with dash",
+			key:       "key",
+			value:     "-invalid",
+			wantError: true,
+		},
+		{
+			name:      "value ends with dash",
+			key:       "key",
+			value:     "invalid-",
+			wantError: true,
+		},
+		{
+			name:      "key contains invalid char",
+			key:       "env@prod",
+			value:     "val",
+			wantError: true,
+		},
+		{
+			name:      "value contains invalid char",
+			key:       "env",
+			value:     "val@prod",
+			wantError: true,
+		},
+		{
+			name:      "empty key",
+			key:       "",
+			value:     "val",
+			wantError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateLabelKeyValue(tc.key, tc.value)
+			if tc.wantError {
+				assert.Error(t, err, "expected validation error")
+			} else {
+				assert.NoError(t, err, "expected no validation error")
+			}
+		})
+	}
+}
+
+// TestKptfileLabelsToObjectLabelsWithInvalidLabels tests that invalid labels are skipped.
+func TestKptfileLabelsToObjectLabelsWithInvalidLabels(t *testing.T) {
+	kptfileLabels := map[string]string{
+		"valid-env":     "prod",
+		"invalid@key":   "value", // Invalid char
+		"valid-tier":    "backend",
+		"invalid-value": "val@ue", // Invalid char in value
+	}
+
+	result, changed := kptfileLabelsToObjectLabels(nil, kptfileLabels)
+
+	// Only valid labels should be mirrored
+	assert.True(t, changed)
+	assert.Equal(t, "prod", result["porch.kpt.dev/kptfile-label__valid-env"])
+	assert.Equal(t, "backend", result["porch.kpt.dev/kptfile-label__valid-tier"])
+	// Invalid labels should be skipped
+	assert.NotContains(t, result, "porch.kpt.dev/kptfile-label__invalid@key")
+	assert.NotContains(t, result, "porch.kpt.dev/kptfile-label__invalid-value")
+}
+
+// TestKptfileLabelsToObjectLabelsRemoval tests that all labels are removed when Kptfile has none.
+func TestKptfileLabelsToObjectLabelsRemoval(t *testing.T) {
+	current := map[string]string{
+		"porch.kpt.dev/kptfile-label__env":  "prod",
+		"porch.kpt.dev/kptfile-label__tier": "backend",
+		"other-label":                       "keep",
+	}
+
+	result, changed := kptfileLabelsToObjectLabels(current, nil)
+
+	// Mirror labels should be removed, other labels kept
+	assert.True(t, changed)
+	assert.NotContains(t, result, "porch.kpt.dev/kptfile-label__env")
+	assert.NotContains(t, result, "porch.kpt.dev/kptfile-label__tier")
+	assert.Equal(t, "keep", result["other-label"])
+}
+
+// TestKptfileLabelsToObjectLabelsSlashEscaping tests slash escaping in label keys.
+func TestKptfileLabelsToObjectLabelsSlashEscaping(t *testing.T) {
+	kptfileLabels := map[string]string{
+		"app.example.com/name": "myapp",
+		"kpt.dev/version":      "v1",
+	}
+
+	result, changed := kptfileLabelsToObjectLabels(nil, kptfileLabels)
+
+	assert.True(t, changed)
+	// Slashes should be escaped as __
+	assert.Equal(t, "myapp", result["porch.kpt.dev/kptfile-label__app.example.com__name"])
+	assert.Equal(t, "v1", result["porch.kpt.dev/kptfile-label__kpt.dev__version"])
+}

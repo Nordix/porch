@@ -16,6 +16,7 @@ package packagerevision
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -280,21 +281,24 @@ func packageMetadataEqual(a, b *porchv1alpha2.PackageMetadata) bool {
 // with a reserved prefix, enabling field selectors via label queries.
 // Kptfile labels with "/" are escaped to "__" for Kubernetes label key compatibility.
 // Only labels are mirrored (not annotations per spike findings).
+// Kptfile label keys/values must be Kubernetes-valid (keys ≤253 chars, values ≤63 chars, alphanumerics/- /_/. only).
 // Returns the updated labels and a bool indicating whether they changed.
 func kptfileLabelsToObjectLabels(current, kptfileLabels map[string]string) (map[string]string, bool) {
+	log := log.FromContext(context.TODO())
 	if len(kptfileLabels) == 0 {
 		// No Kptfile labels; remove any existing mirror labels from current.
-		var updated map[string]string
+		updated := make(map[string]string)
 		changed := false
 		for k, v := range current {
 			if !strings.HasPrefix(k, kptfileLabelPrefix) {
-				if updated == nil {
-					updated = make(map[string]string)
-				}
 				updated[k] = v
 			} else {
 				changed = true
 			}
+		}
+		// Return empty map (not nil) if no labels remain, so SSA clears the field.
+		if len(updated) == 0 {
+			updated = map[string]string{}
 		}
 		return updated, changed
 	}
@@ -305,7 +309,14 @@ func kptfileLabelsToObjectLabels(current, kptfileLabels map[string]string) (map[
 	for _, k := range keys {
 		// Escape "/" as "__" to fit Kubernetes label key constraints.
 		mirrorKey := kptfileLabelPrefix + strings.ReplaceAll(k, "/", "__")
-		desired[mirrorKey] = kptfileLabels[k]
+		val := kptfileLabels[k]
+
+		// Validate label key and value against Kubernetes constraints.
+		if err := validateLabelKeyValue(mirrorKey, val); err != nil {
+			log.V(3).Info("skipping Kptfile label due to validation error", "key", k, "error", err)
+			continue
+		}
+		desired[mirrorKey] = val
 	}
 
 	// Merge with non-mirror labels from current.
@@ -320,4 +331,116 @@ func kptfileLabelsToObjectLabels(current, kptfileLabels map[string]string) (map[
 	// Check if changed by comparing against current.
 	changed := !maps.Equal(current, updated)
 	return updated, changed
+}
+
+// validateLabelKeyValue checks if a label key/value pair conforms to Kubernetes constraints.
+// Keys can be domain-prefixed (prefix/name) where prefix is a DNS domain and name follows label rules.
+// Non-prefixed keys: max 253 chars, alphanumerics/- /_/. only.
+// Values: max 63 chars, alphanumerics/- /_ only.
+func validateLabelKeyValue(key, value string) error {
+	if len(key) > 253 {
+		return fmt.Errorf("label key exceeds 253 chars: %d", len(key))
+	}
+	if len(value) > 63 {
+		return fmt.Errorf("label value exceeds 63 chars: %d", len(value))
+	}
+
+	// Check if key has domain prefix (contains "/" that separates domain from name)
+	parts := strings.SplitN(key, "/", 2)
+	if len(parts) == 2 {
+		// Domain-prefixed key: validate domain and name separately
+		if !isValidDNSDomain(parts[0]) {
+			return fmt.Errorf("invalid domain prefix in label key: %s", parts[0])
+		}
+		if !isValidLabelKeyChars(parts[1]) {
+			return fmt.Errorf("invalid label name part in key: %s", parts[1])
+		}
+	} else {
+		// Non-prefixed key: alphanumerics, -, _, . only; must start/end with alphanumeric
+		if !isValidLabelKeyChars(key) {
+			return fmt.Errorf("label key contains invalid characters: %s", key)
+		}
+	}
+
+	// Validate value: alphanumerics, -, _ allowed; must start/end with alphanumeric
+	if !isValidLabelValueChars(value) {
+		return fmt.Errorf("label value contains invalid characters: %s", value)
+	}
+	return nil
+}
+
+// isValidDNSDomain checks if a string is a valid DNS domain name.
+func isValidDNSDomain(domain string) bool {
+	if len(domain) == 0 || len(domain) > 253 {
+		return false
+	}
+	// DNS labels separated by dots; each label alphanumeric/hyphen, start/end with alphanumeric
+	labels := strings.Split(domain, ".")
+	for _, label := range labels {
+		if len(label) == 0 || len(label) > 63 {
+			return false
+		}
+		if !isAlphanumeric(label[0]) || !isAlphanumeric(label[len(label)-1]) {
+			return false
+		}
+		for _, ch := range label {
+			if ch > 127 {
+				return false
+			}
+			b := byte(ch)
+			if !isAlphanumeric(b) && b != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isValidLabelKeyChars checks if key conforms to Kubernetes label key character rules.
+func isValidLabelKeyChars(key string) bool {
+	if len(key) == 0 {
+		return false
+	}
+	// Must start and end with alphanumeric
+	if !isAlphanumeric(key[0]) || !isAlphanumeric(key[len(key)-1]) {
+		return false
+	}
+	for _, ch := range key {
+		if ch > 127 {
+			// Non-ASCII character
+			return false
+		}
+		b := byte(ch)
+		if !isAlphanumeric(b) && b != '-' && b != '_' && b != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// isValidLabelValueChars checks if value conforms to Kubernetes label value character rules.
+func isValidLabelValueChars(value string) bool {
+	if len(value) == 0 {
+		return true // Empty value is allowed
+	}
+	// Must start and end with alphanumeric
+	if !isAlphanumeric(value[0]) || !isAlphanumeric(value[len(value)-1]) {
+		return false
+	}
+	for _, ch := range value {
+		if ch > 127 {
+			// Non-ASCII character
+			return false
+		}
+		b := byte(ch)
+		if !isAlphanumeric(b) && b != '-' && b != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// isAlphanumeric checks if a byte is alphanumeric (0-9, a-z, A-Z).
+func isAlphanumeric(ch byte) bool {
+	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
 }
