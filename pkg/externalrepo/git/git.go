@@ -1100,9 +1100,6 @@ func (r *gitRepository) getAuthMethod(ctx context.Context) (transport.AuthMethod
 		return nil, nil
 	}
 
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
 	cred, err := r.credentialResolver.ResolveCredential(ctx, r.Key().Namespace, r.secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain credential from secret %s/%s: %w", r.Key().Namespace, r.secret, err)
