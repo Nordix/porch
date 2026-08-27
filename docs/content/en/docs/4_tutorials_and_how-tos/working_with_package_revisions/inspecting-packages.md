@@ -320,6 +320,39 @@ The `--field-selector` flag supports only the `=` and `==` operators. **The `!=`
 
 ---
 
+### Filtering by PackageMetadata Labels
+
+You can also filter PackageRevisions by the labels defined in `spec.packageMetadata`. Porch mirrors these labels to the PackageRevision object's metadata, making them queryable via standard Kubernetes label selectors.
+
+Kptfile labels are mirrored with the prefix `porch.kpt.dev/kptfile-label__`, with slashes (/) escaped as `__` for Kubernetes label key compatibility.
+
+Filter by packageMetadata label:
+
+```bash
+kubectl get packagerevisions -n default --selector 'porch.kpt.dev/kptfile-label__env=prod'
+```
+
+Filter by packageMetadata label containing a slash:
+
+```bash
+kubectl get packagerevisions -n default --selector 'porch.kpt.dev/kptfile-label__app.example.com__name=myapp'
+```
+
+Combine label selectors:
+
+```bash
+kubectl get packagerevisions -n default \
+  --selector 'porch.kpt.dev/kptfile-label__env=prod,porch.kpt.dev/kptfile-label__tier=backend'
+```
+
+{{% alert title="Note" color="primary" %}}
+- Only labels from `spec.packageMetadata.labels` are mirrored to object labels
+- Annotations in `spec.packageMetadata.annotations` are stored for reference but are not queryable
+- This mirroring enables v1alpha2 feature parity with v1alpha1's `spec.packageMetadata.labels[key]=value` field selectors
+{{% /alert %}}
+
+---
+
 ## Additional Operations
 
 Beyond basic listing and filtering, these operations help you monitor changes and format output.

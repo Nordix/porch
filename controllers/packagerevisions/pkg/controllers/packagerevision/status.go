@@ -17,10 +17,13 @@ package packagerevision
 import (
 	"context"
 	"maps"
+	"slices"
+	"strings"
 
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/pkg/repository"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -30,6 +33,11 @@ const (
 	fieldManagerPRController        = "packagerev-controller"
 	fieldManagerPRControllerRender  = "packagerev-controller-render"
 	fieldManagerPRControllerKptfile = "packagerev-controller-kptfile"
+
+	// Prefix for mirrored Kptfile labels in object metadata.labels.
+	// Enables field selectors via label queries: -l porch.kpt.dev/kptfile-label__key=value
+	// Slash is escaped as double-underscore per Kubernetes label key restrictions.
+	kptfileLabelPrefix = "porch.kpt.dev/kptfile-label__"
 )
 
 // updateStatus applies the PR-controller-owned status fields via SSA.
@@ -189,28 +197,29 @@ func (r *PackageRevisionReconciler) updateKptfileFields(ctx context.Context, pr 
 	meta := porchv1alpha2.KptfileToPackageMetadata(kf)
 	conds := porchv1alpha2.KptfileToPackageConditions(kf)
 
-	if len(gates) == 0 && meta == nil && len(conds) == 0 {
-		return
+	// Always send both fields: applySpec replaces the whole spec, so omitting an
+	// unchanged field would prune it. Empty is a real desired state — that is how
+	// Kptfile deletions propagate.
+	spec := porchv1alpha2.PackageRevisionSpec{
+		ReadinessGates:  gates,
+		PackageMetadata: meta,
 	}
 
-	// Batch spec fields into single SSA patch to ensure atomic updates.
-	// Multiple separate patches can cause visibility issues where subsequent reads don't see all changes.
-	spec := porchv1alpha2.PackageRevisionSpec{}
-	hasSpecFields := false
+	gatesChanged := !equality.Semantic.DeepEqual(pr.Spec.ReadinessGates, gates)
+	metaChanged := !packageMetadataEqual(pr.Spec.PackageMetadata, meta)
 
-	if len(gates) > 0 {
-		spec.ReadinessGates = gates
-		hasSpecFields = true
-	}
-
-	// Kptfile is authoritative source for metadata. Sync if it differs from spec.
-	if meta != nil && !packageMetadataEqual(pr.Spec.PackageMetadata, meta) {
-		spec.PackageMetadata = meta
-		hasSpecFields = true
-	}
-
-	if hasSpecFields {
+	if gatesChanged || metaChanged {
 		r.applySpec(ctx, pr, spec)
+	}
+
+	// Mirror Kptfile labels into object metadata.labels for field selector queries.
+	var kfLabels map[string]string
+	if meta != nil {
+		kfLabels = meta.Labels
+	}
+	objLabels, labelsChanged := kptfileLabelsToObjectLabels(pr.Labels, kfLabels)
+	if labelsChanged {
+		r.applyObjectLabels(ctx, pr, objLabels)
 	}
 
 	// Apply conditions via status API (separate endpoint from spec).
@@ -244,6 +253,18 @@ func (r *PackageRevisionReconciler) applyStatus(ctx context.Context, pr *porchv1
 	}
 }
 
+func (r *PackageRevisionReconciler) applyObjectLabels(ctx context.Context, pr *porchv1alpha2.PackageRevision, labels map[string]string) {
+	log := log.FromContext(ctx)
+
+	obj := &porchv1alpha2.PackageRevision{
+		TypeMeta:   metav1.TypeMeta{Kind: "PackageRevision", APIVersion: porchv1alpha2.SchemeGroupVersion.Identifier()},
+		ObjectMeta: metav1.ObjectMeta{Name: pr.Name, Namespace: pr.Namespace, Labels: labels},
+	}
+	if err := r.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerPRControllerKptfile), client.ForceOwnership); err != nil {
+		log.Error(err, "failed to apply object labels")
+	}
+}
+
 // packageMetadataEqual returns true if two PackageMetadata values have identical labels and annotations.
 func packageMetadataEqual(a, b *porchv1alpha2.PackageMetadata) bool {
 	if a == nil && b == nil {
@@ -253,4 +274,50 @@ func packageMetadataEqual(a, b *porchv1alpha2.PackageMetadata) bool {
 		return false
 	}
 	return maps.Equal(a.Labels, b.Labels) && maps.Equal(a.Annotations, b.Annotations)
+}
+
+// kptfileLabelsToObjectLabels mirrors Kptfile labels into object metadata.labels
+// with a reserved prefix, enabling field selectors via label queries.
+// Kptfile labels with "/" are escaped to "__" for Kubernetes label key compatibility.
+// Only labels are mirrored (not annotations per spike findings).
+// Returns the updated labels and a bool indicating whether they changed.
+func kptfileLabelsToObjectLabels(current, kptfileLabels map[string]string) (map[string]string, bool) {
+	if len(kptfileLabels) == 0 {
+		// No Kptfile labels; remove any existing mirror labels from current.
+		var updated map[string]string
+		changed := false
+		for k, v := range current {
+			if !strings.HasPrefix(k, kptfileLabelPrefix) {
+				if updated == nil {
+					updated = make(map[string]string)
+				}
+				updated[k] = v
+			} else {
+				changed = true
+			}
+		}
+		return updated, changed
+	}
+
+	// Build desired Kptfile mirror labels: sort for determinism, then apply.
+	desired := make(map[string]string)
+	keys := slices.Sorted(maps.Keys(kptfileLabels))
+	for _, k := range keys {
+		// Escape "/" as "__" to fit Kubernetes label key constraints.
+		mirrorKey := kptfileLabelPrefix + strings.ReplaceAll(k, "/", "__")
+		desired[mirrorKey] = kptfileLabels[k]
+	}
+
+	// Merge with non-mirror labels from current.
+	updated := make(map[string]string)
+	for k, v := range current {
+		if !strings.HasPrefix(k, kptfileLabelPrefix) {
+			updated[k] = v
+		}
+	}
+	maps.Copy(updated, desired)
+
+	// Check if changed by comparing against current.
+	changed := !maps.Equal(current, updated)
+	return updated, changed
 }

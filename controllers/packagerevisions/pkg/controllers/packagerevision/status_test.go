@@ -446,6 +446,35 @@ func TestUpdateKptfileFieldsMetadataUnchangedSkips(t *testing.T) {
 	r.updateKptfileFields(t.Context(), pr, kf)
 }
 
+// Gates removal must be decided on its own, not as a side effect of metadata
+// changing. applySpec sends the whole spec, so if this were length-gated a
+// removed readinessGate would only be pruned when metadata happened to differ.
+func TestUpdateKptfileFieldsGatesRemovedWithMetadataUnchanged(t *testing.T) {
+	mockClient := mockclient.NewMockClient(t)
+
+	var specPatch porchv1alpha2.PackageRevisionSpec
+	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) {
+			specPatch = obj.(*porchv1alpha2.PackageRevision).Spec
+		}).Return(nil)
+
+	r := &PackageRevisionReconciler{Client: mockClient}
+
+	pr := basePR()
+	pr.Spec.ReadinessGates = []porchv1alpha2.ReadinessGate{{ConditionType: "Ready"}}
+	pr.Spec.PackageMetadata = &porchv1alpha2.PackageMetadata{Labels: map[string]string{"env": "prod"}}
+
+	// Kptfile still carries the same metadata, but the readinessGate is gone.
+	kf := kptfilev1.KptFile{}
+	kf.Labels = map[string]string{"env": "prod"}
+
+	r.updateKptfileFields(t.Context(), pr, kf)
+
+	assert.Nil(t, specPatch.ReadinessGates, "omitting gates from the applied config is what prunes them")
+	assert.NotNil(t, specPatch.PackageMetadata, "unchanged metadata must still be sent so SSA does not prune it")
+	assert.Equal(t, "prod", specPatch.PackageMetadata.Labels["env"])
+}
+
 func TestUpdateKptfileFieldsSpecPatchError(t *testing.T) {
 	mockClient := mockclient.NewMockClient(t)
 	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
