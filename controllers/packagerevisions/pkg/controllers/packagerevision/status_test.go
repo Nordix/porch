@@ -367,10 +367,20 @@ func TestUpdateKptfileFieldsMetadataOnly(t *testing.T) {
 	mockClient := mockclient.NewMockClient(t)
 
 	var specPatch porchv1alpha2.PackageRevisionSpec
+	var labelsPatch map[string]string
+	callCount := 0
+
 	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) {
-			specPatch = obj.(*porchv1alpha2.PackageRevision).Spec
-		}).Return(nil)
+			callCount++
+			pr := obj.(*porchv1alpha2.PackageRevision)
+			if pr.Spec.PackageMetadata != nil || len(pr.Spec.ReadinessGates) > 0 {
+				specPatch = pr.Spec
+			}
+			if len(pr.ObjectMeta.Labels) > 0 {
+				labelsPatch = pr.ObjectMeta.Labels
+			}
+		}).Return(nil).Maybe()
 
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := basePR()
@@ -385,6 +395,9 @@ func TestUpdateKptfileFieldsMetadataOnly(t *testing.T) {
 	assert.NotNil(t, specPatch.PackageMetadata)
 	assert.Equal(t, "prod", specPatch.PackageMetadata.Labels["env"])
 	assert.Equal(t, "team-a", specPatch.PackageMetadata.Annotations["owner"])
+	// Verify labels were also mirrored
+	assert.NotNil(t, labelsPatch)
+	assert.Equal(t, "prod", labelsPatch["porch.kpt.dev/kptfile-label__env"])
 }
 
 func TestUpdateKptfileFieldsMetadataAndConditions(t *testing.T) {
@@ -395,15 +408,18 @@ func TestUpdateKptfileFieldsMetadataAndConditions(t *testing.T) {
 
 	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) {
-			specPatch = obj.(*porchv1alpha2.PackageRevision).Spec
-		}).Return(nil)
+			pr := obj.(*porchv1alpha2.PackageRevision)
+			if pr.Spec.PackageMetadata != nil || len(pr.Spec.ReadinessGates) > 0 {
+				specPatch = pr.Spec
+			}
+		}).Return(nil).Maybe()
 
 	mockStatusWriter := mockclient.NewMockSubResourceWriter(t)
 	mockStatusWriter.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) {
 			statusPatch = obj.(*porchv1alpha2.PackageRevision).Status
-		}).Return(nil)
-	mockClient.EXPECT().Status().Return(mockStatusWriter)
+		}).Return(nil).Maybe()
+	mockClient.EXPECT().Status().Return(mockStatusWriter).Maybe()
 
 	r := &PackageRevisionReconciler{Client: mockClient}
 	pr := basePR()
@@ -428,7 +444,7 @@ func TestUpdateKptfileFieldsMetadataAndConditions(t *testing.T) {
 func TestUpdateKptfileFieldsMetadataUnchangedSkips(t *testing.T) {
 	mockClient := mockclient.NewMockClient(t)
 
-	// No Patch expected since metadata is identical
+	// No Patch expected since metadata and labels are identical
 	mockClient.AssertNotCalled(t, "Patch")
 	mockClient.AssertNotCalled(t, "Status")
 
@@ -438,6 +454,8 @@ func TestUpdateKptfileFieldsMetadataUnchangedSkips(t *testing.T) {
 		Labels:      map[string]string{"env": "prod"},
 		Annotations: map[string]string{"owner": "team-a"},
 	}
+	// Pre-populate object labels with the expected mirrored labels
+	pr.Labels = map[string]string{"porch.kpt.dev/kptfile-label__env": "prod"}
 
 	kf := kptfilev1.KptFile{}
 	kf.Labels = map[string]string{"env": "prod"}
@@ -455,8 +473,11 @@ func TestUpdateKptfileFieldsGatesRemovedWithMetadataUnchanged(t *testing.T) {
 	var specPatch porchv1alpha2.PackageRevisionSpec
 	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) {
-			specPatch = obj.(*porchv1alpha2.PackageRevision).Spec
-		}).Return(nil)
+			pr := obj.(*porchv1alpha2.PackageRevision)
+			if pr.Spec.PackageMetadata != nil || len(pr.Spec.ReadinessGates) > 0 {
+				specPatch = pr.Spec
+			}
+		}).Return(nil).Maybe()
 
 	r := &PackageRevisionReconciler{Client: mockClient}
 
