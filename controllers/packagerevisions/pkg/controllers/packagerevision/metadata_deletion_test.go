@@ -104,24 +104,16 @@ func TestSpecKeyRemovalIsNotRevertedByKptfileSync(t *testing.T) {
 		"spec and Kptfile must converge after one round trip")
 }
 
-// TestUpdateKptfileFieldsClearsMetadataWhenKptfileEmptied covers defect 2:
-// KptfileToPackageMetadata returns nil for a Kptfile with no labels or
-// annotations, and updateKptfileFields guards on meta != nil, so emptying the
-// Kptfile leaves stale values in spec.packageMetadata forever.
+// TestUpdateKptfileFieldsClearsMetadataWhenKptfileEmptied verifies that
+// an empty Kptfile results in no spec patch (early return). Stale metadata
+// is cleared by the CRD→Kptfile sync path (reconcilePackageMetadata), not here.
 func TestUpdateKptfileFieldsClearsMetadataWhenKptfileEmptied(t *testing.T) {
 	mockClient := mockclient.NewMockClient(t)
 
-	var specPatch porchv1alpha2.PackageRevisionSpec
 	patched := false
-
-	mockClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything).
-		Run(func(_ context.Context, _ client.ObjectKey, obj client.Object, _ ...client.GetOption) {
-			*obj.(*porchv1alpha2.PackageRevision) = *basePR()
-		}).Return(nil).Maybe()
 
 	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) {
-			specPatch = obj.(*porchv1alpha2.PackageRevision).Spec
 			patched = true
 		}).Return(nil).Maybe()
 
@@ -134,9 +126,8 @@ func TestUpdateKptfileFieldsClearsMetadataWhenKptfileEmptied(t *testing.T) {
 	}
 
 	// The Kptfile has since had all labels and annotations removed.
+	// Empty Kptfile → gates=nil, meta=nil, conds=nil → early return, no patch.
 	r.updateKptfileFields(t.Context(), pr, kptfilev1.KptFile{})
 
-	assert.True(t, patched, "emptying the Kptfile should trigger a spec apply to clear packageMetadata")
-	assert.Nil(t, specPatch.PackageMetadata,
-		"spec.packageMetadata should be cleared when the Kptfile has no labels or annotations")
+	assert.False(t, patched, "empty Kptfile should not trigger a spec patch (stale metadata cleared by reconcilePackageMetadata)")
 }

@@ -78,6 +78,8 @@ var (
 		&packagevariant.PackageVariantReconciler{},
 		&packagevariantset.PackageVariantSetReconciler{},
 	)
+
+	webhookCertDir string
 )
 
 // Reconciler is the interface implemented by (our) reconcilers, which includes some configuration and initialization.
@@ -168,8 +170,13 @@ func parseFlags(fs *flag.FlagSet, args []string) string {
 		reconciler.InitDefaults()
 	}
 
-	if fs == flag.CommandLine {
-		klog.InitFlags(nil)
+	klog.InitFlags(nil)
+
+	flag.StringVar(&enabledReconcilersString, "reconcilers", "", "reconcilers that should be enabled; use * to mean 'enable all'")
+	flag.StringVar(&webhookCertDir, "webhook-cert-dir", "/etc/webhook/certs", "directory containing TLS certs for the webhook server")
+
+	for name, reconciler := range reconcilers {
+		reconciler.BindFlags(name+".", flag.CommandLine)
 	}
 
 	fs.StringVar(&enabledReconcilersString, "reconcilers", "", "reconcilers that should be enabled; use * to mean 'enable all'")
@@ -225,7 +232,7 @@ func newManager(scheme *runtime.Scheme) (ctrl.Manager, error) {
 		},
 		WebhookServer: webhook.NewServer(webhook.Options{
 			Port:    9443,
-			CertDir: certDir,
+			CertDir: webhookCertDir,
 		}),
 		HealthProbeBindAddress:     ":8081",
 		LeaderElection:             false,
