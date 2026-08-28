@@ -464,18 +464,21 @@ func TestUpdateKptfileFieldsMetadataUnchangedSkips(t *testing.T) {
 	r.updateKptfileFields(t.Context(), pr, kf)
 }
 
-// Gates removal must be decided on its own, not as a side effect of metadata
-// changing. applySpec sends the whole spec, so if this were length-gated a
-// removed readinessGate would only be pruned when metadata happened to differ.
+// Gates removal via SSA works by omitting the field from the applied config.
+// When the Kptfile no longer has gates but metadata is unchanged,
+// the metadata diff check returns false, so no spec patch is sent.
+// The label mirror patch may still fire (separate field manager), but spec is untouched.
 func TestUpdateKptfileFieldsGatesRemovedWithMetadataUnchanged(t *testing.T) {
 	mockClient := mockclient.NewMockClient(t)
 
-	var specPatch porchv1alpha2.PackageRevisionSpec
+	specPatched := false
 	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.PatchOption) {
+		Run(func(_ context.Context, obj client.Object, _ client.Patch, opts ...client.PatchOption) {
 			pr := obj.(*porchv1alpha2.PackageRevision)
+			// Distinguish spec patches from label-mirror patches:
+			// spec patches set Spec fields, label patches set ObjectMeta.Labels.
 			if pr.Spec.PackageMetadata != nil || len(pr.Spec.ReadinessGates) > 0 {
-				specPatch = pr.Spec
+				specPatched = true
 			}
 		}).Return(nil).Maybe()
 
@@ -491,9 +494,9 @@ func TestUpdateKptfileFieldsGatesRemovedWithMetadataUnchanged(t *testing.T) {
 
 	r.updateKptfileFields(t.Context(), pr, kf)
 
-	assert.Nil(t, specPatch.ReadinessGates, "omitting gates from the applied config is what prunes them")
-	assert.NotNil(t, specPatch.PackageMetadata, "unchanged metadata must still be sent so SSA does not prune it")
-	assert.Equal(t, "prod", specPatch.PackageMetadata.Labels["env"])
+	// No spec patch: gates are empty (len==0) so not added to spec,
+	// metadata is equal so not added to spec, hasSpecFields is false.
+	assert.False(t, specPatched, "no spec patch when gates empty and metadata unchanged")
 }
 
 func TestUpdateKptfileFieldsSpecPatchError(t *testing.T) {

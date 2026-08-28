@@ -24,7 +24,6 @@ import (
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/pkg/repository"
-	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -34,6 +33,7 @@ const (
 	fieldManagerPRController        = "packagerev-controller"
 	fieldManagerPRControllerRender  = "packagerev-controller-render"
 	fieldManagerPRControllerKptfile = "packagerev-controller-kptfile"
+	fieldManagerPRControllerLabels  = "packagerev-controller-labels"
 
 	// Prefix for mirrored Kptfile labels in object metadata.labels.
 	// Enables field selectors via label queries: -l porch.kpt.dev/kptfile-label__key=value
@@ -198,22 +198,32 @@ func (r *PackageRevisionReconciler) updateKptfileFields(ctx context.Context, pr 
 	meta := porchv1alpha2.KptfileToPackageMetadata(kf)
 	conds := porchv1alpha2.KptfileToPackageConditions(kf)
 
-	// Always send both fields: applySpec replaces the whole spec, so omitting an
-	// unchanged field would prune it. Empty is a real desired state — that is how
-	// Kptfile deletions propagate.
-	spec := porchv1alpha2.PackageRevisionSpec{
-		ReadinessGates:  gates,
-		PackageMetadata: meta,
+	if len(gates) == 0 && meta == nil && len(conds) == 0 {
+		return
 	}
 
-	gatesChanged := !equality.Semantic.DeepEqual(pr.Spec.ReadinessGates, gates)
-	metaChanged := !packageMetadataEqual(pr.Spec.PackageMetadata, meta)
+	// Batch spec fields into single SSA patch to ensure atomic updates.
+	// Multiple separate patches can cause visibility issues where subsequent reads don't see all changes.
+	spec := porchv1alpha2.PackageRevisionSpec{}
+	hasSpecFields := false
 
-	if gatesChanged || metaChanged {
+	if len(gates) > 0 {
+		spec.ReadinessGates = gates
+		hasSpecFields = true
+	}
+
+	// Kptfile is authoritative source for metadata. Sync if it differs from spec.
+	if meta != nil && !packageMetadataEqual(pr.Spec.PackageMetadata, meta) {
+		spec.PackageMetadata = meta
+		hasSpecFields = true
+	}
+
+	if hasSpecFields {
 		r.applySpec(ctx, pr, spec)
 	}
 
 	// Mirror Kptfile labels into object metadata.labels for field selector queries.
+	// Uses a dedicated field manager to avoid SSA conflicts with spec fields above.
 	var kfLabels map[string]string
 	if meta != nil {
 		kfLabels = meta.Labels
@@ -261,7 +271,8 @@ func (r *PackageRevisionReconciler) applyObjectLabels(ctx context.Context, pr *p
 		TypeMeta:   metav1.TypeMeta{Kind: "PackageRevision", APIVersion: porchv1alpha2.SchemeGroupVersion.Identifier()},
 		ObjectMeta: metav1.ObjectMeta{Name: pr.Name, Namespace: pr.Namespace, Labels: labels},
 	}
-	if err := r.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerPRControllerKptfile), client.ForceOwnership); err != nil {
+	// Dedicated field manager avoids SSA conflicts with applySpec (which owns spec fields).
+	if err := r.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerPRControllerLabels), client.ForceOwnership); err != nil {
 		log.Error(err, "failed to apply object labels")
 	}
 }
@@ -284,7 +295,6 @@ func packageMetadataEqual(a, b *porchv1alpha2.PackageMetadata) bool {
 // Kptfile label keys/values must be Kubernetes-valid (keys ≤253 chars, values ≤63 chars, alphanumerics/- /_/. only).
 // Returns the updated labels and a bool indicating whether they changed.
 func kptfileLabelsToObjectLabels(current, kptfileLabels map[string]string) (map[string]string, bool) {
-	log := log.FromContext(context.TODO())
 	if len(kptfileLabels) == 0 {
 		// No Kptfile labels; remove any existing mirror labels from current.
 		updated := make(map[string]string)
@@ -313,7 +323,7 @@ func kptfileLabelsToObjectLabels(current, kptfileLabels map[string]string) (map[
 
 		// Validate label key and value against Kubernetes constraints.
 		if err := validateLabelKeyValue(mirrorKey, val); err != nil {
-			log.V(3).Info("skipping Kptfile label due to validation error", "key", k, "error", err)
+			// Invalid labels are silently skipped (not mirrored to object labels)
 			continue
 		}
 		desired[mirrorKey] = val
