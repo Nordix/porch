@@ -124,7 +124,6 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 			pr := newPackageRevision(env.Namespace, env.RepoName, "pkg-label-filter", "v1", withInit("label filter test"))
 			Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
 			waitForReady(env.Ctx, pr)
-			waitForPRRVisible(env.Ctx, env.Namespace, pr.Name)
 
 			By("patching spec.packageMetadata with labels")
 			Eventually(func(g Gomega) {
@@ -202,7 +201,6 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 			pr := newPackageRevision(env.Namespace, env.RepoName, "pkg-label-escape", "v1", withInit("label escaping test"))
 			Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
 			waitForReady(env.Ctx, pr)
-			waitForPRRVisible(env.Ctx, env.Namespace, pr.Name)
 
 			By("patching spec.packageMetadata with label keys containing slashes")
 			Eventually(func(g Gomega) {
@@ -246,7 +244,6 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 			pr := newPackageRevision(env.Namespace, env.RepoName, "pkg-label-update", "v1", withInit("label update test"))
 			Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
 			waitForReady(env.Ctx, pr)
-			waitForPRRVisible(env.Ctx, env.Namespace, pr.Name)
 
 			By("setting initial labels")
 			Eventually(func(g Gomega) {
@@ -298,7 +295,6 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 			pr := newPackageRevision(env.Namespace, env.RepoName, "pkg-label-removal", "v1", withInit("label removal test"))
 			Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
 			waitForReady(env.Ctx, pr)
-			waitForPRRVisible(env.Ctx, env.Namespace, pr.Name)
 
 			By("setting initial labels")
 			Eventually(func(g Gomega) {
@@ -493,7 +489,6 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 			pr := newPackageRevision(env.Namespace, env.RepoName, "pkg-key-removal", "v1", withInit("key removal test"))
 			Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
 			waitForReady(env.Ctx, pr)
-			waitForPRRVisible(env.Ctx, env.Namespace, pr.Name)
 
 			By("pushing a Kptfile with two labels")
 			updatePRRResources(env.Ctx, env.Namespace, pr.Name, map[string]string{
