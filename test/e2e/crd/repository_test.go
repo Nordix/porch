@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -102,27 +101,27 @@ var _ = Describe("Repository", Ordered, Label("infra"), func() {
 		}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 	})
 
-	It("should preserve packages after repo re-sync", func() {
+	It("should preserve packages after repo re-sync", NodeTimeout(15*time.Second), func(ctx SpecContext) {
 		By("creating and publishing a package")
 		pr := newPackageRevision(env.Namespace, porchTestRepo, "resync-pkg", "v1", withInit("resync test"))
-		Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())
-		waitForReady(env.Ctx, pr)
-		publishPackage(env.Ctx, pr)
+		Expect(k8sClient.Create(ctx, pr)).To(Succeed())
+		waitForReady(ctx, pr)
+		publishPackage(ctx, pr)
 
 		By("recording the published state")
-		Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
 		originalRevision := pr.Status.Revision
 		originalWorkspace := pr.Spec.WorkspaceName
 
 		By("triggering a repo re-sync")
-		triggerRepoSync(env.Ctx, env.Namespace, porchTestRepo)
+		triggerRepoSync(ctx, env.Namespace, porchTestRepo)
 
 		By("waiting for sync to complete")
-		waitForRepoReady(env.Ctx, env.Namespace, porchTestRepo)
+		waitForRepoReady(ctx, env.Namespace, porchTestRepo)
 
 		By("verifying the package still exists with correct metadata")
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
 			g.Expect(pr.Status.Revision).To(Equal(originalRevision))
 			g.Expect(pr.Spec.WorkspaceName).To(Equal(originalWorkspace))
 			g.Expect(pr.Spec.Lifecycle).To(Equal(porchv1alpha2.PackageRevisionLifecyclePublished))
@@ -210,7 +209,7 @@ var _ = Describe("Repository", Ordered, Label("infra"), func() {
 		secretName := repoName + "-auth"
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: env.Namespace},
-			Immutable:  ptr.To(true),
+			Immutable:  new(true),
 			Data:       map[string][]byte{"username": []byte(giteaUser), "password": []byte(giteaPassword)},
 			Type:       corev1.SecretTypeBasicAuth,
 		}

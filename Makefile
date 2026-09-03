@@ -71,6 +71,7 @@ include make/go.mk           # fmt, vet, lint, fix-headers, fix-all
 include make/testing.mk      # test, unit, unit-clean, vulncheck, test-e2e*
 include make/security.mk     # gosec, gosec-sarif
 include make/mocks.mk        # generate-mocks, clean-mocks
+include make/work.mk         # go.work, clean-work
 
 .DEFAULT_GOAL := help
 
@@ -90,3 +91,11 @@ dev: build check ## Full development cycle (build + check)
 
 .PHONY: quick-test
 quick-test: fmt vet test ## Quick development test cycle
+
+.PHONY: check-versions
+check-versions: ## Check version consistency between source files and docs/config.toml
+	@$(CURDIR)/scripts/util/check-versions.sh
+
+.PHONY: check-versions-fix
+check-versions-fix: ## Auto-fix all version mismatches (Go, kpt, kind, k8s) in docs/config.toml
+	@$(CURDIR)/scripts/util/check-versions.sh --fix

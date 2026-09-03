@@ -37,6 +37,7 @@ const (
 	defaultKRMImagePrefix = "ghcr.io/kptdev/krm-functions-catalog/"
 	setImageFunction      = "set-image"
 	starlarkFunction      = "starlark"
+	testImageName         = "test-image"
 )
 
 func getFunctionConfigStore(binaryDir string) *functionconfigs.FunctionConfigStore {

@@ -5,7 +5,7 @@
 # Only set defaults if variables are not already exported from Makefile.
 # .env entries do not override variables already set in the environment.
 
-PORCHDIR=${PORCHDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
+PORCHDIR=${PORCHDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 
 if [[ -f "${PORCHDIR}/.env" ]]; then
   _env_trim() {
@@ -41,6 +41,7 @@ TEST_GIT_SERVER_IMAGE=${TEST_GIT_SERVER_IMAGE:-test-git-server}
 SKIP_IMG_BUILD=${SKIP_IMG_BUILD:-false}
 SKIP_PORCHSERVER_BUILD=${SKIP_PORCHSERVER_BUILD:-false}
 SKIP_CONTROLLER_BUILD=${SKIP_CONTROLLER_BUILD:-false}
+SKIP_FUNCTION_RUNNER_BUILD=${SKIP_FUNCTION_RUNNER_BUILD:-false}
 
 KIND_CONTEXT_NAME=${KIND_CONTEXT_NAME:-porch-test}
 ENABLED_RECONCILERS=${ENABLED_RECONCILERS:-"packagevariants,packagevariantsets,repositories"}
