@@ -13,13 +13,13 @@ Webhooks validate resources at admission time, before they're written to Kuberne
 
 When creating a PackageRevision, the webhook validates:
 
-**Repository** must exist in the same namespace and have the `porch.kpt.dev/v1alpha2-migration: "true"` annotation. If missing, you'll see `Repository {namespace}/{name} not found` or `not enabled for v1alpha2`. Add the annotation to the Repository resource.
+**Repository** must exist in the same namespace and have the `porch.kpt.dev/v1alpha2-migration: "true"` annotation. If missing, you'll see the `Repository {namespace}/{name} not found` or `not enabled for v1alpha2` error messages. Add the annotation to the Repository resource.
 
 **Lifecycle** must be `Draft` or `Proposed`. Use `Draft` for work-in-progress or `Proposed` to request approval immediately. Creating directly as `Published` or `DeletionProposed` is rejected.
 
 **Source** must specify exactly one of: `init` (new), `cloneFrom` (clone), `copyFrom` (copy), or `upgrade` (upgrade). You'll get an error if none or multiple are set.
 
-**Workspace** must be unique within the package. If `workspace 'drafting' already exists for package 'example-package'`, choose a different name or delete the existing draft.
+**Workspace** must be unique within the package. If you receive the `workspace 'drafting' already exists for package 'example-package'` error message, choose a different name or delete the existing draft.
 
 ### UPDATE
 
@@ -41,7 +41,7 @@ When creating a PackageRevision, the webhook validates:
 
 ### CREATE/UPDATE
 
-**Git conflict detection** prevents multiple repositories from claiming the same git location (URL + branch + directory). If you see `Repository conflict with existing repository: {namespace}/{name}`, use a different branch, directory, or namespace.
+**Git conflict detection** prevents multiple repositories from claiming the same git location (URL + branch + directory). If you see the `Repository conflict with existing repository: {namespace}/{name}` error message, use a different branch, directory, or namespace.
 
 **Directory nesting** is also prevented. A root directory conflicts with any subdirectory under the same URL+branch, and subdirectories cannot be nested under each other. For example, you cannot have both `/` and `/foo` or both `/foo` and `/foo/bar` for the same URL+branch combination.
 
