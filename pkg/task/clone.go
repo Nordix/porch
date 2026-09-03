@@ -47,6 +47,7 @@ type clonePackageMutation struct {
 	repoOperationRetryAttempts int
 }
 
+// comment to rerun flaky check
 func (m *clonePackageMutation) apply(ctx context.Context, resources repository.PackageResources) (repository.PackageResources, *porchapi.TaskResult, error) {
 	ctx, span := tracer.Start(ctx, "clonePackageMutation::apply", trace.WithAttributes())
 	defer span.End()
