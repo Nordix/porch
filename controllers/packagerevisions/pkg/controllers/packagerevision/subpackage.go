@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
+	kptfileko "github.com/kptdev/krm-functions-sdk/go/fn/kptfileko"
 	porchapi "github.com/kptdev/porch/api/porch"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	pkgerrors "github.com/pkg/errors"
@@ -92,6 +93,19 @@ func (r *PackageRevisionReconciler) insertSubpackageResourcesInDraftResources(ct
 
 	for subpackageResourceKey, subpackageResourceValue := range subpackageResources {
 		parentResources[subpackageDir+"/"+subpackageResourceKey] = subpackageResourceValue
+	}
+
+	// Clear the status field from the cloned subpackage's Kptfile, matching v1alpha1 behaviour.
+	subpkgKptfileKey := subpackageDir + "/" + kptfilev1.KptFileName
+	if kf, err := kptfileko.NewFromPackage(map[string]string{
+		kptfilev1.KptFileName: parentResources[subpkgKptfileKey],
+	}); err == nil {
+		if err := kf.ClearStatus(); err == nil {
+			tmp := map[string]string{kptfilev1.KptFileName: ""}
+			if err := kf.WriteToPackage(tmp); err == nil {
+				parentResources[subpkgKptfileKey] = tmp[kptfilev1.KptFileName]
+			}
+		}
 	}
 
 	logger.V(1).Info("cloned subpackage resources into parent at ", "subpackageDir", subpackageDir)
