@@ -390,7 +390,7 @@ func makePackageRevision(oldLocal *porchapiv1alpha1.PackageRevision, workspace s
 	}
 }
 
-func (r *runner) findPackageRevision(prName string) *porchapiv1alpha1.PackageRevision {
+func (r *runner) findPackageRevision(prName string) (*porchapiv1alpha1.PackageRevision, error) {
 	// Use GET instead of searching through cached list
 	if r.discover == "" {
 		pr := &porchapiv1alpha1.PackageRevision{}
@@ -413,7 +413,7 @@ func (r *runner) findPackageRevision(prName string) *porchapiv1alpha1.PackageRev
 	return nil, nil
 }
 
-func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *porchapiv1alpha1.PackageRevision {
+func (r *runner) findPackageRevisionForRef(name, repo string, revision int) (*porchapiv1alpha1.PackageRevision, error) {
 	// Use List with server-side filtering by package name, repo, and revision
 	if r.discover == "" {
 		list := &porchapiv1alpha1.PackageRevisionList{}
@@ -464,7 +464,7 @@ func (r *runner) findPackageRevisionForRef(name, repo string, revision int) *por
 	return nil, nil
 }
 
-func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapiv1alpha1.PackageRevision {
+func (r *runner) findLatestPackageRevisionForRef(name, repo string) (*porchapiv1alpha1.PackageRevision, error) {
 	// Discovery mode always uses cached list
 	if r.discover != "" {
 		latest := 0
@@ -517,7 +517,7 @@ func (r *runner) findLatestPackageRevisionForRef(name, repo string) *porchapiv1a
 	return output, nil
 }
 
-func (r *runner) findPackageRevisionFromUpstream(upstream *kptfileapi.Upstream) (*porchapiv1alpha1.PackageRevision, error) {
+func (r *runner) findPackageRevisionFromUpstream(upstream *kptfilev1.Upstream) (*porchapiv1alpha1.PackageRevision, error) {
 	upstreamRepo, upstreamPkg, upstreamRef, isManaged, err := util.GetRepoPackageRefFromUpstream(upstream)
 
 	if err != nil {
@@ -580,13 +580,17 @@ func (r *runner) findPackageRevisionFromUpstream(upstream *kptfileapi.Upstream) 
 	return foundPR, nil
 }
 
-func (r *runner) findUpstreamName(pr *porchapiv1alpha1.PackageRevision) string {
+func (r *runner) findUpstreamName(pr *porchapiv1alpha1.PackageRevision) (string, error) {
 	switch pr.Spec.Tasks[0].Type {
 	case porchapiv1alpha1.TaskTypeClone:
-		return pr.Spec.Tasks[0].Clone.Upstream.UpstreamRef.Name
+		return pr.Spec.Tasks[0].Clone.Upstream.UpstreamRef.Name, nil
 	case porchapiv1alpha1.TaskTypeEdit:
-		if n := r.findEditOrigin(pr); n != "" {
-			return n
+		n, err := r.findEditOrigin(pr)
+		if err != nil {
+			return "", err
+		}
+		if n != "" {
+			return n, nil
 		}
 		if pr.Status.UpstreamLock != nil {
 			if err := r.listPackageRevisions(); err != nil {
@@ -596,15 +600,15 @@ func (r *runner) findUpstreamName(pr *porchapiv1alpha1.PackageRevision) string {
 				return up.Name, nil
 			}
 		}
-		return ""
+		return "", nil
 	case porchapiv1alpha1.TaskTypeUpgrade:
-		return pr.Spec.Tasks[0].Upgrade.NewUpstream.Name
+		return pr.Spec.Tasks[0].Upgrade.NewUpstream.Name, nil
 	default:
 		return "", nil
 	}
 }
 
-func (r *runner) findEditOrigin(currentPr *porchapiv1alpha1.PackageRevision) string {
+func (r *runner) findEditOrigin(currentPr *porchapiv1alpha1.PackageRevision) (string, error) {
 	pr := currentPr
 	for pr != nil && pr.Spec.Tasks[0].Type == porchapiv1alpha1.TaskTypeEdit {
 		sourceName := pr.Spec.Tasks[0].Edit.Source.Name

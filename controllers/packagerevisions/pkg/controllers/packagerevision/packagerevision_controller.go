@@ -102,6 +102,10 @@ func (r *PackageRevisionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return resultOrDefault(result), nil
 	}
 
+	if result, err := r.reconcilePackageMetadata(ctx, &pr, repoKey); err != nil || result != nil {
+		return resultOrDefault(result), nil
+	}
+
 	if result, err := r.reconcileSubpackageOperation(ctx, &pr, repoKey); err != nil || result != nil {
 		return resultOrDefault(result), nil
 	}
@@ -298,6 +302,8 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 	// Set Rendered=Unknown via the render field manager.
 	r.updateRenderStatus(ctx, pr, "", "", renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"))
 	r.ensureLatestRevisionLabel(ctx, pr)
+
+	telemetry.RecordControllerOperation(telemetry.ResourcePackageRevision, "CREATE", time.Now())
 
 	result := ctrl.Result{Requeue: true}
 	return &result, nil
