@@ -781,3 +781,22 @@ func TestV1Alpha2PreRunEInvalidDiscover(t *testing.T) {
 	err := r.preRunE(cmd, []string{})
 	assert.ErrorContains(t, err, "argument for 'discover' must be one of")
 }
+
+func TestV1Alpha2SubpackageUpgradeValidateArgs(t *testing.T) {
+	t.Run("subpackage dir allows missing workspace", func(t *testing.T) {
+		r := &v1alpha2Runner{subpackageDir: "my-subpkg", revision: 0, strategy: "resource-merge"}
+		assert.NoError(t, r.validateUpgradeArgs([]string{"parent-pr"}))
+	})
+
+	t.Run("invalid subpackage dir rejected", func(t *testing.T) {
+		r := &v1alpha2Runner{subpackageDir: "../bad"}
+		err := r.validateUpgradeArgs([]string{"parent-pr"})
+		assert.ErrorContains(t, err, "invalid --subpackage-dir")
+	})
+
+	t.Run("no subpackage dir still requires workspace", func(t *testing.T) {
+		r := &v1alpha2Runner{revision: 1}
+		err := r.validateUpgradeArgs([]string{"parent-pr"})
+		assert.ErrorContains(t, err, "workspace is required")
+	})
+}
