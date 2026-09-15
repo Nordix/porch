@@ -105,7 +105,7 @@ func (r *PackageRevisionReconciler) cloneFromGit(ctx context.Context, pr *porchv
 // getCloneFrom returns the upstream package for a clone in the case of a source clone or a subpackage
 // operation clone
 func (r *PackageRevisionReconciler) getCloneFrom(pr *porchv1alpha2.PackageRevision) *porchv1alpha2.UpstreamPackage {
-	if pr.Spec.SubpackageOperation != nil && pr.Spec.SubpackageOperation.CloneFrom != nil {
+	if pr.Status.CreationSource != "" && pr.Spec.SubpackageOperation != nil && pr.Spec.SubpackageOperation.CloneFrom != nil {
 		return pr.Spec.SubpackageOperation.CloneFrom
 	}
 	return pr.Spec.Source.CloneFrom
