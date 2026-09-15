@@ -275,9 +275,104 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			}
 		})
 	})
+	Context("modify, rename and remove subpackages via PRR", func() {
+		It("should persist modifications, handle rename, and reject upgrade of removed subpackage", func() {
+			const (
+				subpackageDir1   = "my-subpackage-1"
+				subpackageDir2   = "my-subpackage-2"
+				subpackageDir3   = "my-subpackage-3"
+				renamedSubpkgDir = "renamed-subpackage"
+			)
+			repo := "subpkg-modify-rename-remove"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
+
+			cloneePR1V1 := createSubpkgPR(env, repo, "clonee-pkg-1", "v1")
+			publishPackage(env.Ctx, cloneePR1V1)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR1V1)
+			cloneePR1V2 := createSubpkgCopy(env, repo, cloneePR1V1, "v2")
+			publishPackage(env.Ctx, cloneePR1V2)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR1V2)
+
+			cloneePR2V1 := createSubpkgPR(env, repo, "clonee-pkg-2", "v1")
+			publishPackage(env.Ctx, cloneePR2V1)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR2V1)
+			cloneePR2V2 := createSubpkgCopy(env, repo, cloneePR2V1, "v2")
+			publishPackage(env.Ctx, cloneePR2V2)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR2V2)
+
+			cloneePR3V1 := createSubpkgPR(env, repo, "clonee-pkg-3", "v1")
+			publishPackage(env.Ctx, cloneePR3V1)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR3V1)
+			cloneePR3V2 := createSubpkgCopy(env, repo, cloneePR3V1, "v2")
+			publishPackage(env.Ctx, cloneePR3V2)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR3V2)
+
+			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			DeferCleanup(deletePackage, env.Ctx, parentPR)
+
+			By("cloning 3 subpackages into parent")
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR1V1.Name, subpackageDir1)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR2V1.Name, subpackageDir2)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR3V1.Name, subpackageDir3)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+			Expect(resources).To(HaveKey(subpackageDir1 + "/Kptfile"))
+			Expect(resources).To(HaveKey(subpackageDir2 + "/Kptfile"))
+			Expect(resources).To(HaveKey(subpackageDir3 + "/Kptfile"))
+
+			By("adding a file to subpackage-1, renaming subpackage-2, removing subpackage-3 via PRR")
+			resources[subpackageDir1+"/extra.yaml"] = "# extra"
+			for k, v := range resources {
+				if strings.HasPrefix(k, subpackageDir2+"/") {
+					resources[renamedSubpkgDir+"/"+strings.TrimPrefix(k, subpackageDir2+"/")] = v
+					delete(resources, k)
+				}
+			}
+			for k := range resources {
+				if strings.HasPrefix(k, subpackageDir3+"/") {
+					delete(resources, k)
+				}
+			}
+			updatePRRResources(env.Ctx, env.Namespace, parentPR.Name, resources)
+			waitForReady(env.Ctx, parentPR)
+
+			By("verifying modifications persisted")
+			resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+			Expect(resources).To(HaveKey(subpackageDir1 + "/extra.yaml"))
+			Expect(resources).To(HaveKey(renamedSubpkgDir + "/Kptfile"))
+			Expect(resources).NotTo(HaveKey(subpackageDir2 + "/Kptfile"))
+			Expect(resources).NotTo(HaveKey(subpackageDir3 + "/Kptfile"))
+
+			By("upgrading subpackage-1 succeeds")
+			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePR1V1.Name, cloneePR1V2.Name, subpackageDir1)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			By("upgrading renamed subpackage succeeds")
+			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePR2V1.Name, cloneePR2V2.Name, renamedSubpkgDir)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			By("upgrading removed subpackage-2 fails")
+			err := upgradeSubpackage(env.Ctx, parentPR, cloneePR2V1.Name, cloneePR2V2.Name, subpackageDir2)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("does not have a subpackage at"))
+
+			By("upgrading removed subpackage-3 fails")
+			err = upgradeSubpackage(env.Ctx, parentPR, cloneePR3V1.Name, cloneePR3V2.Name, subpackageDir3)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("does not have a subpackage at"))
+		})
+	})
+
 })
 
-// simpleSubpackageCloneAndUpgrade runs the full clone→upgrade→copy→upgrade scenario
 // for a single subpackage in the given dir.
 func simpleSubpackageCloneAndUpgrade(env *testEnv, repo, subpackageDir string) {
 	createGiteaRepo(repo)
@@ -311,6 +406,7 @@ func simpleSubpackageCloneAndUpgrade(env *testEnv, repo, subpackageDir string) {
 	resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
 	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
 	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v1"))
+	Expect(resources[subpackageDir+"/Kptfile"]).NotTo(ContainSubstring("status:"))
 
 	By("upgrading subpackage from v1 to v2")
 	Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir)).To(Succeed())
@@ -372,8 +468,9 @@ func upgradeSubpackage(ctx interface{ Done() <-chan struct{} }, pr *porchv1alpha
 	pr.Spec.SubpackageOperation = &porchv1alpha2.SubpackageOperation{
 		SubpackageDir: subpackageDir,
 		Upgrade: &porchv1alpha2.PackageUpgradeSpec{
-			OldUpstream: porchv1alpha2.PackageRevisionRef{Name: oldUpstreamName},
-			NewUpstream: porchv1alpha2.PackageRevisionRef{Name: newUpstreamName},
+			OldUpstream:    porchv1alpha2.PackageRevisionRef{Name: oldUpstreamName},
+			NewUpstream:    porchv1alpha2.PackageRevisionRef{Name: newUpstreamName},
+			CurrentPackage: porchv1alpha2.PackageRevisionRef{Name: pr.Name},
 		},
 	}
 	return k8sClient.Update(sharedCtx, pr)
