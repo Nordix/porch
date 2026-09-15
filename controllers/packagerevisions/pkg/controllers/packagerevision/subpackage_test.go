@@ -167,6 +167,28 @@ func TestInsertSubpackageResourcesSuccess(t *testing.T) {
 	assert.Contains(t, result["my-subpkg/Kptfile"], "name: my-subpkg")
 }
 
+func TestInsertSubpackageResourcesConflictExactPath(t *testing.T) {
+	r := &PackageRevisionReconciler{}
+	pr := &porchv1alpha2.PackageRevision{
+		Spec: porchv1alpha2.PackageRevisionSpec{
+			SubpackageOperation: &porchv1alpha2.SubpackageOperation{
+				SubpackageDir: "my-subpkg",
+				CloneFrom:     &porchv1alpha2.UpstreamPackage{},
+			},
+		},
+	}
+
+	parentResources := map[string]string{
+		"Kptfile":   "parent-kptfile",
+		"my-subpkg": "a file at exactly the subpackage dir path",
+	}
+	subpkgResources := map[string]string{"Kptfile": "subpkg-kptfile"}
+
+	_, err := r.insertSubpackageResourcesInDraftResources(context.Background(), pr, parentResources, subpkgResources)
+	assert.ErrorContains(t, err, "cannot clone subpackage into parent")
+	assert.ErrorContains(t, err, "my-subpkg")
+}
+
 func TestInsertSubpackageResourcesConflict(t *testing.T) {
 	r := &PackageRevisionReconciler{}
 	pr := &porchv1alpha2.PackageRevision{
