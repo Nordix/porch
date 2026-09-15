@@ -144,13 +144,13 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 	content, err := r.ContentCache.GetPackageContent(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 	if err != nil {
 		log.Error(err, "failed to get package content")
-		r.updateStatus(ctx, pr, nil, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		r.updateStatus(ctx, pr, nil, "", "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
 		return ctrl.Result{}, nil
 	}
 
 	current := content.Lifecycle(ctx)
 	if current == desired {
-		r.updateStatus(ctx, pr, content, "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
+		r.updateStatus(ctx, pr, content, "", "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
 		if porchv1alpha2.LifecycleIsPublished(porchv1alpha2.PackageRevisionLifecycle(desired)) {
 			r.updateLatestRevisionLabels(ctx, pr)
 		}
@@ -162,7 +162,7 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 		desiredLC == porchv1alpha2.PackageRevisionLifecycleProposed {
 		if err := r.validateRenderStateBeforePublish(ctx, pr); err != nil {
 			log.Info("lifecycle transition blocked by render guard", "reason", err.Error())
-			r.updateStatus(ctx, pr, content, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, err.Error()))
+			r.updateStatus(ctx, pr, content, "", "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, err.Error()))
 			return ctrl.Result{Requeue: true}, nil
 		}
 	}
@@ -174,11 +174,11 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 	telemetry.RecordControllerOperation(telemetry.ResourcePackageRevision, "UPDATE", start)
 	if err != nil {
 		log.Error(err, "lifecycle transition failed")
-		r.updateStatus(ctx, pr, nil, "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		r.updateStatus(ctx, pr, nil, "", "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	r.updateStatus(ctx, pr, updated, "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
+	r.updateStatus(ctx, pr, updated, "", "", readyCondition(pr.Generation, metav1.ConditionTrue, porchv1alpha2.ReasonReady, ""))
 
 	if porchv1alpha2.LifecycleIsPublished(porchv1alpha2.PackageRevisionLifecycle(desired)) {
 		// Requeue so the informer cache indexes the new status.revision
@@ -236,16 +236,18 @@ func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Con
 
 	kptFile, err := kptfileko.NewFromPackage(subpackageResources)
 	if err != nil {
-		return nil, pkgerrors.Wrap(err, "failed to parse subpackage Kptfile")
+		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, pkgerrors.Wrap(err, "failed to parse subpackage Kptfile"))
 	}
 
 	subpackageName, err := porchapi.ComposeSubpkgObjName(pr.Spec.SubpackageOperation.SubpackageDir)
 	if err != nil {
-		return nil, err
+		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, pkgerrors.Wrap(err, "failed to compose subpackage name for subpackage"))
 	}
 
 	if err := kptFile.SetName(subpackageName); err != nil {
-		return nil, pkgerrors.Wrapf(err, "failed to write package name %q to subpackage Kptfile", path.Base(pr.Spec.SubpackageOperation.SubpackageDir))
+		return nil,
+			r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType,
+				pkgerrors.Wrapf(err, "failed to write package name %q to subpackage Kptfile", path.Base(pr.Spec.SubpackageOperation.SubpackageDir)))
 	}
 
 	if err := kptFile.WriteToPackage(subpackageResources); err != nil {
@@ -262,7 +264,7 @@ func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Con
 
 	parentResources, err = r.upsertSubpackageResourcesInDraftResources(ctx, pr, parentResources, subpackageResources)
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "failed to upsert subpackage resources into parent resources")
+		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, pkgerrors.Wrapf(err, "failed to upsert subpackage resources into parent resources"))
 	}
 
 	draft, err := r.ContentCache.CreateDraftFromExisting(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
@@ -298,7 +300,7 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 		log.Error(err, "failed to read back package content after source execution")
 	}
 
-	r.updateStatus(ctx, pr, content, operationType,
+	r.updateStatus(ctx, pr, content, operationType, r.getSubpackageOperationHash(pr),
 		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"))
 	// Set Rendered=Unknown via the render field manager.
 	r.updateRenderStatus(ctx, pr, "", "",

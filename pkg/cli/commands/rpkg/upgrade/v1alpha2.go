@@ -143,20 +143,12 @@ func (r *v1alpha2Runner) runE(cmd *cobra.Command, args []string) error {
 
 	if r.subpackageDir != "" {
 		key := client.ObjectKeyFromObject(pr)
-		var lastErr error
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			if err := r.client.Get(r.ctx, key, pr); err != nil {
-				lastErr = err
 				return err
 			}
-			var err error
-			err = r.doSubpackageUpgrade(pr)
-			lastErr = err
-			return err
+			return r.doSubpackageUpgrade(pr)
 		})
-		if err == nil && lastErr != nil {
-			err = lastErr
-		}
 		if err != nil {
 			return errors.E(op, err)
 		}

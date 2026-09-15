@@ -57,7 +57,7 @@ func (r *PackageRevisionReconciler) applySubpackageOperation(ctx context.Context
 	}
 }
 
-// upsertSubpackageResourcesInDraft updates the resoruces of the package revision draft with a clone or an upgrade of an independent subpackage.
+// upsertSubpackageResourcesInDraft updates the resources of the package revision draft with a clone or an upgrade of an independent subpackage.
 func (r *PackageRevisionReconciler) upsertSubpackageResourcesInDraftResources(ctx context.Context, pr *porchv1alpha2.PackageRevision, parentResources, subpackageResources map[string]string) (map[string]string, error) {
 	if r.shouldSkipSubpackageOperation(pr) {
 		return parentResources, nil
@@ -69,7 +69,7 @@ func (r *PackageRevisionReconciler) upsertSubpackageResourcesInDraftResources(ct
 	case pr.Spec.SubpackageOperation.Upgrade != nil:
 		return r.upgradeSubpackageResourcesInDraftResources(ctx, pr, parentResources, subpackageResources)
 	default:
-		return nil, pkgerrors.Errorf("source has no fields set")
+		return nil, pkgerrors.Errorf("subpackageOperation has no fields set")
 	}
 }
 
@@ -86,7 +86,7 @@ func (r *PackageRevisionReconciler) insertSubpackageResourcesInDraftResources(ct
 			return nil, fmt.Errorf("cannot clone subpackage into another subpackage, parent already has a subpackage at %q (requested subpackageDir: %q)", parentSubpackageDir, subpackageDir)
 		}
 
-		if strings.HasPrefix(resourceKey, subpackageDir+"/") {
+		if resourceKey == subpackageDir || strings.HasPrefix(resourceKey, subpackageDir+"/") {
 			return nil, fmt.Errorf("cannot clone subpackage into parent, parent already has content at %q", subpackageDir)
 		}
 	}
