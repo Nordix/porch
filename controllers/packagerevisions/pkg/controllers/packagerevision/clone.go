@@ -22,7 +22,6 @@ import (
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/lib/kptops"
 	porchapi "github.com/kptdev/porch/api/porch"
-	"github.com/kptdev/porch/api/porch/v1alpha2"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/pkg/repository"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -106,7 +105,7 @@ func (r *PackageRevisionReconciler) cloneFromGit(ctx context.Context, pr *porchv
 
 // getCloneFrom returns the upstream package for a clone. For subpackage clones it reads from
 // SubpackageOperation; for top-level clones it reads from Source.
-func (r *PackageRevisionReconciler) getCloneFrom(pr *porchv1alpha2.PackageRevision) *v1alpha2.UpstreamPackage {
+func (r *PackageRevisionReconciler) getCloneFrom(pr *porchv1alpha2.PackageRevision) *porchv1alpha2.UpstreamPackage {
 	if pr.Spec.SubpackageOperation != nil && pr.Spec.SubpackageOperation.CloneFrom != nil {
 		return pr.Spec.SubpackageOperation.CloneFrom
 	}
