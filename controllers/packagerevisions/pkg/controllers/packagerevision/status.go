@@ -49,7 +49,7 @@ func (r *PackageRevisionReconciler) updateStatus(
 		ObservedGeneration:          pr.Generation,
 		Conditions:                  conditions,
 		CreationSource:              creationSource,
-		LastSubpackageOperationHash: r.GetSubpackageOperationHash(pr),
+		LastSubpackageOperationHash: r.getSubpackageOperationHash(pr),
 	}
 
 	if content != nil {

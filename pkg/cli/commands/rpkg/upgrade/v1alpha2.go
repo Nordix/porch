@@ -27,7 +27,6 @@ import (
 	porchapiv1alpha1 "github.com/kptdev/porch/api/porch/v1alpha1"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	cliutils "github.com/kptdev/porch/internal/cliutils"
-	"github.com/kptdev/porch/pkg/repository"
 	pkgutil "github.com/kptdev/porch/pkg/util"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -253,10 +252,6 @@ func (r *v1alpha2Runner) doSubpackageUpgrade(parentPR *porchv1alpha2.PackageRevi
 func (r *v1alpha2Runner) findPackageRevisionFromUpstreamV2(up *kptfilev1.Upstream) (*porchv1alpha2.PackageRevision, error) {
 	if up == nil || up.Git == nil || up.Git.Repo == "" || up.Git.Directory == "" || up.Git.Ref == "" {
 		return nil, pkgerrors.Errorf("could not find upstream references in upstream read from subpackage kptfile")
-	}
-	rev := repository.Revision2Int(up.Git.Ref)
-	if rev < 1 {
-		return nil, pkgerrors.Errorf("invalid git ref %q (expected vN) for upstream %q", up.Git.Ref, up.Git.Repo)
 	}
 	for i := range r.prs {
 		pr := &r.prs[i]
