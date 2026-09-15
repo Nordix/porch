@@ -2004,7 +2004,7 @@ func TestReconcileSubpackageOperationSkippedWhenAlreadyExecuted(t *testing.T) {
 		},
 	}
 	// Pre-set the hash so the operation is considered already executed.
-	pr.Status.LastSubpackageOperationHash = r.getSubpackageOperationHash(pr)
+	pr.Status.LastSubpackageOperationHash = r.GetSubpackageOperationHash(pr)
 
 	result, err := r.reconcileSubpackageOperation(t.Context(), pr, testRepoKey)
 	assert.NoError(t, err)
