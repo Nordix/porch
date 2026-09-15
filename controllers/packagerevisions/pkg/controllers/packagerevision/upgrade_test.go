@@ -51,9 +51,6 @@ func TestGetUpgradeFromSubpackageOperation(t *testing.T) {
 				},
 			},
 		},
-		Status: porchv1alpha2.PackageRevisionStatus{
-			CreationSource: "init",
-		},
 	}
 
 	result := r.getUpgrade(pr)
@@ -62,6 +59,7 @@ func TestGetUpgradeFromSubpackageOperation(t *testing.T) {
 }
 
 func TestGetUpgradeFromSubpackageWithoutCreationSource(t *testing.T) {
+	// SubpackageOperation.Upgrade takes precedence regardless of CreationSource.
 	r := &PackageRevisionReconciler{}
 	pr := &porchv1alpha2.PackageRevision{
 		Spec: porchv1alpha2.PackageRevisionSpec{
@@ -82,7 +80,7 @@ func TestGetUpgradeFromSubpackageWithoutCreationSource(t *testing.T) {
 	}
 
 	result := r.getUpgrade(pr)
-	assert.Equal(t, "source-old", result.OldUpstream.Name)
+	assert.Equal(t, "subpkg-old", result.OldUpstream.Name)
 }
 
 func TestGetPackageRevisionForUpgradeSource(t *testing.T) {
@@ -134,7 +132,6 @@ func TestGetPackageRevisionForUpgradeSubpackage(t *testing.T) {
 				},
 			},
 		},
-		Status: porchv1alpha2.PackageRevisionStatus{CreationSource: "init"},
 	}
 
 	result, err := r.getPackageRevisionForUpgrade(context.Background(), pr)
@@ -175,9 +172,9 @@ func TestGetPackageResourcesForUpgradeSubpackagePath(t *testing.T) {
 
 	mockContent := mockrepository.NewMockPackageContent(t)
 	mockContent.EXPECT().GetResourceContents(ctx).Return(map[string]string{
-		"Kptfile":                "parent-kptfile",
-		"parent.yaml":            "parent-resource",
-		"my-subpkg/Kptfile":      "subpkg-kptfile",
+		"Kptfile":                 "parent-kptfile",
+		"parent.yaml":             "parent-resource",
+		"my-subpkg/Kptfile":       "subpkg-kptfile",
 		"my-subpkg/resource.yaml": "subpkg-resource",
 	}, nil)
 
@@ -198,7 +195,6 @@ func TestGetPackageResourcesForUpgradeSubpackagePath(t *testing.T) {
 				},
 			},
 		},
-		Status: porchv1alpha2.PackageRevisionStatus{CreationSource: "init"},
 	}
 
 	resources, err := r.getPackageResourcesForUpgrade(ctx, pr)
@@ -234,7 +230,6 @@ func TestGetPackageResourcesForUpgradeSubpackageNotFound(t *testing.T) {
 				},
 			},
 		},
-		Status: porchv1alpha2.PackageRevisionStatus{CreationSource: "init"},
 	}
 
 	_, err := r.getPackageResourcesForUpgrade(ctx, pr)

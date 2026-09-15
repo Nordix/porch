@@ -125,6 +125,18 @@ func TestGetSubpackageOperationHashDifferentForDifferentOps(t *testing.T) {
 	assert.NotEqual(t, r.getSubpackageOperationHash(pr1), r.getSubpackageOperationHash(pr2))
 }
 
+const minimalKptfile = `apiVersion: kpt.dev/v1
+kind: Kptfile
+metadata:
+  name: my-subpkg
+info:
+  description: test
+status:
+  conditions:
+  - type: Ready
+    status: "True"
+`
+
 func TestInsertSubpackageResourcesSuccess(t *testing.T) {
 	r := &PackageRevisionReconciler{}
 	pr := &porchv1alpha2.PackageRevision{
@@ -141,7 +153,7 @@ func TestInsertSubpackageResourcesSuccess(t *testing.T) {
 		"parent.yaml": "parent-content",
 	}
 	subpkgResources := map[string]string{
-		"Kptfile":       "subpkg-kptfile",
+		"Kptfile":       minimalKptfile,
 		"resource.yaml": "subpkg-resource",
 	}
 
@@ -149,8 +161,10 @@ func TestInsertSubpackageResourcesSuccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "parent-kptfile", result["Kptfile"])
 	assert.Equal(t, "parent-content", result["parent.yaml"])
-	assert.Equal(t, "subpkg-kptfile", result["my-subpkg/Kptfile"])
 	assert.Equal(t, "subpkg-resource", result["my-subpkg/resource.yaml"])
+	// Status should be cleared from the cloned subpackage Kptfile.
+	assert.NotContains(t, result["my-subpkg/Kptfile"], "status:")
+	assert.Contains(t, result["my-subpkg/Kptfile"], "name: my-subpkg")
 }
 
 func TestInsertSubpackageResourcesConflict(t *testing.T) {
