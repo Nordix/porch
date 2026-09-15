@@ -42,6 +42,45 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 		})
 	})
 
+	Context("identical subpackage operation repeated", func() {
+		It("should execute the operation only once when the same SubpackageOperation is applied twice", func() {
+			repo := "subpkg-idempotent"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
+
+			const subpackageDir = "my-subpackage"
+
+			cloneePR := createSubpkgPR(env, repo, "clonee-pkg", "v1")
+			publishPackage(env.Ctx, cloneePR)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR)
+
+			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			DeferCleanup(deletePackage, env.Ctx, parentPR)
+
+			By("cloning subpackage into parent (first time)")
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			By("verifying subpackage Kptfile is present after first clone")
+			resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+			Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
+			filesBefore := len(resources)
+
+			By("applying the identical SubpackageOperation a second time")
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			By("verifying resources are unchanged — operation was not re-executed")
+			resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+			Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
+			Expect(len(resources)).To(Equal(filesBefore))
+		})
+	})
+
 	Context("clone into root rejected", func() {
 		It("should reject cloning a subpackage into root", func() {
 			repo := "subpkg-clone-into-root"

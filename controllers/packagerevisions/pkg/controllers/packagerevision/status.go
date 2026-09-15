@@ -44,15 +44,21 @@ const (
 // updateStatus applies the PR-controller-owned status fields via SSA.
 // When content is non-nil and represents a published package, publish metadata
 // (revision, publishedBy, publishedAt) is included in the apply.
-func (r *PackageRevisionReconciler) updateStatus(ctx context.Context, pr *porchv1alpha2.PackageRevision, content repository.PackageContent, creationSource string, conditions ...metav1.Condition) {
+func (r *PackageRevisionReconciler) updateStatus(
+	ctx context.Context,
+	pr *porchv1alpha2.PackageRevision,
+	content repository.PackageContent,
+	creationSource string,
+	conditions ...metav1.Condition) {
 	if creationSource == "" {
 		creationSource = pr.Status.CreationSource
 	}
 
 	status := porchv1alpha2.PackageRevisionStatus{
-		ObservedGeneration: pr.Generation,
-		Conditions:         conditions,
-		CreationSource:     creationSource,
+		ObservedGeneration:          pr.Generation,
+		Conditions:                  conditions,
+		CreationSource:              creationSource,
+		LastSubpackageOperationHash: r.GetSubpackageOperationHash(pr),
 	}
 
 	if content != nil {

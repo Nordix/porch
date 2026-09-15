@@ -23,6 +23,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
+	porchapiv1alpha1 "github.com/kptdev/porch/api/porch/v1alpha1"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	mockclient "github.com/kptdev/porch/test/mockery/mocks/external/sigs.k8s.io/controller-runtime/pkg/client"
 	"github.com/spf13/cobra"
@@ -48,6 +50,16 @@ func createV1Alpha2Scheme() (*runtime.Scheme, error) {
 	return scheme, nil
 }
 
+func newUpgradeCmd() *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.Flags().Int("revision", 0, "")
+	cmd.Flags().String("workspace", "", "")
+	cmd.Flags().String("strategy", "", "")
+	cmd.Flags().String("discover", "", "")
+	cmd.Flags().String("subpackage-dir", "", "")
+	return cmd
+}
+
 func TestV1Alpha2PreRunE(t *testing.T) {
 	ns := "test-ns"
 	ctx := context.Background()
@@ -64,20 +76,40 @@ func TestV1Alpha2PreRunE(t *testing.T) {
 		client: fake.NewClientBuilder().WithScheme(scheme).Build(),
 	}
 
-	cmd := &cobra.Command{}
-	cmd.Flags().Int("revision", 1, "")
-	cmd.Flags().String("workspace", "v1", "")
-	cmd.Flags().String("strategy", "resource-merge", "")
-	cmd.Flags().String("discover", "", "")
+	cmd := newUpgradeCmd()
+	assert.NoError(t, cmd.Flags().Set("revision", "1"))
+	assert.NoError(t, cmd.Flags().Set("workspace", "v1"))
+	assert.NoError(t, cmd.Flags().Set("strategy", "resource-merge"))
 	err = r.preRunE(cmd, []string{"test-pkg"})
 
-	// preRunE should succeed (it just creates a client)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 	if r.client == nil {
 		t.Error("expected client to be set")
 	}
+}
+
+func TestV1Alpha2PreRunESubpackageDir(t *testing.T) {
+	ns := "test-ns"
+	scheme, err := createV1Alpha2Scheme()
+	if err != nil {
+		t.Fatalf("error creating scheme: %v", err)
+	}
+
+	r := &v1alpha2Runner{
+		ctx:    context.Background(),
+		cfg:    &genericclioptions.ConfigFlags{Namespace: &ns},
+		client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+
+	cmd := newUpgradeCmd()
+	assert.NoError(t, cmd.Flags().Set("subpackage-dir", "my-subpkg"))
+	assert.NoError(t, cmd.Flags().Set("strategy", "resource-merge"))
+
+	err = r.preRunE(cmd, []string{"parent-pr"})
+	assert.NoError(t, err)
+	assert.Equal(t, "my-subpkg", r.subpackageDir)
 }
 
 func makeV2Pr(ns, repo, pkg string, revision int, lc porchv1alpha2.PackageRevisionLifecycle, source *porchv1alpha2.PackageSource) *porchv1alpha2.PackageRevision {
@@ -799,4 +831,205 @@ func TestV1Alpha2SubpackageUpgradeValidateArgs(t *testing.T) {
 		err := r.validateUpgradeArgs([]string{"parent-pr"})
 		assert.ErrorContains(t, err, "workspace is required")
 	})
+}
+
+func TestV1Alpha2FindPackageRevisionFromUpstreamV2(t *testing.T) {
+	ns := "ns"
+	gitLock := &porchv1alpha2.GitLock{
+		Repo:      "https://github.com/user/repo",
+		Directory: "packages/pkg",
+		Ref:       "packages/pkg/v1",
+	}
+	upstreamPr := makeV2Pr(ns, "upstream-repo", "pkg", 1, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+	upstreamPr.Status.SelfLock = &porchv1alpha2.Locator{Git: gitLock}
+
+	r := &v1alpha2Runner{prs: []porchv1alpha2.PackageRevision{*upstreamPr}}
+
+	t.Run("nil upstream returns error", func(t *testing.T) {
+		_, err := r.findPackageRevisionFromUpstreamV2(nil)
+		assert.ErrorContains(t, err, "could not find upstream references")
+	})
+
+	t.Run("non-vN ref returns error", func(t *testing.T) {
+		_, err := r.findPackageRevisionFromUpstreamV2(&kptfilev1.Upstream{
+			Type: kptfilev1.GitOrigin,
+			Git:  &kptfilev1.Git{Repo: "https://github.com/user/repo", Directory: "packages/pkg", Ref: "main"},
+		})
+		assert.ErrorContains(t, err, "invalid git ref")
+	})
+
+	t.Run("matching selfLock finds PR", func(t *testing.T) {
+		pr, err := r.findPackageRevisionFromUpstreamV2(&kptfilev1.Upstream{
+			Type: kptfilev1.GitOrigin,
+			Git:  &kptfilev1.Git{Repo: gitLock.Repo, Directory: gitLock.Directory, Ref: gitLock.Ref},
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, upstreamPr.Name, pr.Name)
+	})
+
+	t.Run("no match returns error", func(t *testing.T) {
+		_, err := r.findPackageRevisionFromUpstreamV2(&kptfilev1.Upstream{
+			Type: kptfilev1.GitOrigin,
+			Git:  &kptfilev1.Git{Repo: "https://other.com/repo", Directory: "packages/pkg", Ref: "packages/pkg/v1"},
+		})
+		assert.ErrorContains(t, err, "could not find package revision")
+	})
+}
+
+func TestV1Alpha2DoSubpackageUpgrade(t *testing.T) {
+	const ns = "ns"
+	ctx := context.Background()
+
+	v2scheme, err := createV1Alpha2Scheme()
+	if err != nil {
+		t.Fatalf("error creating v1alpha2 scheme: %v", err)
+	}
+	if err := porchapiv1alpha1.AddToScheme(v2scheme); err != nil {
+		t.Fatalf("error adding v1alpha1 to scheme: %v", err)
+	}
+
+	gitLock := &porchv1alpha2.GitLock{
+		Repo:      "https://github.com/user/repo",
+		Directory: "packages/upstream",
+		Ref:       "packages/upstream/v1",
+	}
+	upstreamV1 := makeV2Pr(ns, "upstream-repo", "upstream", 1, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+	upstreamV1.Status.SelfLock = &porchv1alpha2.Locator{Git: gitLock}
+	upstreamV2 := makeV2Pr(ns, "upstream-repo", "upstream", 2, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+
+	subpkgKptfile := "apiVersion: kpt.dev/v1\nkind: Kptfile\nmetadata:\n  name: my-subpkg\nupstream:\n  type: git\n  git:\n    repo: https://github.com/user/repo\n    directory: packages/upstream\n    ref: packages/upstream/v1\n"
+
+	t.Run("parent not draft returns error", func(t *testing.T) {
+		parentPR := makeV2Pr(ns, "repo", "parent", 1, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+		r := &v1alpha2Runner{
+			ctx:           ctx,
+			cfg:           &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()},
+			client:        fake.NewClientBuilder().WithScheme(v2scheme).Build(),
+			subpackageDir: "my-subpkg",
+			prs:           []porchv1alpha2.PackageRevision{*upstreamV1, *upstreamV2},
+		}
+		err := r.doSubpackageUpgrade(parentPR)
+		assert.ErrorContains(t, err, "parent package must be in state draft")
+	})
+
+	t.Run("missing subpackage Kptfile returns error", func(t *testing.T) {
+		parentPR := makeV2Pr(ns, "repo", "parent", 0, porchv1alpha2.PackageRevisionLifecycleDraft, nil)
+		parentPR.Name = "repo.parent.draft"
+		resources := &porchapiv1alpha1.PackageRevisionResources{
+			ObjectMeta: metav1.ObjectMeta{Name: parentPR.Name, Namespace: ns},
+			Spec:       porchapiv1alpha1.PackageRevisionResourcesSpec{Resources: map[string]string{}},
+		}
+		c := fake.NewClientBuilder().WithScheme(v2scheme).WithObjects(parentPR, resources).Build()
+		r := &v1alpha2Runner{
+			ctx:           ctx,
+			cfg:           &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()},
+			client:        c,
+			subpackageDir: "my-subpkg",
+			prs:           []porchv1alpha2.PackageRevision{*upstreamV1, *upstreamV2},
+		}
+		err := r.doSubpackageUpgrade(parentPR)
+		assert.ErrorContains(t, err, "could not find Kptfile")
+	})
+
+	t.Run("subpackage with no upstream returns error", func(t *testing.T) {
+		parentPR := makeV2Pr(ns, "repo", "parent", 0, porchv1alpha2.PackageRevisionLifecycleDraft, nil)
+		parentPR.Name = "repo.parent.draft"
+		resources := &porchapiv1alpha1.PackageRevisionResources{
+			ObjectMeta: metav1.ObjectMeta{Name: parentPR.Name, Namespace: ns},
+			Spec: porchapiv1alpha1.PackageRevisionResourcesSpec{
+				Resources: map[string]string{
+					"my-subpkg/Kptfile": "apiVersion: kpt.dev/v1\nkind: Kptfile\nmetadata:\n  name: my-subpkg\n",
+				},
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(v2scheme).WithObjects(parentPR, resources).Build()
+		r := &v1alpha2Runner{
+			ctx:           ctx,
+			cfg:           &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()},
+			client:        c,
+			subpackageDir: "my-subpkg",
+			prs:           []porchv1alpha2.PackageRevision{*upstreamV1, *upstreamV2},
+		}
+		err := r.doSubpackageUpgrade(parentPR)
+		assert.ErrorContains(t, err, "has no upstream source")
+	})
+
+	t.Run("successful subpackage upgrade sets SubpackageOperation", func(t *testing.T) {
+		parentPR := makeV2Pr(ns, "repo", "parent", 0, porchv1alpha2.PackageRevisionLifecycleDraft, nil)
+		parentPR.Name = "repo.parent.draft"
+		resources := &porchapiv1alpha1.PackageRevisionResources{
+			ObjectMeta: metav1.ObjectMeta{Name: parentPR.Name, Namespace: ns},
+			Spec: porchapiv1alpha1.PackageRevisionResourcesSpec{
+				Resources: map[string]string{"my-subpkg/Kptfile": subpkgKptfile},
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(v2scheme).WithObjects(parentPR, resources).Build()
+		r := &v1alpha2Runner{
+			ctx:           ctx,
+			cfg:           &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()},
+			client:        c,
+			subpackageDir: "my-subpkg",
+			prs:           []porchv1alpha2.PackageRevision{*upstreamV1, *upstreamV2},
+		}
+		err := r.doSubpackageUpgrade(parentPR)
+		assert.NoError(t, err)
+		assert.NotNil(t, parentPR.Spec.SubpackageOperation)
+		assert.Equal(t, "my-subpkg", parentPR.Spec.SubpackageOperation.SubpackageDir)
+		assert.Equal(t, upstreamV1.Name, parentPR.Spec.SubpackageOperation.Upgrade.OldUpstream.Name)
+		assert.Equal(t, upstreamV2.Name, parentPR.Spec.SubpackageOperation.Upgrade.NewUpstream.Name)
+		assert.Equal(t, parentPR.Name, parentPR.Spec.SubpackageOperation.Upgrade.CurrentPackage.Name)
+	})
+}
+
+func TestV1Alpha2RunESubpackageUpgrade(t *testing.T) {
+	const ns = "ns"
+	ctx := context.Background()
+
+	v2scheme, err := createV1Alpha2Scheme()
+	if err != nil {
+		t.Fatalf("error creating scheme: %v", err)
+	}
+	if err := porchapiv1alpha1.AddToScheme(v2scheme); err != nil {
+		t.Fatalf("error adding v1alpha1 to scheme: %v", err)
+	}
+
+	gitLock := &porchv1alpha2.GitLock{
+		Repo:      "https://github.com/user/repo",
+		Directory: "packages/upstream",
+		Ref:       "packages/upstream/v1",
+	}
+	upstreamV1 := makeV2Pr(ns, "upstream-repo", "upstream", 1, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+	upstreamV1.Status.SelfLock = &porchv1alpha2.Locator{Git: gitLock}
+	upstreamV2 := makeV2Pr(ns, "upstream-repo", "upstream", 2, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+
+	parentPR := makeV2Pr(ns, "repo", "parent", 0, porchv1alpha2.PackageRevisionLifecycleDraft, nil)
+	parentPR.Name = "repo.parent.draft"
+
+	subpkgKptfile := "apiVersion: kpt.dev/v1\nkind: Kptfile\nmetadata:\n  name: my-subpkg\nupstream:\n  type: git\n  git:\n    repo: https://github.com/user/repo\n    directory: packages/upstream\n    ref: packages/upstream/v1\n"
+	resources := &porchapiv1alpha1.PackageRevisionResources{
+		ObjectMeta: metav1.ObjectMeta{Name: parentPR.Name, Namespace: ns},
+		Spec: porchapiv1alpha1.PackageRevisionResourcesSpec{
+			Resources: map[string]string{"my-subpkg/Kptfile": subpkgKptfile},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(v2scheme).WithObjects(parentPR, resources).Build()
+	prs := []porchv1alpha2.PackageRevision{*upstreamV1, *upstreamV2, *parentPR}
+
+	r := &v1alpha2Runner{
+		ctx:           ctx,
+		cfg:           &genericclioptions.ConfigFlags{Namespace: func() *string { s := ns; return &s }()},
+		client:        c,
+		subpackageDir: "my-subpkg",
+		prs:           prs,
+	}
+
+	output := &bytes.Buffer{}
+	cmd := &cobra.Command{}
+	cmd.SetOut(output)
+
+	err = r.runE(cmd, []string{parentPR.Name})
+	assert.NoError(t, err)
+	assert.Contains(t, output.String(), "independent subpackage in directory")
+	assert.Contains(t, output.String(), "my-subpkg")
 }

@@ -226,7 +226,7 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 // Returns (result, nil) if source was applied and status was updated.
 // Returns (nil, err) on failure.
 func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
-	subpackageResources, subpackageOperationType, err := r.applySubpackageOperaiton(ctx, pr)
+	subpackageResources, subpackageOperationType, err := r.applySubpackageOperation(ctx, pr)
 	if err != nil {
 		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, err)
 	}

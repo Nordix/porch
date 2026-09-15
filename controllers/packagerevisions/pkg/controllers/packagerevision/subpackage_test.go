@@ -44,7 +44,7 @@ func TestShouldSkipSubpackageOperationAlreadyExecuted(t *testing.T) {
 			},
 		},
 	}
-	pr.Status.LastSubpackageOperationHash = r.getSubpackageOperationHash(pr)
+	pr.Status.LastSubpackageOperationHash = r.GetSubpackageOperationHash(pr)
 
 	assert.True(t, r.shouldSkipSubpackageOperation(pr))
 }
@@ -81,8 +81,8 @@ func TestGetSubpackageOperationHashDeterministic(t *testing.T) {
 		},
 	}
 
-	hash1 := r.getSubpackageOperationHash(pr)
-	hash2 := r.getSubpackageOperationHash(pr)
+	hash1 := r.GetSubpackageOperationHash(pr)
+	hash2 := r.GetSubpackageOperationHash(pr)
 	assert.Equal(t, hash1, hash2)
 	assert.Contains(t, hash1, "sha256:")
 }
@@ -95,7 +95,7 @@ func TestGetSubpackageOperationHashNilOperation(t *testing.T) {
 		},
 	}
 
-	hash := r.getSubpackageOperationHash(pr)
+	hash := r.GetSubpackageOperationHash(pr)
 	assert.Equal(t, "sha256:previous-hash", hash)
 }
 
@@ -122,7 +122,7 @@ func TestGetSubpackageOperationHashDifferentForDifferentOps(t *testing.T) {
 		},
 	}
 
-	assert.NotEqual(t, r.getSubpackageOperationHash(pr1), r.getSubpackageOperationHash(pr2))
+	assert.NotEqual(t, r.GetSubpackageOperationHash(pr1), r.GetSubpackageOperationHash(pr2))
 }
 
 const minimalKptfile = `apiVersion: kpt.dev/v1
@@ -328,7 +328,6 @@ func TestUpsertSubpackageResourcesSkippedWhenNil(t *testing.T) {
 	assert.Equal(t, parentResources, result)
 }
 
-
 // --- Tests for parentSubpackageFound ---
 
 func TestParentSubpackageFoundExactMatch(t *testing.T) {
@@ -413,7 +412,7 @@ func TestInsertSubpackageResourcesNoConflictWithDeeperKptfile(t *testing.T) {
 	}
 
 	parentResources := map[string]string{
-		"Kptfile":      "parent-kptfile",
+		"Kptfile":       "parent-kptfile",
 		"other/Kptfile": "sibling subpackage",
 	}
 	subpkgResources := map[string]string{"Kptfile": "new-subpkg"}
@@ -438,8 +437,8 @@ func TestUpgradeSubpackageResourcesExactMatchContent(t *testing.T) {
 
 	// Parent has a file named exactly "my-subpkg" (not a directory prefix)
 	parentResources := map[string]string{
-		"Kptfile":    "parent-kptfile",
-		"my-subpkg":  "some file exactly at the subpackage dir path",
+		"Kptfile":   "parent-kptfile",
+		"my-subpkg": "some file exactly at the subpackage dir path",
 	}
 
 	_, err := r.upgradeSubpackageResourcesInDraftResources(context.Background(), pr, parentResources, map[string]string{"Kptfile": "new"})
@@ -458,8 +457,8 @@ func TestUpgradeSubpackageResourcesConflictWithParentSubpackage(t *testing.T) {
 	}
 
 	parentResources := map[string]string{
-		"Kptfile":      "parent-kptfile",
-		"sub/Kptfile":  "parent subpackage kptfile",
+		"Kptfile":     "parent-kptfile",
+		"sub/Kptfile": "parent subpackage kptfile",
 	}
 
 	_, err := r.upgradeSubpackageResourcesInDraftResources(context.Background(), pr, parentResources, map[string]string{"Kptfile": "new"})
@@ -485,7 +484,7 @@ func TestUpgradeSubpackageResourcesUpdatedErrorMessage(t *testing.T) {
 	assert.ErrorContains(t, err, "nonexistent")
 }
 
-// --- Tests for applySubpackageOperaiton validation ---
+// --- Tests for applySubpackageOperation validation ---
 
 func TestApplySubpackageOperationInvalidDir(t *testing.T) {
 	r := &PackageRevisionReconciler{}
@@ -501,7 +500,7 @@ func TestApplySubpackageOperationInvalidDir(t *testing.T) {
 		Status: porchv1alpha2.PackageRevisionStatus{CreationSource: "init"},
 	}
 
-	_, opType, err := r.applySubpackageOperaiton(context.Background(), pr)
+	_, opType, err := r.applySubpackageOperation(context.Background(), pr)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid")
 	assert.Empty(t, opType)
@@ -521,7 +520,7 @@ func TestApplySubpackageOperationInvalidDirDoubleDots(t *testing.T) {
 		Status: porchv1alpha2.PackageRevisionStatus{CreationSource: "init"},
 	}
 
-	_, opType, err := r.applySubpackageOperaiton(context.Background(), pr)
+	_, opType, err := r.applySubpackageOperation(context.Background(), pr)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid")
 	assert.Empty(t, opType)
@@ -538,6 +537,64 @@ func TestApplySubpackageOperationNoFieldsSet(t *testing.T) {
 		Status: porchv1alpha2.PackageRevisionStatus{CreationSource: "init"},
 	}
 
-	_, _, err := r.applySubpackageOperaiton(context.Background(), pr)
+	_, _, err := r.applySubpackageOperation(context.Background(), pr)
 	assert.ErrorContains(t, err, "has no fields set")
+}
+
+// TestSubpackageOperationIdempotentOnRepeat verifies that if the same SubpackageOperation
+// is present on a PR across multiple consecutive reconcile invocations (e.g. the controller
+// re-queues before the client clears the field), only the first invocation executes the
+// operation and subsequent ones are silently skipped.
+func TestSubpackageOperationIdempotentOnRepeat(t *testing.T) {
+	r := &PackageRevisionReconciler{}
+
+	pr := &porchv1alpha2.PackageRevision{
+		Spec: porchv1alpha2.PackageRevisionSpec{
+			SubpackageOperation: &porchv1alpha2.SubpackageOperation{
+				SubpackageDir: "my-subpkg",
+				CloneFrom: &porchv1alpha2.UpstreamPackage{
+					UpstreamRef: &porchv1alpha2.PackageRevisionRef{Name: "upstream.pkg.v1"},
+				},
+			},
+		},
+	}
+
+	parentResources := map[string]string{"Kptfile": "parent"}
+	subpkgResources := map[string]string{"Kptfile": "subpkg-kptfile", "resource.yaml": "content"}
+
+	// First invocation: operation not yet executed — should NOT be skipped.
+	assert.False(t, r.shouldSkipSubpackageOperation(pr), "first invocation should not be skipped")
+
+	result1, err := r.insertSubpackageResourcesInDraftResources(context.Background(), pr, copyMap(parentResources), subpkgResources)
+	require.NoError(t, err)
+	assert.Contains(t, result1, "my-subpkg/Kptfile")
+	assert.Contains(t, result1, "my-subpkg/resource.yaml")
+
+	// Simulate the controller writing the hash to status after successful execution.
+	pr.Status.LastSubpackageOperationHash = r.GetSubpackageOperationHash(pr)
+
+	// Second invocation: same SubpackageOperation still on spec — should be skipped.
+	assert.True(t, r.shouldSkipSubpackageOperation(pr), "second invocation with same operation should be skipped")
+
+	// upsertSubpackageResourcesInDraftResources must return the parent unchanged on skip.
+	parentWithSubpkg := copyMap(result1)
+	result2, err := r.upsertSubpackageResourcesInDraftResources(context.Background(), pr, parentWithSubpkg, subpkgResources)
+	require.NoError(t, err)
+	assert.Equal(t, parentWithSubpkg, result2, "resources must be unchanged on second invocation")
+
+	// Third invocation: still the same operation — still skipped.
+	assert.True(t, r.shouldSkipSubpackageOperation(pr), "third invocation with same operation should be skipped")
+
+	result3, err := r.upsertSubpackageResourcesInDraftResources(context.Background(), pr, copyMap(result1), subpkgResources)
+	require.NoError(t, err)
+	assert.Equal(t, result1, result3, "resources must be unchanged on third invocation")
+}
+
+// copyMap returns a shallow copy of m so tests don't mutate shared state.
+func copyMap(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
