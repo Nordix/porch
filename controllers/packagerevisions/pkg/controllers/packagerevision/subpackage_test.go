@@ -44,7 +44,7 @@ func TestShouldSkipSubpackageOperationAlreadyExecuted(t *testing.T) {
 			},
 		},
 	}
-	pr.Status.LastSubpackageOperationHash = r.GetSubpackageOperationHash(pr)
+	pr.Status.LastSubpackageOperationHash = r.getSubpackageOperationHash(pr)
 
 	assert.True(t, r.shouldSkipSubpackageOperation(pr))
 }
@@ -81,8 +81,8 @@ func TestGetSubpackageOperationHashDeterministic(t *testing.T) {
 		},
 	}
 
-	hash1 := r.GetSubpackageOperationHash(pr)
-	hash2 := r.GetSubpackageOperationHash(pr)
+	hash1 := r.getSubpackageOperationHash(pr)
+	hash2 := r.getSubpackageOperationHash(pr)
 	assert.Equal(t, hash1, hash2)
 	assert.Contains(t, hash1, "sha256:")
 }
@@ -95,7 +95,7 @@ func TestGetSubpackageOperationHashNilOperation(t *testing.T) {
 		},
 	}
 
-	hash := r.GetSubpackageOperationHash(pr)
+	hash := r.getSubpackageOperationHash(pr)
 	assert.Equal(t, "sha256:previous-hash", hash)
 }
 
@@ -122,7 +122,7 @@ func TestGetSubpackageOperationHashDifferentForDifferentOps(t *testing.T) {
 		},
 	}
 
-	assert.NotEqual(t, r.GetSubpackageOperationHash(pr1), r.GetSubpackageOperationHash(pr2))
+	assert.NotEqual(t, r.getSubpackageOperationHash(pr1), r.getSubpackageOperationHash(pr2))
 }
 
 const minimalKptfile = `apiVersion: kpt.dev/v1
@@ -571,7 +571,7 @@ func TestSubpackageOperationIdempotentOnRepeat(t *testing.T) {
 	assert.Contains(t, result1, "my-subpkg/resource.yaml")
 
 	// Simulate the controller writing the hash to status after successful execution.
-	pr.Status.LastSubpackageOperationHash = r.GetSubpackageOperationHash(pr)
+	pr.Status.LastSubpackageOperationHash = r.getSubpackageOperationHash(pr)
 
 	// Second invocation: same SubpackageOperation still on spec — should be skipped.
 	assert.True(t, r.shouldSkipSubpackageOperation(pr), "second invocation with same operation should be skipped")

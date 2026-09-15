@@ -157,7 +157,7 @@ func (r *PackageRevisionReconciler) shouldSkipSubpackageOperation(pr *porchv1alp
 		return true
 	}
 
-	subpackageOperationHash := r.GetSubpackageOperationHash(pr)
+	subpackageOperationHash := r.getSubpackageOperationHash(pr)
 
 	if subpackageOperationHash == "" {
 		return false
@@ -171,7 +171,7 @@ func (r *PackageRevisionReconciler) shouldSkipSubpackageOperation(pr *porchv1alp
 }
 
 // GetSource return the SubpackageDir for a package revision or "" if there is no SubpackageDir set.
-func (r *PackageRevisionReconciler) GetSubpackageOperationHash(pr *porchv1alpha2.PackageRevision) string {
+func (r *PackageRevisionReconciler) getSubpackageOperationHash(pr *porchv1alpha2.PackageRevision) string {
 	if pr.Spec.SubpackageOperation == nil {
 		return pr.Status.LastSubpackageOperationHash
 	}

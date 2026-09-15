@@ -850,12 +850,12 @@ func TestV1Alpha2FindPackageRevisionFromUpstreamV2(t *testing.T) {
 		assert.ErrorContains(t, err, "could not find upstream references")
 	})
 
-	t.Run("non-vN ref returns error", func(t *testing.T) {
+	t.Run("empty ref returns error", func(t *testing.T) {
 		_, err := r.findPackageRevisionFromUpstreamV2(&kptfilev1.Upstream{
 			Type: kptfilev1.GitOrigin,
-			Git:  &kptfilev1.Git{Repo: "https://github.com/user/repo", Directory: "packages/pkg", Ref: "main"},
+			Git:  &kptfilev1.Git{Repo: "https://github.com/user/repo", Directory: "packages/pkg", Ref: ""},
 		})
-		assert.ErrorContains(t, err, "invalid git ref")
+		assert.ErrorContains(t, err, "could not find upstream references")
 	})
 
 	t.Run("matching selfLock finds PR", func(t *testing.T) {
