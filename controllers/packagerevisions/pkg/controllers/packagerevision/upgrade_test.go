@@ -235,3 +235,66 @@ func TestGetPackageResourcesForUpgradeSubpackageNotFound(t *testing.T) {
 	_, err := r.getPackageResourcesForUpgrade(ctx, pr)
 	assert.ErrorContains(t, err, "not found in package")
 }
+
+func TestGetPackageResourcesForUpgradeSubpackageMissingKptfile(t *testing.T) {
+	ctx := context.Background()
+
+	mockContent := mockrepository.NewMockPackageContent(t)
+	mockContent.EXPECT().GetResourceContents(ctx).Return(map[string]string{
+		"my-subpkg/resource.yaml": "content", // subpackage dir exists but no Kptfile
+	}, nil)
+
+	mockCache := mockrepository.NewMockContentCache(t)
+	mockCache.EXPECT().GetPackageContent(ctx, repository.RepositoryKey{Namespace: "default", Name: "my-repo"}, "my-pkg", "v1").Return(mockContent, nil)
+
+	r := &PackageRevisionReconciler{ContentCache: mockCache}
+	pr := &porchv1alpha2.PackageRevision{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
+		Spec: porchv1alpha2.PackageRevisionSpec{
+			PackageName:    "my-pkg",
+			RepositoryName: "my-repo",
+			WorkspaceName:  "v1",
+			SubpackageOperation: &porchv1alpha2.SubpackageOperation{
+				SubpackageDir: "my-subpkg",
+				Upgrade:       &porchv1alpha2.PackageUpgradeSpec{},
+			},
+		},
+	}
+
+	_, err := r.getPackageResourcesForUpgrade(ctx, pr)
+	assert.ErrorContains(t, err, "missing Kptfile")
+}
+
+func TestGetDraftPackageRevisionNotDraftError(t *testing.T) {
+	mc := mockclient.NewMockClient(t)
+	mc.EXPECT().Get(mock.Anything, client.ObjectKey{Namespace: "default", Name: "pub.pkg.v1"}, &porchv1alpha2.PackageRevision{}).
+		RunAndReturn(func(_ context.Context, _ client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
+			obj.(*porchv1alpha2.PackageRevision).Spec.Lifecycle = porchv1alpha2.PackageRevisionLifecyclePublished
+			return nil
+		})
+
+	r := &PackageRevisionReconciler{Client: mc}
+	_, err := r.getDraftPackageRevision(context.Background(), "default", "pub.pkg.v1")
+	assert.ErrorContains(t, err, "must be a draft")
+}
+
+func TestGetPackageContentAndResourcesGetResourcesError(t *testing.T) {
+	ctx := context.Background()
+
+	mockContent := mockrepository.NewMockPackageContent(t)
+	mockContent.EXPECT().GetResourceContents(ctx).Return(nil, assert.AnError)
+
+	mockCache := mockrepository.NewMockContentCache(t)
+	mockCache.EXPECT().GetPackageContent(ctx, repository.RepositoryKey{Namespace: "default", Name: "my-repo"}, "my-pkg", "v1").Return(mockContent, nil)
+
+	r := &PackageRevisionReconciler{ContentCache: mockCache}
+	pr := &porchv1alpha2.PackageRevision{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
+		Spec: porchv1alpha2.PackageRevisionSpec{
+			PackageName: "my-pkg", RepositoryName: "my-repo", WorkspaceName: "v1",
+		},
+	}
+
+	_, _, err := r.getPackageContentAndResources(ctx, pr)
+	assert.Error(t, err)
+}
