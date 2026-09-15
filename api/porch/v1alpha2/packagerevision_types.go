@@ -207,7 +207,7 @@ type PackageRevisionStatus struct {
 	// +optional
 	CreationSource string `json:"creationSource,omitempty"`
 
-	// SobpackageOperationId holds the ID of the last successfully executed subpackage
+	// LastSubpackageOperationHash holds a hash of the last successfully executed subpackage
 	// operation. It is used to prevent re-execution of the same operation.
 	LastSubpackageOperationHash string `json:"lastSubpackageOperationHash,omitempty"`
 
