@@ -527,6 +527,16 @@ func updatePRRResources(ctx context.Context, namespace, name string, resources m
 	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 }
 
+// replacePRRResources replaces the full resource map (deletions included).
+func replacePRRResources(ctx context.Context, namespace, name string, resources map[string]string) {
+	Eventually(func(g Gomega) {
+		prr := &porchv1alpha1.PackageRevisionResources{}
+		g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, prr)).To(Succeed())
+		prr.Spec.Resources = resources
+		g.Expect(k8sClient.Update(ctx, prr)).To(Succeed())
+	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
+}
+
 // --- Gitea ref helpers ---
 
 // giteaRef is the minimal struct for gitea tag/branch API responses.
