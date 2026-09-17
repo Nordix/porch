@@ -379,6 +379,173 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 	})
+	Context("subpackage operation rejected on non-Draft package", func() {
+		It("should reject setting SubpackageOperation when lifecycle is not Draft", func() {
+			repo := "subpkg-non-draft"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
+
+			const subpackageDir = "my-subpackage"
+
+			cloneePR := createSubpkgPR(env, repo, "clonee-pkg", "v1")
+			publishPackage(env.Ctx, cloneePR)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR)
+
+			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			DeferCleanup(deletePackage, env.Ctx, parentPR)
+
+			By("proposing the parent package")
+			patchLifecycle(env.Ctx, parentPR, porchv1alpha2.PackageRevisionLifecycleProposed)
+			waitForReady(env.Ctx, parentPR)
+
+			By("attempting to set SubpackageOperation on a Proposed package — should be rejected by webhook")
+			err := cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("subpackage operations are only allowed on Draft packages"))
+		})
+	})
+
+	Context("clone from external git upstream", func() {
+		It("should clone a subpackage from an external git repo", func() {
+			repo := "subpkg-external-git"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
+
+			// Use a second gitea repo as the "external" git source (no registered Repository CR).
+			externalRepo := "subpkg-external-git-src"
+			createGiteaRepo(externalRepo)
+			DeferCleanup(deleteGiteaRepo, externalRepo)
+
+			// Publish a package into the external repo via the normal porch flow so it has a Kptfile.
+			externalRepoName := "subpkg-external-git-src-reg"
+			createGiteaRepo(externalRepoName)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, externalRepoName)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, externalRepoName)
+				deleteGiteaRepo(externalRepoName)
+			})
+			externalPR := createSubpkgPR(env, externalRepoName, "ext-pkg", "v1")
+			publishPackage(env.Ctx, externalPR)
+			DeferCleanup(deletePackage, env.Ctx, externalPR)
+
+			const subpackageDir = "external-subpackage"
+
+			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			DeferCleanup(deletePackage, env.Ctx, parentPR)
+
+			By("cloning subpackage from external git upstream")
+			Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				if err := k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR); err != nil {
+					return err
+				}
+				parentPR.Spec.SubpackageOperation = &porchv1alpha2.SubpackageOperation{
+					SubpackageDir: subpackageDir,
+					CloneFrom: &porchv1alpha2.UpstreamPackage{
+						Type: porchv1alpha2.RepositoryTypeGit,
+						Git: &porchv1alpha2.GitPackage{
+							Repo:      giteaBaseURL() + "/porch/" + externalRepoName + ".git",
+							Ref:       "ext-pkg/v1",
+							Directory: "/ext-pkg",
+						},
+					},
+				}
+				return k8sClient.Update(env.Ctx, parentPR)
+			})).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			By("verifying subpackage Kptfile is present and references the external git upstream")
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
+				g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring(externalRepoName))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
+		})
+	})
+
+	Context("upgrade with force-delete-replace strategy", func() {
+		It("should upgrade a subpackage using force-delete-replace strategy", func() {
+			repo := "subpkg-upgrade-strategy"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
+
+			const subpackageDir = "my-subpackage"
+
+			cloneePRV1 := createSubpkgPR(env, repo, "clonee-pkg", "v1")
+			publishPackage(env.Ctx, cloneePRV1)
+			DeferCleanup(deletePackage, env.Ctx, cloneePRV1)
+
+			cloneePRV2 := createSubpkgCopy(env, repo, cloneePRV1, "v2")
+			publishPackage(env.Ctx, cloneePRV2)
+			DeferCleanup(deletePackage, env.Ctx, cloneePRV2)
+
+			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			DeferCleanup(deletePackage, env.Ctx, parentPR)
+
+			By("cloning subpackage v1 into parent")
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePRV1.Name, subpackageDir)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			By("upgrading subpackage from v1 to v2 with force-delete-replace strategy")
+			Expect(upgradeSubpackageWithStrategy(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir, porchv1alpha2.ForceDeleteReplace)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			By("verifying subpackage Kptfile references v2")
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v2"))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
+		})
+	})
+
+	Context("clone into copied parent", func() {
+		It("should clone a subpackage into a parent that was itself copied from a published revision", func() {
+			repo := "subpkg-clone-into-copy"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
+
+			const subpackageDir = "my-subpackage"
+
+			cloneePR := createSubpkgPR(env, repo, "clonee-pkg", "v1")
+			publishPackage(env.Ctx, cloneePR)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR)
+
+			// Publish a parent v1 with no subpackages, then copy it to v2.
+			parentPRV1 := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			publishPackage(env.Ctx, parentPRV1)
+			DeferCleanup(deletePackage, env.Ctx, parentPRV1)
+
+			parentPRV2 := createSubpkgCopy(env, repo, parentPRV1, "v2")
+			DeferCleanup(deletePackage, env.Ctx, parentPRV2)
+
+			By("cloning subpackage into the copied (Draft) parent v2")
+			Expect(cloneSubpackage(env.Ctx, parentPRV2, cloneePR.Name, subpackageDir)).To(Succeed())
+			waitForReady(env.Ctx, parentPRV2)
+
+			By("verifying subpackage Kptfile is present in the copied parent")
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPRV2.Name)
+				g.Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
+				g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v1"))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
+		})
+	})
+
 	Context("modify, rename and remove subpackages via PRR", func() {
 		It("should persist modifications, handle rename, and reject upgrade of removed subpackage", func() {
 			const (
@@ -596,6 +763,11 @@ func cloneSubpackage(ctx interface{ Done() <-chan struct{} }, pr *porchv1alpha2.
 
 // upgradeSubpackage sets SubpackageOperation.Upgrade on an existing PackageRevision.
 func upgradeSubpackage(ctx interface{ Done() <-chan struct{} }, pr *porchv1alpha2.PackageRevision, oldUpstreamName, newUpstreamName, subpackageDir string) error {
+	return upgradeSubpackageWithStrategy(ctx, pr, oldUpstreamName, newUpstreamName, subpackageDir, "")
+}
+
+// upgradeSubpackageWithStrategy sets SubpackageOperation.Upgrade with an explicit merge strategy.
+func upgradeSubpackageWithStrategy(ctx interface{ Done() <-chan struct{} }, pr *porchv1alpha2.PackageRevision, oldUpstreamName, newUpstreamName, subpackageDir string, strategy porchv1alpha2.PackageMergeStrategy) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := k8sClient.Get(sharedCtx, client.ObjectKeyFromObject(pr), pr); err != nil {
 			return err
@@ -606,6 +778,7 @@ func upgradeSubpackage(ctx interface{ Done() <-chan struct{} }, pr *porchv1alpha
 				OldUpstream:    porchv1alpha2.PackageRevisionRef{Name: oldUpstreamName},
 				NewUpstream:    porchv1alpha2.PackageRevisionRef{Name: newUpstreamName},
 				CurrentPackage: porchv1alpha2.PackageRevisionRef{Name: pr.Name},
+				Strategy:       strategy,
 			},
 		}
 		return k8sClient.Update(sharedCtx, pr)
