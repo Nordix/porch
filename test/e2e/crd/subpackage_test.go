@@ -250,7 +250,7 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
 				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
 				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+				HaveField("Message", ContainSubstring("not found in package")),
 			)))
 
 			By("upgrading subpackage in nonexistent sibling dir fails")
@@ -260,7 +260,7 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
 				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
 				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+				HaveField("Message", ContainSubstring("not found in package")),
 			)))
 		})
 	})
@@ -427,11 +427,13 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			waitForReady(env.Ctx, parentPR)
 
 			By("verifying modifications persisted")
-			resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			Expect(resources).To(HaveKey(subpackageDir1 + "/extra.yaml"))
-			Expect(resources).To(HaveKey(renamedSubpkgDir + "/Kptfile"))
-			Expect(resources).NotTo(HaveKey(subpackageDir2 + "/Kptfile"))
-			Expect(resources).NotTo(HaveKey(subpackageDir3 + "/Kptfile"))
+			Eventually(func(g Gomega) {
+				resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources).To(HaveKey(subpackageDir1 + "/extra.yaml"))
+				g.Expect(resources).To(HaveKey(renamedSubpkgDir + "/Kptfile"))
+				g.Expect(resources).NotTo(HaveKey(subpackageDir2 + "/Kptfile"))
+				g.Expect(resources).NotTo(HaveKey(subpackageDir3 + "/Kptfile"))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("upgrading subpackage-1 succeeds")
 			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePR1V1.Name, cloneePR1V2.Name, subpackageDir1)).To(Succeed())
@@ -448,7 +450,7 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
 				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
 				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+				HaveField("Message", ContainSubstring("not found in package")),
 			)))
 
 			By("upgrading removed subpackage-3 fails")
@@ -458,7 +460,7 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
 				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
 				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+				HaveField("Message", ContainSubstring("not found in package")),
 			)))
 		})
 	})
@@ -505,9 +507,11 @@ func simpleSubpackageCloneAndUpgrade(env *testEnv, repo, subpackageDir string) {
 	waitForReady(env.Ctx, parentPR)
 
 	By("verifying subpackage Kptfile references clonee-pkg/v2")
-	resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+	Eventually(func(g Gomega) {
+		resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+		g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v2"))
+	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
-	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v2"))
 
 	By("publishing parent and copying to v2 workspace")
 	publishPackage(env.Ctx, parentPR)
