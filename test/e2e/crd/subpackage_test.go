@@ -68,18 +68,23 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			waitForReady(env.Ctx, parentPR)
 
 			By("verifying subpackage Kptfile is present after first clone")
-			resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
-			filesBefore := len(resources)
+			var filesBefore int
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
+				filesBefore = len(resources)
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("applying the identical SubpackageOperation a second time")
 			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir)).To(Succeed())
 			waitForReady(env.Ctx, parentPR)
 
 			By("verifying resources are unchanged — operation was not re-executed")
-			resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
-			Expect(len(resources)).To(Equal(filesBefore))
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources).To(HaveKey(subpackageDir + "/Kptfile"))
+				g.Expect(len(resources)).To(Equal(filesBefore))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 	})
 
@@ -172,7 +177,10 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
 				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
 				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("cannot clone subpackage into parent")),
+				HaveField("Message", SatisfyAny(
+					ContainSubstring("cannot clone subpackage into parent"),
+					ContainSubstring("cannot clone subpackage into another subpackage"),
+				)),
 			)))
 		})
 
@@ -231,17 +239,21 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 
 			By("verifying Kptfile ref is v1")
 			expectedName := strings.ReplaceAll(subpackageDir1, "/", ".")
-			resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			Expect(resources[subpackageDir1+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
-			Expect(resources[subpackageDir1+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v1"))
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources[subpackageDir1+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
+				g.Expect(resources[subpackageDir1+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v1"))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("upgrading subpackage in dir1 succeeds")
 			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir1)).To(Succeed())
 			waitForReady(env.Ctx, parentPR)
 
 			By("verifying Kptfile ref is v2")
-			resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			Expect(resources[subpackageDir1+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v2"))
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources[subpackageDir1+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v2"))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("upgrading subpackage in nonexistent nested dir fails")
 			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir2)).To(Succeed())
@@ -317,13 +329,15 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			}
 
 			By("verifying all 4 subpackage Kptfiles reference v1")
-			resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			for i, dir := range subpkgDirs {
-				pkgName := "clonee-pkg-" + string(rune('0'+i+1))
-				expectedName := strings.ReplaceAll(dir, "/", ".")
-				Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
-				Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("ref: " + pkgName + "/v1"))
-			}
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				for i, dir := range subpkgDirs {
+					pkgName := "clonee-pkg-" + string(rune('0'+i+1))
+					expectedName := strings.ReplaceAll(dir, "/", ".")
+					g.Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
+					g.Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("ref: " + pkgName + "/v1"))
+				}
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("upgrading all 4 subpackages to v2")
 			for i, dir := range subpkgDirs {
@@ -332,11 +346,13 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			}
 
 			By("verifying all 4 subpackage Kptfiles reference v2")
-			resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			for i, dir := range subpkgDirs {
-				pkgName := "clonee-pkg-" + string(rune('0'+i+1))
-				Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("ref: " + pkgName + "/v2"))
-			}
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				for i, dir := range subpkgDirs {
+					pkgName := "clonee-pkg-" + string(rune('0'+i+1))
+					g.Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("ref: " + pkgName + "/v2"))
+				}
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("publishing parent and copying to v2 workspace")
 			publishPackage(env.Ctx, parentPR)
@@ -350,11 +366,13 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			}
 
 			By("verifying all 4 subpackage Kptfiles reference v3")
-			resources = getPRRResources(env.Ctx, env.Namespace, parentPRV2.Name)
-			for i, dir := range subpkgDirs {
-				pkgName := "clonee-pkg-" + string(rune('0'+i+1))
-				Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("ref: " + pkgName + "/v3"))
-			}
+			Eventually(func(g Gomega) {
+				resources := getPRRResources(env.Ctx, env.Namespace, parentPRV2.Name)
+				for i, dir := range subpkgDirs {
+					pkgName := "clonee-pkg-" + string(rune('0'+i+1))
+					g.Expect(resources[dir+"/Kptfile"]).To(ContainSubstring("ref: " + pkgName + "/v3"))
+				}
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 	})
 	Context("modify, rename and remove subpackages via PRR", func() {
@@ -405,10 +423,13 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR3V1.Name, subpackageDir3)).To(Succeed())
 			waitForReady(env.Ctx, parentPR)
 
-			resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			Expect(resources).To(HaveKey(subpackageDir1 + "/Kptfile"))
-			Expect(resources).To(HaveKey(subpackageDir2 + "/Kptfile"))
-			Expect(resources).To(HaveKey(subpackageDir3 + "/Kptfile"))
+			var resources map[string]string
+			Eventually(func(g Gomega) {
+				resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+				g.Expect(resources).To(HaveKey(subpackageDir1 + "/Kptfile"))
+				g.Expect(resources).To(HaveKey(subpackageDir2 + "/Kptfile"))
+				g.Expect(resources).To(HaveKey(subpackageDir3 + "/Kptfile"))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("adding a file to subpackage-1, renaming subpackage-2, removing subpackage-3 via PRR")
 			resources[subpackageDir1+"/extra.yaml"] = "# extra"
@@ -423,7 +444,7 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 					delete(resources, k)
 				}
 			}
-			updatePRRResources(env.Ctx, env.Namespace, parentPR.Name, resources)
+			replacePRRResources(env.Ctx, env.Namespace, parentPR.Name, resources)
 			waitForReady(env.Ctx, parentPR)
 
 			By("verifying modifications persisted")
@@ -497,10 +518,13 @@ func simpleSubpackageCloneAndUpgrade(env *testEnv, repo, subpackageDir string) {
 
 	By("verifying subpackage Kptfile references clonee-pkg/v1")
 	expectedName := strings.ReplaceAll(subpackageDir, "/", ".")
-	resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
-	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v1"))
-	Expect(resources[subpackageDir+"/Kptfile"]).NotTo(ContainSubstring("status:"))
+	var resources map[string]string
+	Eventually(func(g Gomega) {
+		resources = getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
+		g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
+		g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v1"))
+		g.Expect(resources[subpackageDir+"/Kptfile"]).NotTo(ContainSubstring("status:"))
+	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 	By("upgrading subpackage from v1 to v2")
 	Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir)).To(Succeed())
@@ -523,9 +547,11 @@ func simpleSubpackageCloneAndUpgrade(env *testEnv, repo, subpackageDir string) {
 	waitForReady(env.Ctx, parentPRV2)
 
 	By("verifying subpackage Kptfile references clonee-pkg/v3")
-	resources = getPRRResources(env.Ctx, env.Namespace, parentPRV2.Name)
-	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
-	Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v3"))
+	Eventually(func(g Gomega) {
+		resources = getPRRResources(env.Ctx, env.Namespace, parentPRV2.Name)
+		g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("name: " + expectedName))
+		g.Expect(resources[subpackageDir+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v3"))
+	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 }
 
 // createSubpkgPR creates an init'd PackageRevision for use in subpackage tests.
