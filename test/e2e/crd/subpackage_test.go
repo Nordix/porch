@@ -137,13 +137,14 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			waitForReady(env.Ctx, parentPR)
 
 			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir2)).To(Succeed())
-			waitForReadyFalse(env.Ctx, parentPR)
-			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
-			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
-				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("cannot clone subpackage into another subpackage")),
-			)))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+				g.Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+					HaveField("Status", Equal(metav1.ConditionFalse)),
+					HaveField("Message", ContainSubstring("cannot clone subpackage into another subpackage")),
+				)))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 
 		It("should reject cloning a different upstream into an occupied dir", func() {
@@ -172,16 +173,17 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			waitForReady(env.Ctx, parentPR)
 
 			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR2.Name, subpackageDir)).To(Succeed())
-			waitForReadyFalse(env.Ctx, parentPR)
-			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
-			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
-				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", SatisfyAny(
-					ContainSubstring("cannot clone subpackage into parent"),
-					ContainSubstring("cannot clone subpackage into another subpackage"),
-				)),
-			)))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+				g.Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+					HaveField("Status", Equal(metav1.ConditionFalse)),
+					HaveField("Message", SatisfyAny(
+						ContainSubstring("cannot clone subpackage into parent"),
+						ContainSubstring("cannot clone subpackage into another subpackage"),
+					)),
+				)))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 
 		It("should reject cloning with a trailing slash", func() {
@@ -257,23 +259,25 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 
 			By("upgrading subpackage in nonexistent nested dir fails")
 			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir2)).To(Succeed())
-			waitForReadyFalse(env.Ctx, parentPR)
-			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
-			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
-				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("not found in package")),
-			)))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+				g.Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+					HaveField("Status", Equal(metav1.ConditionFalse)),
+					HaveField("Message", ContainSubstring("not found in package")),
+				)))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("upgrading subpackage in nonexistent sibling dir fails")
 			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir3)).To(Succeed())
-			waitForReadyFalse(env.Ctx, parentPR)
-			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
-			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
-				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("not found in package")),
-			)))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+				g.Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+					HaveField("Status", Equal(metav1.ConditionFalse)),
+					HaveField("Message", ContainSubstring("not found in package")),
+				)))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 	})
 
@@ -466,23 +470,25 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 
 			By("upgrading removed subpackage-2 fails")
 			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePR2V1.Name, cloneePR2V2.Name, subpackageDir2)).To(Succeed())
-			waitForReadyFalse(env.Ctx, parentPR)
-			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
-			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
-				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("not found in package")),
-			)))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+				g.Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+					HaveField("Status", Equal(metav1.ConditionFalse)),
+					HaveField("Message", ContainSubstring("not found in package")),
+				)))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 
 			By("upgrading removed subpackage-3 fails")
 			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePR3V1.Name, cloneePR3V2.Name, subpackageDir3)).To(Succeed())
-			waitForReadyFalse(env.Ctx, parentPR)
-			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
-			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
-				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
-				HaveField("Status", Equal(metav1.ConditionFalse)),
-				HaveField("Message", ContainSubstring("not found in package")),
-			)))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+				g.Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+					HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+					HaveField("Status", Equal(metav1.ConditionFalse)),
+					HaveField("Message", ContainSubstring("not found in package")),
+				)))
+			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 	})
 

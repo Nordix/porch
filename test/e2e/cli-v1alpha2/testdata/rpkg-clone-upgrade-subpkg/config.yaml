@@ -98,6 +98,7 @@ commands:
     stdout: |
       subpackage cloned into directory "subpackages/upstream-function" in package revision "git.parent-with-subpackages.alpha"
     waitForReady: true
+    waitForReady: true
   - args:
       - porchctl
       - rpkg
@@ -138,6 +139,7 @@ commands:
       - git.parent-with-subpackages.alpha
     stdout: |
       subpackage cloned into directory "clone-remote/wordpress" in package revision "git.parent-with-subpackages.alpha"
+    waitForReady: true
     waitForReady: true
   - args:
       - porchctl
