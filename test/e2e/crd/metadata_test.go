@@ -358,7 +358,7 @@ var _ = Describe("Metadata", Ordered, Label("infra"), func() {
 			}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 		})
 
-		It("should handle concurrent Kptfile push and spec.packageMetadata update (PRR push wins)", func() {
+			It("should preserve PRR-pushed Kptfile labels when spec.packageMetadata is not set", func() {
 			By("creating a draft package")
 			pr := newPackageRevision(env.Namespace, env.RepoName, "pkg-concurrent", "v1", withInit("concurrent test"))
 			Expect(k8sClient.Create(env.Ctx, pr)).To(Succeed())

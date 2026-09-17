@@ -147,8 +147,8 @@ func (r *PackageRevisionReconciler) refreshRenderedGeneration(ctx context.Contex
 // Rendered is set even though rendering was never attempted — the package
 // content didn't land successfully, so "not rendered" is accurate.
 func (r *PackageRevisionReconciler) setFailedConditionsAndLog(ctx context.Context, pr *porchv1alpha2.PackageRevision, operationType string, err error) error {
-	log.FromContext(ctx).Error(err, "source execution failed")
-	r.updateStatus(ctx, pr, nil, operationType, "",
+	log.FromContext(ctx).Error(err, "source execution failed", "operationType", operationType)
+	r.updateStatus(ctx, pr, nil, "", "",
 		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
 		renderedCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()),
 	)

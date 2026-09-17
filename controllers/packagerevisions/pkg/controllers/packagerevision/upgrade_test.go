@@ -161,7 +161,7 @@ func TestGetPackageResourcesForUpgradeSourcePath(t *testing.T) {
 		},
 	}
 
-	resources, err := r.getPackageResourcesForUpgrade(ctx, pr)
+	resources, err := r.getPackageResourcesForUpgrade(ctx, pr, "")
 	require.NoError(t, err)
 	assert.Equal(t, "kptfile-content", resources["Kptfile"])
 	assert.Equal(t, "local-content", resources["local.yaml"])
@@ -188,20 +188,58 @@ func TestGetPackageResourcesForUpgradeSubpackagePath(t *testing.T) {
 			PackageName:    "my-pkg",
 			RepositoryName: "my-repo",
 			WorkspaceName:  "v1",
-			SubpackageOperation: &porchv1alpha2.SubpackageOperation{
-				SubpackageDir: "my-subpkg",
-				Upgrade: &porchv1alpha2.PackageUpgradeSpec{
-					CurrentPackage: porchv1alpha2.PackageRevisionRef{Name: "local.pkg.ws"},
-				},
-			},
 		},
 	}
 
-	resources, err := r.getPackageResourcesForUpgrade(ctx, pr)
+	resources, err := r.getPackageResourcesForUpgrade(ctx, pr, "my-subpkg")
 	require.NoError(t, err)
 	assert.Equal(t, "subpkg-kptfile", resources["Kptfile"])
 	assert.Equal(t, "subpkg-resource", resources["resource.yaml"])
 	assert.NotContains(t, resources, "parent.yaml")
+}
+
+// TestGetPackageResourcesForUpgradeSubpackageDirFromOperationNotCurrentPR verifies that
+// the subpackage dir is taken from the operation being reconciled, not from the currentPR.
+// A completed SubpackageOperation remains in spec; a subsequent whole-package spec.source.upgrade
+// must not extract only the subpackage's resources.
+func TestGetPackageResourcesForUpgradeSubpackageDirFromOperationNotCurrentPR(t *testing.T) {
+	ctx := context.Background()
+
+	// currentPR has a completed SubpackageOperation still in spec.
+	// Its resources contain both the parent and the subpackage.
+	mockContent := mockrepository.NewMockPackageContent(t)
+	mockContent.EXPECT().GetResourceContents(ctx).Return(map[string]string{
+		"Kptfile":                 "parent-kptfile",
+		"parent.yaml":             "parent-resource",
+		"my-subpkg/Kptfile":       "subpkg-kptfile",
+		"my-subpkg/resource.yaml": "subpkg-resource",
+	}, nil)
+
+	mockCache := mockrepository.NewMockContentCache(t)
+	mockCache.EXPECT().GetPackageContent(ctx, repository.RepositoryKey{Namespace: "default", Name: "my-repo"}, "my-pkg", "v1").Return(mockContent, nil)
+
+	r := &PackageRevisionReconciler{ContentCache: mockCache}
+	currentPR := &porchv1alpha2.PackageRevision{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
+		Spec: porchv1alpha2.PackageRevisionSpec{
+			PackageName:    "my-pkg",
+			RepositoryName: "my-repo",
+			WorkspaceName:  "v1",
+			// Completed subpackage operation still present in spec.
+			SubpackageOperation: &porchv1alpha2.SubpackageOperation{
+				SubpackageDir: "my-subpkg",
+				Upgrade:       &porchv1alpha2.PackageUpgradeSpec{},
+			},
+		},
+	}
+
+	// The operation being reconciled is a whole-package upgrade (subpackageDir == "").
+	resources, err := r.getPackageResourcesForUpgrade(ctx, currentPR, "")
+	require.NoError(t, err)
+	// Must return the full package, not just the subpackage.
+	assert.Equal(t, "parent-kptfile", resources["Kptfile"])
+	assert.Equal(t, "parent-resource", resources["parent.yaml"])
+	assert.Equal(t, "subpkg-kptfile", resources["my-subpkg/Kptfile"])
 }
 
 func TestGetPackageResourcesForUpgradeSubpackageNotFound(t *testing.T) {
@@ -223,16 +261,10 @@ func TestGetPackageResourcesForUpgradeSubpackageNotFound(t *testing.T) {
 			PackageName:    "my-pkg",
 			RepositoryName: "my-repo",
 			WorkspaceName:  "v1",
-			SubpackageOperation: &porchv1alpha2.SubpackageOperation{
-				SubpackageDir: "nonexistent-subpkg",
-				Upgrade: &porchv1alpha2.PackageUpgradeSpec{
-					CurrentPackage: porchv1alpha2.PackageRevisionRef{Name: "local.pkg.ws"},
-				},
-			},
 		},
 	}
 
-	_, err := r.getPackageResourcesForUpgrade(ctx, pr)
+	_, err := r.getPackageResourcesForUpgrade(ctx, pr, "nonexistent-subpkg")
 	assert.ErrorContains(t, err, "not found in package")
 }
 
@@ -254,14 +286,10 @@ func TestGetPackageResourcesForUpgradeSubpackageMissingKptfile(t *testing.T) {
 			PackageName:    "my-pkg",
 			RepositoryName: "my-repo",
 			WorkspaceName:  "v1",
-			SubpackageOperation: &porchv1alpha2.SubpackageOperation{
-				SubpackageDir: "my-subpkg",
-				Upgrade:       &porchv1alpha2.PackageUpgradeSpec{},
-			},
 		},
 	}
 
-	_, err := r.getPackageResourcesForUpgrade(ctx, pr)
+	_, err := r.getPackageResourcesForUpgrade(ctx, pr, "my-subpkg")
 	assert.ErrorContains(t, err, "missing Kptfile")
 }
 

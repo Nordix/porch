@@ -65,7 +65,15 @@ func (r *PackageRevisionReconciler) upgradePackage(ctx context.Context, pr *porc
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "failed to read new upstream resources")
 	}
-	currentResources, err := r.getPackageResourcesForUpgrade(ctx, currentPR)
+	// Pass the subpackage dir from the operation being reconciled (pr), not from
+	// currentPR. Completed subpackage operations remain in spec, so if currentPR
+	// itself had a SubpackageOperation, using currentPR's spec would incorrectly
+	// extract only that subpackage's resources for a subsequent whole-package upgrade.
+	subpackageDir := ""
+	if pr.Spec.SubpackageOperation != nil && pr.Spec.SubpackageOperation.Upgrade != nil {
+		subpackageDir = pr.Spec.SubpackageOperation.SubpackageDir
+	}
+	currentResources, err := r.getPackageResourcesForUpgrade(ctx, currentPR, subpackageDir)
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "failed to read package resources for upgrade")
 	}
@@ -134,19 +142,18 @@ func (r *PackageRevisionReconciler) getPackageRevisionForUpgrade(ctx context.Con
 }
 
 // getPackageResourcesForUpgrade returns the resources to use as the local side of the 3-way merge.
-// For subpackage upgrades, only the resources under SubpackageDir are returned (with the prefix stripped),
-// matching the v1alpha1 behaviour.
-func (r *PackageRevisionReconciler) getPackageResourcesForUpgrade(ctx context.Context, pr *porchv1alpha2.PackageRevision) (map[string]string, error) {
+// For subpackage upgrades, only the resources under subpackageDir are returned (with the prefix stripped),
+// matching the v1alpha1 behaviour. subpackageDir must come from the operation being reconciled, not from pr.
+func (r *PackageRevisionReconciler) getPackageResourcesForUpgrade(ctx context.Context, pr *porchv1alpha2.PackageRevision, subpackageDir string) (map[string]string, error) {
 	currentResources, err := r.getPackageResources(ctx, pr)
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "failed to read current resources")
 	}
 
-	if pr.Spec.SubpackageOperation == nil || pr.Spec.SubpackageOperation.Upgrade == nil {
+	if subpackageDir == "" {
 		return currentResources, nil
 	}
 
-	subpackageDir := pr.Spec.SubpackageOperation.SubpackageDir
 	subpackageResources := make(map[string]string)
 	for k, v := range currentResources {
 		if trimmed, ok := strings.CutPrefix(k, subpackageDir+"/"); ok {
