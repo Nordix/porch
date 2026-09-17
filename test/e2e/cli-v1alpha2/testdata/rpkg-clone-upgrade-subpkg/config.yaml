@@ -98,7 +98,6 @@ commands:
     stdout: |
       subpackage cloned into directory "subpackages/upstream-function" in package revision "git.parent-with-subpackages.alpha"
     waitForReady: true
-    waitForReady: true
   - args:
       - porchctl
       - rpkg
@@ -139,7 +138,6 @@ commands:
       - git.parent-with-subpackages.alpha
     stdout: |
       subpackage cloned into directory "clone-remote/wordpress" in package revision "git.parent-with-subpackages.alpha"
-    waitForReady: true
     waitForReady: true
   - args:
       - porchctl
@@ -461,6 +459,7 @@ commands:
       git.parent-with-subpackages.delta approved
     waitForPublished: true
   # Cleanup — published packages require propose-delete before delete
+  # Delete in reverse dependency order: delta → gamma → beta → alpha
   - args:
       - porchctl
       - rpkg
@@ -479,6 +478,7 @@ commands:
       - git.parent-with-subpackages.delta
     stdout: |
       git.parent-with-subpackages.delta deleted
+    waitForDeleted: true
   - args:
       - porchctl
       - rpkg
@@ -497,6 +497,7 @@ commands:
       - git.parent-with-subpackages.gamma
     stdout: |
       git.parent-with-subpackages.gamma deleted
+    waitForDeleted: true
   - args:
       - porchctl
       - rpkg
@@ -515,6 +516,7 @@ commands:
       - git.parent-with-subpackages.beta
     stdout: |
       git.parent-with-subpackages.beta deleted
+    waitForDeleted: true
   - args:
       - porchctl
       - rpkg
@@ -533,6 +535,7 @@ commands:
       - git.parent-with-subpackages.alpha
     stdout: |
       git.parent-with-subpackages.alpha deleted
+  # Delete upstream packages in reverse dependency order: fourth-cut → third-cut → second-cut → first-cut
   - args:
       - porchctl
       - rpkg
@@ -551,6 +554,7 @@ commands:
       - git.upstream-package.fourth-cut
     stdout: |
       git.upstream-package.fourth-cut deleted
+    waitForDeleted: true
   - args:
       - porchctl
       - rpkg
@@ -569,6 +573,7 @@ commands:
       - git.upstream-package.third-cut
     stdout: |
       git.upstream-package.third-cut deleted
+    waitForDeleted: true
   - args:
       - porchctl
       - rpkg
@@ -587,6 +592,7 @@ commands:
       - git.upstream-package.second-cut
     stdout: |
       git.upstream-package.second-cut deleted
+    waitForDeleted: true
   - args:
       - porchctl
       - rpkg
