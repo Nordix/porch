@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"strings"
 
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/lib/errors"
@@ -245,13 +246,14 @@ func (r *v1alpha2Runner) findPackageRevisionFromUpstreamV2(up *kptfilev1.Upstrea
 	if up == nil || up.Git == nil || up.Git.Repo == "" || up.Git.Directory == "" || up.Git.Ref == "" {
 		return nil, pkgerrors.Errorf("could not find upstream references in upstream read from subpackage kptfile")
 	}
+	upstreamRepo := strings.TrimSuffix(up.Git.Repo, ".git")
 	for i := range r.prs {
 		pr := &r.prs[i]
 		if !pr.IsPublished() || pr.Status.SelfLock == nil || pr.Status.SelfLock.Git == nil {
 			continue
 		}
 		git := pr.Status.SelfLock.Git
-		if git.Repo == up.Git.Repo && git.Directory == up.Git.Directory && git.Ref == up.Git.Ref {
+		if strings.TrimSuffix(git.Repo, ".git") == upstreamRepo && git.Directory == up.Git.Directory && git.Ref == up.Git.Ref {
 			return pr, nil
 		}
 	}
