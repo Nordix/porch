@@ -24,6 +24,7 @@ import (
 
 func TestPorchCLIV1Alpha2(t *testing.T) {
 	if os.Getenv("E2E") == "" {
+		// Skip the tests
 		t.Skip("set E2E to run this test")
 	}
 
