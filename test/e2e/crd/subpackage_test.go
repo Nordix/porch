@@ -20,6 +20,8 @@ import (
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -100,17 +102,13 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 
 			err := cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, "")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(SatisfyAny(
-				ContainSubstring("subpackage directory"),
-				ContainSubstring("is invalid"),
-				ContainSubstring("subpackageDir"),
-			))
+			Expect(err.Error()).To(ContainSubstring("subpackageDir"))
 		})
 	})
 
 	Context("clone into existing subpackage rejected", func() {
-		It("should reject cloning into an existing or nested subpackage dir", func() {
-			repo := "subpkg-clone-existing"
+		It("should reject cloning into a nested subpackage dir", func() {
+			repo := "subpkg-clone-nested"
 			createGiteaRepo(repo)
 			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
 			DeferCleanup(func() {
@@ -121,8 +119,6 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			const (
 				subpackageDir1 = "level1/level2/my-subpackage-1"
 				subpackageDir2 = "level1/level2/my-subpackage-1/my-subpackage-2"
-				subpackageDir3 = "level1/level2/my-subpackage-1"
-				subpackageDir4 = "level1/level2/my-subpackage-1/"
 			)
 
 			cloneePR := createSubpkgPR(env, repo, "clonee-pkg", "v1")
@@ -132,34 +128,71 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
 			DeferCleanup(deletePackage, env.Ctx, parentPR)
 
-			By("cloning subpackage into dir1 succeeds")
 			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir1)).To(Succeed())
 			waitForReady(env.Ctx, parentPR)
 
-			By("verifying subpackage Kptfile present")
-			resources := getPRRResources(env.Ctx, env.Namespace, parentPR.Name)
-			Expect(resources).To(HaveKey(subpackageDir1 + "/Kptfile"))
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir2)).To(Succeed())
+			waitForReadyFalse(env.Ctx, parentPR)
+			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+				HaveField("Status", Equal(metav1.ConditionFalse)),
+				HaveField("Message", ContainSubstring("cannot clone subpackage into another subpackage")),
+			)))
+		})
 
-			By("cloning into nested dir inside existing subpackage fails")
-			err := cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir2)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(SatisfyAny(
-				ContainSubstring("cannot clone subpackage into another subpackage"),
-				ContainSubstring("cannot clone subpackage into parent"),
-				ContainSubstring("already has"),
-			))
+		It("should reject cloning a different upstream into an occupied dir", func() {
+			repo := "subpkg-clone-occupied"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
 
-			By("re-cloning the same dir fails")
-			err = cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir3)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(SatisfyAny(
-				ContainSubstring("cannot clone subpackage into another subpackage"),
-				ContainSubstring("cannot clone subpackage into parent"),
-				ContainSubstring("already has"),
-			))
+			const subpackageDir = "level1/level2/my-subpackage-1"
 
-			By("cloning with trailing slash fails validation")
-			err = cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir4)
+			cloneePR := createSubpkgPR(env, repo, "clonee-pkg", "v1")
+			publishPackage(env.Ctx, cloneePR)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR)
+
+			cloneePR2 := createSubpkgPR(env, repo, "clonee-pkg-2", "v1")
+			publishPackage(env.Ctx, cloneePR2)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR2)
+
+			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			DeferCleanup(deletePackage, env.Ctx, parentPR)
+
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, subpackageDir)).To(Succeed())
+			waitForReady(env.Ctx, parentPR)
+
+			Expect(cloneSubpackage(env.Ctx, parentPR, cloneePR2.Name, subpackageDir)).To(Succeed())
+			waitForReadyFalse(env.Ctx, parentPR)
+			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+				HaveField("Status", Equal(metav1.ConditionFalse)),
+				HaveField("Message", ContainSubstring("cannot clone subpackage into parent")),
+			)))
+		})
+
+		It("should reject cloning with a trailing slash", func() {
+			repo := "subpkg-clone-trailing-slash"
+			createGiteaRepo(repo)
+			registerV1Alpha2Repo(env.Ctx, env.Namespace, repo)
+			DeferCleanup(func() {
+				cleanupRepo(env.Ctx, env.Namespace, repo)
+				deleteGiteaRepo(repo)
+			})
+
+			cloneePR := createSubpkgPR(env, repo, "clonee-pkg", "v1")
+			publishPackage(env.Ctx, cloneePR)
+			DeferCleanup(deletePackage, env.Ctx, cloneePR)
+
+			parentPR := createSubpkgPR(env, repo, "parent-pkg", "v1")
+			DeferCleanup(deletePackage, env.Ctx, parentPR)
+
+			err := cloneSubpackage(env.Ctx, parentPR, cloneePR.Name, "level1/level2/my-subpackage-1/")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("subpackageDir"))
 		})
@@ -211,14 +244,24 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			Expect(resources[subpackageDir1+"/Kptfile"]).To(ContainSubstring("ref: clonee-pkg/v2"))
 
 			By("upgrading subpackage in nonexistent nested dir fails")
-			err := upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir2)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("does not have a subpackage at"))
+			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir2)).To(Succeed())
+			waitForReadyFalse(env.Ctx, parentPR)
+			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+				HaveField("Status", Equal(metav1.ConditionFalse)),
+				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+			)))
 
 			By("upgrading subpackage in nonexistent sibling dir fails")
-			err = upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir3)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("does not have a subpackage at"))
+			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePRV1.Name, cloneePRV2.Name, subpackageDir3)).To(Succeed())
+			waitForReadyFalse(env.Ctx, parentPR)
+			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+				HaveField("Status", Equal(metav1.ConditionFalse)),
+				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+			)))
 		})
 	})
 
@@ -399,14 +442,24 @@ var _ = Describe("Subpackage", Ordered, Label("lifecycle"), func() {
 			waitForReady(env.Ctx, parentPR)
 
 			By("upgrading removed subpackage-2 fails")
-			err := upgradeSubpackage(env.Ctx, parentPR, cloneePR2V1.Name, cloneePR2V2.Name, subpackageDir2)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("does not have a subpackage at"))
+			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePR2V1.Name, cloneePR2V2.Name, subpackageDir2)).To(Succeed())
+			waitForReadyFalse(env.Ctx, parentPR)
+			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+				HaveField("Status", Equal(metav1.ConditionFalse)),
+				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+			)))
 
 			By("upgrading removed subpackage-3 fails")
-			err = upgradeSubpackage(env.Ctx, parentPR, cloneePR3V1.Name, cloneePR3V2.Name, subpackageDir3)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("does not have a subpackage at"))
+			Expect(upgradeSubpackage(env.Ctx, parentPR, cloneePR3V1.Name, cloneePR3V2.Name, subpackageDir3)).To(Succeed())
+			waitForReadyFalse(env.Ctx, parentPR)
+			Expect(k8sClient.Get(env.Ctx, client.ObjectKeyFromObject(parentPR), parentPR)).To(Succeed())
+			Expect(parentPR.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", Equal(porchv1alpha2.ConditionReady)),
+				HaveField("Status", Equal(metav1.ConditionFalse)),
+				HaveField("Message", ContainSubstring("does not have a subpackage at")),
+			)))
 		})
 	})
 
@@ -489,28 +542,36 @@ func createSubpkgCopy(env *testEnv, repo string, src *porchv1alpha2.PackageRevis
 
 // cloneSubpackage sets SubpackageOperation.CloneFrom on an existing PackageRevision.
 func cloneSubpackage(ctx interface{ Done() <-chan struct{} }, pr *porchv1alpha2.PackageRevision, cloneePRName, subpackageDir string) error {
-	Expect(k8sClient.Get(sharedCtx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
-	pr.Spec.SubpackageOperation = &porchv1alpha2.SubpackageOperation{
-		SubpackageDir: subpackageDir,
-		CloneFrom: &porchv1alpha2.UpstreamPackage{
-			UpstreamRef: &porchv1alpha2.PackageRevisionRef{
-				Name: cloneePRName,
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(sharedCtx, client.ObjectKeyFromObject(pr), pr); err != nil {
+			return err
+		}
+		pr.Spec.SubpackageOperation = &porchv1alpha2.SubpackageOperation{
+			SubpackageDir: subpackageDir,
+			CloneFrom: &porchv1alpha2.UpstreamPackage{
+				UpstreamRef: &porchv1alpha2.PackageRevisionRef{
+					Name: cloneePRName,
+				},
 			},
-		},
-	}
-	return k8sClient.Update(sharedCtx, pr)
+		}
+		return k8sClient.Update(sharedCtx, pr)
+	})
 }
 
 // upgradeSubpackage sets SubpackageOperation.Upgrade on an existing PackageRevision.
 func upgradeSubpackage(ctx interface{ Done() <-chan struct{} }, pr *porchv1alpha2.PackageRevision, oldUpstreamName, newUpstreamName, subpackageDir string) error {
-	Expect(k8sClient.Get(sharedCtx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
-	pr.Spec.SubpackageOperation = &porchv1alpha2.SubpackageOperation{
-		SubpackageDir: subpackageDir,
-		Upgrade: &porchv1alpha2.PackageUpgradeSpec{
-			OldUpstream:    porchv1alpha2.PackageRevisionRef{Name: oldUpstreamName},
-			NewUpstream:    porchv1alpha2.PackageRevisionRef{Name: newUpstreamName},
-			CurrentPackage: porchv1alpha2.PackageRevisionRef{Name: pr.Name},
-		},
-	}
-	return k8sClient.Update(sharedCtx, pr)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(sharedCtx, client.ObjectKeyFromObject(pr), pr); err != nil {
+			return err
+		}
+		pr.Spec.SubpackageOperation = &porchv1alpha2.SubpackageOperation{
+			SubpackageDir: subpackageDir,
+			Upgrade: &porchv1alpha2.PackageUpgradeSpec{
+				OldUpstream:    porchv1alpha2.PackageRevisionRef{Name: oldUpstreamName},
+				NewUpstream:    porchv1alpha2.PackageRevisionRef{Name: newUpstreamName},
+				CurrentPackage: porchv1alpha2.PackageRevisionRef{Name: pr.Name},
+			},
+		}
+		return k8sClient.Update(sharedCtx, pr)
+	})
 }

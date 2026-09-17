@@ -485,6 +485,12 @@ func deletePackage(ctx context.Context, pr *porchv1alpha2.PackageRevision) {
 		patchLifecycle(ctx, pr, porchv1alpha2.PackageRevisionLifecycleDeletionProposed)
 	}
 	Expect(k8sClient.Delete(ctx, pr)).To(Succeed())
+	// Wait for the object to be fully gone so the webhook's upstream-reference check
+	// does not see it as a referencing package when a dependency is deleted next.
+	Eventually(func() bool {
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pr), pr)
+		return err != nil
+	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(BeTrue())
 }
 
 // --- Test environment helpers ---
