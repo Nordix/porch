@@ -128,7 +128,7 @@ func RecordAPIOperationDuration(ctx context.Context, resource, verb, porchOperat
 		attribute.String("verb", verb),
 		attribute.String("api_version", apiVersion),
 		attribute.String("operation", porchOperation),
-		attribute.String("operation_outcome", perfStatusLabel(err)),
+		attribute.String("operation_outcome", string(perfStatusLabel(err))),
 		attribute.String("lifecycle_after", string(lifecycleAfter)),
 	}
 	attrSlice = append(attrSlice, attributesFromPrKey(prKey).ToSlice()...)
@@ -163,7 +163,7 @@ func TrackInFlightOperation(ctx context.Context, resource, verb, porchOperation,
 
 	if klog.V(3).Enabled() {
 		klog.Infof(
-			"Tracking in-flight START for Porch API operation with attributes %v",
+			"Tracking START of in-flight Porch API operation with attributes %v",
 			attributes.MarshalLog())
 	}
 	porchInFlightApiOps.Add(ctx, 1,
@@ -171,16 +171,19 @@ func TrackInFlightOperation(ctx context.Context, resource, verb, porchOperation,
 	)
 
 	return func() {
-
 		if klog.V(3).Enabled() {
 			klog.Infof(
-				"Tracking in-flight END for Porch API operation with attributes %v",
+				"Tracking END of in-flight Porch API operation with attributes %v",
 				attributes.MarshalLog())
 		}
 		porchInFlightApiOps.Add(context.Background(), -1,
 			metric.WithAttributeSet(attributes),
 		)
 	}
+}
+
+func TrackInFlightControllerOperation(ctx context.Context, resource, verb, porchOperation string, initialLifecycle v1alpha2.PackageRevisionLifecycle, prKey *repository.PackageRevisionKey) func() {
+	return TrackInFlightOperation(ctx, resource, verb, porchOperation, APIVersionV1Alpha2, v1alpha1.PackageRevisionLifecycle(initialLifecycle), prKey)
 }
 
 func RecordRequestCount(ctx context.Context, resource, op, apiVersion string) {
@@ -291,11 +294,11 @@ func packageSizeBucketBoundaries() []float64 {
 	return buckets
 }
 
-func perfStatusLabel(err error) string {
+func perfStatusLabel(err error) OperationOutcomeValue {
 	if err != nil {
-		return "error"
+		return OperationOutcomes.Error
 	}
-	return "success"
+	return OperationOutcomes.Success
 }
 
 func attributesFromPrKey(prKey *repository.PackageRevisionKey) *attribute.Set {
@@ -317,19 +320,23 @@ func attributesFromPrKey(prKey *repository.PackageRevisionKey) *attribute.Set {
 	return &attributes
 }
 
+type OperationOutcomeValue string
+
+var OperationOutcomes = struct {
+	Success, Error OperationOutcomeValue
+}{
+	Success: "success",
+	Error:   "error",
+}
+
 type operationVerbs struct {
 	AllCaps, TitleCase string
 }
 
-var (
-	capitalise = cases.Upper(language.English)
-	title      = cases.Title(language.English)
-)
-
-func ParseOperation(stringForm string) operationVerbs {
+func ParseOperation(baseString string) operationVerbs {
 	return operationVerbs{
-		AllCaps:   capitalise.String(stringForm),
-		TitleCase: title.String(stringForm),
+		AllCaps:   cases.Upper(language.English).String(baseString),
+		TitleCase: cases.Title(language.English).String(baseString),
 	}
 }
 
