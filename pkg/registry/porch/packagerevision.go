@@ -341,7 +341,7 @@ func createAction(pkgRev *porchapi.PackageRevision) string {
 // Update finds a resource in the storage and updates it. Some implementations
 // may allow updates creates the object - they should set the created boolean
 // to true.
-func (r *packageRevisions) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc,
+func (r *packageRevisions) Update(ctx context.Context, rawName string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc,
 	updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, _ *metav1.UpdateOptions) (runtime.Object, bool, error) {
 	op := telemetry.Operations.Update
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisions::"+op.TitleCase, trace.WithAttributes())
@@ -350,27 +350,42 @@ func (r *packageRevisions) Update(ctx context.Context, name string, objInfo rest
 		updatedPkgRev *porchapi.PackageRevision
 		err           error
 	)
-	lifecycle := porchapi.PackageRevisionLifecycle("UNKNOWN")
+	lifecycle := func() porchapi.PackageRevisionLifecycle {
+		if apiPkgRev, err := objInfo.UpdatedObject(ctx, &porchapi.PackageRevision{}); err == nil {
+			if apiPkgRev, ok := apiPkgRev.(*porchapi.PackageRevision); ok {
+				return apiPkgRev.Spec.Lifecycle
+			}
+		}
+		// best guess
+		return porchapi.PackageRevisionLifecycle("Draft")
+	}()
 	namespace, _ := genericapirequest.NamespaceFrom(ctx)
-	key, _ := repository.PkgRevK8sName2Key(namespace, name)
+	key, _ := repository.PkgRevK8sName2Key(namespace, rawName)
 	defer telemetry.TrackInFlightOperation(ctx, prTelemetryName, op.AllCaps, op.TitleCase+prTelemetryName, telemetry.APIVersionV1Alpha1, lifecycle, &key)()
 	defer func() {
 		span.End()
-		if updatedPkgRev == nil {
-			if storedPkgRev, getErr := r.getRepoPkgRev(ctx, name); getErr == nil {
-				lifecycle = storedPkgRev.Lifecycle(ctx)
+		lifecycle = func() porchapi.PackageRevisionLifecycle {
+			if updatedPkgRev == nil {
+				if apierrors.IsNotFound(err) {
+					return porchapi.PackageRevisionLifecycle("UNKNOWN")
+				}
+				if storedPkgRev, getErr := r.getRepoPkgRev(ctx, rawName); getErr == nil {
+					return storedPkgRev.Lifecycle(ctx)
+				} else {
+					return porchapi.PackageRevisionLifecycle("UNKNOWN")
+				}
+			} else {
+				return updatedPkgRev.Spec.Lifecycle
 			}
-		} else {
-			lifecycle = updatedPkgRev.Spec.Lifecycle
-		}
+		}()
 		telemetry.RecordAPIOperationDuration(ctx, prTelemetryName, op.AllCaps, op.TitleCase+prTelemetryName, telemetry.APIVersionV1Alpha1, time.Since(start), err, lifecycle, &key)
 	}()
 
 	telemetry.RecordRequestCount(ctx, prTelemetryName, op.AllCaps, telemetry.APIVersionV1Alpha1)
 
-	ctx = pctx.WithNewRequestIDAndPackageRevision(ctx, name)
+	ctx = pctx.WithNewRequestIDAndPackageRevision(ctx, rawName)
 
-	updatedPkgRev, ok, err := r.updatePackageRevision(ctx, name, objInfo, createValidation, updateValidation, forceAllowCreate)
+	updatedPkgRev, ok, err := r.updatePackageRevision(ctx, rawName, objInfo, createValidation, updateValidation, forceAllowCreate)
 	if err != nil {
 		klog.ErrorS(err, "[API] PackageRevision update operation failed", pctx.LogMetadataFrom(ctx)...)
 	}

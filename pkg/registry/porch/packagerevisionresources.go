@@ -133,7 +133,7 @@ func (r *packageRevisionResources) Get(ctx context.Context, rawName string, _ *m
 		lifecycle = porchapi.PackageRevisionLifecycle("UNKNOWN")
 	)
 	namespace, _ := genericapirequest.NamespaceFrom(ctx)
-	key, _ := repository.PkgRevK8sName2Key(namespace, name)
+	key, _ := repository.PkgRevK8sName2Key(namespace, rawName)
 	defer telemetry.TrackInFlightOperation(ctx, prrTelemetryName, op.AllCaps, op.TitleCase+prrTelemetryName, telemetry.APIVersionV1Alpha1, "", &key)()
 	defer func() {
 		span.End()
@@ -196,15 +196,26 @@ func (r *packageRevisionResources) Update(ctx context.Context, rawName string, o
 		return nil, false, apierrors.NewBadRequest("namespace must be specified")
 	}
 
-	key, _ := repository.PkgRevK8sName2Key(namespace, name)
+	key, _ := repository.PkgRevK8sName2Key(namespace, rawName)
 	defer telemetry.TrackInFlightOperation(ctx, prrTelemetryName, op.AllCaps, op.TitleCase+prrTelemetryName, telemetry.APIVersionV1Alpha1, lifecycle, &key)()
 	defer func() {
 		span.End()
-		if updatedApiPkgRev != nil {
-			lifecycle = updatedApiPkgRev.Spec.Lifecycle
-		}
+		lifecycle = func() porchapi.PackageRevisionLifecycle {
+			if updatedApiPkgRev == nil {
+				if apierrors.IsNotFound(err) {
+					return porchapi.PackageRevisionLifecycle("UNKNOWN")
+				}
+				if storedPkgRev, getErr := r.getRepoPkgRev(ctx, rawName); getErr == nil {
+					return storedPkgRev.Lifecycle(ctx)
+				} else {
+					return porchapi.PackageRevisionLifecycle("UNKNOWN")
+				}
+			} else {
+				return updatedApiPkgRev.Spec.Lifecycle
+			}
+		}()
 		namespace, _ := genericapirequest.NamespaceFrom(ctx)
-		key, _ := repository.PkgRevK8sName2Key(namespace, name)
+		key, _ := repository.PkgRevK8sName2Key(namespace, rawName)
 		telemetry.RecordAPIOperationDuration(ctx, prrTelemetryName, op.AllCaps, op.TitleCase+prrTelemetryName, telemetry.APIVersionV1Alpha1, time.Since(start), err, lifecycle, &key)
 	}()
 
