@@ -13,7 +13,7 @@ These flags apply to the controllers binary, independent of which reconcilers ar
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--webhook-cert-dir` | `/etc/webhook/certs` | Directory containing `tls.crt` and `tls.key` for the webhook server. In-cluster deployments mount these from a Secret; override for local development. |
+| `--cert-dir` | `/etc/webhook/certs` | Directory containing `tls.crt` and `tls.key` for the webhook server. In-cluster deployments mount these from a Secret; override for local development. |
 
 ## Enabling Controllers
 

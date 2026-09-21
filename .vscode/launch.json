@@ -109,7 +109,7 @@
                 "--repositories.health-check-frequency=1m",
                 "--repositories.full-sync-frequency=3m",
                 "--packagerevisions.repo-operation-retry-attempts=3",
-                "--webhook-cert-dir=${workspaceFolder}/.build/deploy/.webhook-certs",
+                "--cert-dir=${workspaceFolder}/.build/deploy/.webhook-certs",
                 "-v=2"
             ],
             "cwd": "${workspaceFolder}",
