@@ -30,20 +30,10 @@ const (
 	dbGitSyncWaitTimeout = 90 * time.Second
 )
 
-// dbGitSyncSkipMessage explains why the DB-git sync tests only run against a
-// DB-cache deployment. These tests exercise the DB-cache push-only sync
-// semantics (drafts written to the DB and asynchronously reconciled to git),
-// which do not exist in the CR cache. Set the DB_CACHE environment variable
-// when running against a DB-cache deployment to enable them.
-const dbGitSyncSkipMessage = "DB-git sync tests are only supported in DB cache deployments. If you already deployed Porch with the DB cache activated, set the DB_CACHE environment variable and re-run these tests."
-
-// skipUnlessUsingDBCache skips the calling test when Porch is not running with
-// the database cache. The DB-git sync suite relies on DB-cache-only behavior,
-// so running it against the CR cache produces spurious failures.
 func (t *PorchSuite) skipUnlessUsingDBCache() {
 	t.T().Helper()
 	if !t.UsingDBCache {
-		t.T().Skip(dbGitSyncSkipMessage)
+		t.T().Skip("set the DB_CACHE environment variable and re-run these tests")
 	}
 }
 
