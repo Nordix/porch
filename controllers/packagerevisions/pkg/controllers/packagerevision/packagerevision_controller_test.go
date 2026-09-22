@@ -2075,8 +2075,11 @@ func TestReconcileSourceBlockedOnNonMigratedRepo(t *testing.T) {
 	mockStatusWriter.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) {
 			patched := obj.(*porchv1alpha2.PackageRevision)
+			require.NotEmpty(t, patched.Status.Conditions)
 			for _, c := range patched.Status.Conditions {
 				assert.Equal(t, metav1.ConditionFalse, c.Status)
+				assert.Contains(t, c.Message, "not enabled for v1alpha2",
+					"failure message should reflect the migration guard, not an unrelated error")
 			}
 		}).Return(nil)
 	mockClient.EXPECT().Status().Return(mockStatusWriter)

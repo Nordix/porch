@@ -195,17 +195,23 @@ func resultOrDefault(result *ctrl.Result) ctrl.Result {
 // Returns (result, nil) if source was applied and status was updated.
 // Returns (nil, err) on failure.
 func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
+	// Skip if already created or no source to apply (same conditions as applySource).
+	if pr.Status.CreationSource != "" || pr.Spec.Source == nil {
+		return nil, nil
+	}
+
+	// Reject source execution on repos missing the v1alpha2-migration annotation,
+	// before applySource so no source work runs. Backstops the webhook if bypassed.
+	if err := r.verifyRepoMigrated(ctx, repoKey); err != nil {
+		return nil, r.setSourceFailed(ctx, pr, err)
+	}
+
 	resources, sourceOperationType, err := r.applySource(ctx, pr)
 	if err != nil {
 		return nil, r.setSourceFailed(ctx, pr, err)
 	}
 	if resources == nil {
 		return nil, nil
-	}
-
-	// Defense-in-depth if the validating webhook is bypassed.
-	if err := r.verifyRepoMigrated(ctx, repoKey); err != nil {
-		return nil, r.setSourceFailed(ctx, pr, err)
 	}
 
 	log := log.FromContext(ctx)
