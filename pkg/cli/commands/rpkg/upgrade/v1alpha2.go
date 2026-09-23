@@ -48,6 +48,8 @@ type v1alpha2Runner struct {
 	discover      string
 	subpackageDir string
 
+	workspaceChanged bool
+
 	prs []porchv1alpha2.PackageRevision
 }
 
@@ -71,6 +73,7 @@ func (r *v1alpha2Runner) preRunE(cmd *cobra.Command, args []string) error {
 	r.strategy, _ = cmd.Flags().GetString("strategy")
 	r.discover, _ = cmd.Flags().GetString("discover")
 	r.subpackageDir, _ = cmd.Flags().GetString("subpackage-dir")
+	r.workspaceChanged = cmd.Flags().Changed("workspace")
 
 	switch r.discover {
 	case "":
@@ -107,6 +110,9 @@ func (r *v1alpha2Runner) validateUpgradeArgs(args []string) error {
 		return fmt.Errorf("revision must be positive (and not main)")
 	}
 	if r.subpackageDir != "" {
+		if r.workspaceChanged {
+			return fmt.Errorf("--workspace may not be specified on subpackage upgrades")
+		}
 		if err := porchapi.IsValidSubpackageDir(r.subpackageDir); err != nil {
 			return pkgerrors.Wrapf(err, "invalid --subpackage-dir %q", r.subpackageDir)
 		}
@@ -190,12 +196,8 @@ func (r *v1alpha2Runner) doSubpackageUpgrade(parentPR *porchv1alpha2.PackageRevi
 		return pkgerrors.Errorf("to upgrade an independent subpackage, its parent package must be in state draft, not %q", parentPR.Spec.Lifecycle)
 	}
 
-	ns := ""
-	if r.cfg.Namespace != nil {
-		ns = *r.cfg.Namespace
-	}
 	var resources porchapiv1alpha1.PackageRevisionResources
-	if err := r.client.Get(r.ctx, client.ObjectKey{Namespace: ns, Name: parentPR.Name}, &resources); err != nil {
+	if err := r.client.Get(r.ctx, client.ObjectKey{Namespace: parentPR.Namespace, Name: parentPR.Name}, &resources); err != nil {
 		return pkgerrors.Wrapf(err, "could not get the resources for package revision %q", parentPR.Name)
 	}
 

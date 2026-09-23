@@ -218,7 +218,7 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 		return nil, r.setFailedConditionsAndLog(ctx, pr, sourceOperationType, pkgerrors.Wrapf(err, "create draft"))
 	}
 
-	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, sourceOperationType)
+	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, sourceOperationType, "")
 }
 
 // reconcileSubpackageOperation handles one-time package creation from spec.source.
@@ -272,20 +272,29 @@ func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Con
 		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, pkgerrors.Wrapf(err, "create draft on existing package revision"))
 	}
 
-	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, parentResources, subpackageOperationType)
+	return r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, parentResources, "", r.getSubpackageOperationHash(pr))
 }
 
 // finalizeDraftAndUpdateStatus completes the draft operation by updating resources,
 // closing the draft, and updating the package revision status.
+// The status patch (which records CreationSource / LastSubpackageOperationHash) is
+// retried: if it fails the function returns an error so the work-queue retries the
+// whole reconcile rather than requeueing with stale completion state, which would
+// cause a replay of the already-committed git mutation.
 func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 	ctx context.Context,
 	pr *porchv1alpha2.PackageRevision,
 	repoKey repository.RepositoryKey,
 	draft repository.PackageRevisionDraftSlim,
 	resources map[string]string,
-	operationType string) (*ctrl.Result, error) {
+	creationSource string,
+	subpackageOperationHash string) (*ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
+	operationType := creationSource
+	if operationType == "" {
+		operationType = subpackageOperationHash
+	}
 	if err := draft.UpdateResources(ctx, resources, operationType); err != nil {
 		return nil, r.setFailedConditionsAndLog(ctx, pr, operationType, pkgerrors.Wrapf(err, "update resources"))
 	}
@@ -300,8 +309,14 @@ func (r *PackageRevisionReconciler) finalizeDraftAndUpdateStatus(
 		log.Error(err, "failed to read back package content after source execution")
 	}
 
-	r.updateStatus(ctx, pr, content, operationType, r.getSubpackageOperationHash(pr),
-		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render"))
+	// Persist completion markers (CreationSource / LastSubpackageOperationHash) with
+	// retry. These are the idempotency guards that prevent the committed git mutation
+	// from being replayed on the next reconcile. A transient patch failure must not
+	// cause a requeue with stale state.
+	if err := r.updateStatusWithRetry(ctx, pr, content, creationSource, subpackageOperationHash,
+		readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonPending, "awaiting render")); err != nil {
+		return nil, pkgerrors.Wrap(err, "failed to persist completion status after draft close")
+	}
 	// Set Rendered=Unknown via the render field manager.
 	r.updateRenderStatus(ctx, pr, "", "",
 		renderedCondition(pr.Generation, metav1.ConditionUnknown, porchv1alpha2.ReasonPending, "awaiting render"))
