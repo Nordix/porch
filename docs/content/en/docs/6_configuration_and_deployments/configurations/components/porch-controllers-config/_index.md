@@ -11,8 +11,8 @@ The Porch controllers manage Repository synchronization, PackageRevisions, Packa
 
 These flags apply to the controllers binary, independent of which reconcilers are enabled:
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
+|  Parameter   |       Default        | Description |
+|--------------|----------------------|-------------|
 | `--cert-dir` | `/etc/webhook/certs` | Directory containing `tls.crt` and `tls.key` for the webhook server. In-cluster deployments mount these from a Secret; override for local development. |
 
 ## Enabling Controllers
