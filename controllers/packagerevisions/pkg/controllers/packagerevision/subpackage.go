@@ -170,7 +170,12 @@ func (r *PackageRevisionReconciler) shouldSkipSubpackageOperation(pr *porchv1alp
 	return false
 }
 
-// GetSource return the SubpackageDir for a package revision or "" if there is no SubpackageDir set.
+// getSubpackageOperationHash returns a hash of spec.subpackageOperation for idempotency.
+// The hash covers the spec struct as stored in the CR — it does not resolve upstream
+// content. If upstreamRef points to a draft PackageRevision whose content is mutated
+// without changing its name, the hash is unchanged and the operation is skipped.
+// To force re-execution, change any field in spec.subpackageOperation (e.g. point
+// upstreamRef at a new revision).
 func (r *PackageRevisionReconciler) getSubpackageOperationHash(pr *porchv1alpha2.PackageRevision) string {
 	if pr.Spec.SubpackageOperation == nil {
 		return pr.Status.LastSubpackageOperationHash

@@ -48,6 +48,11 @@ func NewPackageRevisionValidator(client client.Reader) *PackageRevisionValidator
 // Repo-discovered packages (Source == nil) can have any lifecycle (determined from git refs).
 // User-created packages (Source != nil) must have Draft or Proposed lifecycle on CREATE.
 func (v *PackageRevisionValidator) ValidateCreate(ctx context.Context, obj *v1alpha2.PackageRevision) (admission.Warnings, error) {
+	// Subpackage operations are invalid on creates.
+	if obj.Spec.SubpackageOperation != nil {
+		return nil, fmt.Errorf("subpackage operations are not allowed at creation")
+	}
+
 	// Distinguish between repo-discovered and user-created packages
 	isRepoDiscovered := obj.Spec.Source == nil
 

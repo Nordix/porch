@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 
+	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/kpt/pkg/lib/kptops"
 	porchapi "github.com/kptdev/porch/api/porch"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
@@ -164,7 +165,7 @@ func (r *PackageRevisionReconciler) getPackageResourcesForUpgrade(ctx context.Co
 	if len(subpackageResources) == 0 {
 		return nil, fmt.Errorf("subpackage %q not found in package", subpackageDir)
 	}
-	if _, ok := subpackageResources["Kptfile"]; !ok {
+	if _, ok := subpackageResources[kptfilev1.KptFileName]; !ok {
 		return nil, fmt.Errorf("subpackage %q is missing Kptfile", subpackageDir)
 	}
 
