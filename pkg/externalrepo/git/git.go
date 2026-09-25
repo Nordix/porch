@@ -62,6 +62,14 @@ const (
 	// Retry delay constants
 	baseRetryDelay = 200 * time.Millisecond
 	hookRetryDelay = 1 * time.Second
+
+	// authRetryBackoff is the base delay before re-resolving credentials after
+	// an authentication failure. Credentials are read through a watch-backed
+	// informer cache which is eventually consistent; if a Secret was just
+	// updated, the cache may briefly still serve the old value. Backing off
+	// before each retry gives the watch time to propagate the new Secret data.
+	// The backoff grows linearly per attempt (see doGitWithAuth).
+	authRetryBackoff = 500 * time.Millisecond
 )
 
 // Retryable error patterns for git push operations
@@ -1974,15 +1982,48 @@ func (r *gitRepository) ClosePackageRevisionDraft(ctx context.Context, prd repos
 	}, nil
 }
 
-// doGitWithAuth fetches auth credentials and provides them to the
-// operation. Retries are handled by the outer retry loop (e.g.
-// fetchRemoteRepositoryWithRetry, pushAndCleanup).
+// doGitWithAuth fetches auth credentials and provides them to the operation.
+// On an authentication failure it retries with freshly resolved credentials,
+// backing off between attempts. Credentials are read through a watch-backed
+// informer cache which is eventually consistent, so after a Secret update the
+// cache may briefly serve stale data; the backoff gives the watch time to
+// propagate the new Secret. It reuses the same retry count
+// (repoOperationRetryAttempts) as the other git retry loops, with a linear
+// authRetryBackoff between attempts. Other transient failures are handled by
+// the outer retry loops (fetchRemoteRepositoryWithRetry, pushAndCleanup).
 func (r *gitRepository) doGitWithAuth(ctx context.Context, op func(transport.AuthMethod) error) error {
 	auth, err := r.getAuthMethod(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to obtain git credentials: %w", err)
 	}
-	return op(auth)
+
+	err = op(auth)
+	if err == nil || !pkgerrors.Is(err, transport.ErrAuthenticationRequired) {
+		return err
+	}
+
+	// Authentication failed. Retry with fresh credentials, backing off between
+	// attempts to let the informer cache catch up with a recent Secret change.
+	for attempt := 1; attempt <= r.repoOperationRetryAttempts; attempt++ {
+		backoff := time.Duration(attempt) * authRetryBackoff
+		klog.Infof("Authentication failed for %s; retry %d/%d after %s with fresh credentials", r.Key(), attempt, r.repoOperationRetryAttempts, backoff)
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		auth, err = r.getAuthMethod(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to obtain git credentials: %w", err)
+		}
+
+		err = op(auth)
+		if err == nil || !pkgerrors.Is(err, transport.ErrAuthenticationRequired) {
+			return err
+		}
+	}
+	return err
 }
 
 // findPackage finds the packages in the git repository, under commit, if it is exists at path.

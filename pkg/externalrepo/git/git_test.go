@@ -2750,3 +2750,128 @@ func TestGetAuthMethod_ConcurrentAccess(t *testing.T) {
 		t.Fatalf("expected 100 resolver calls, got %d", got)
 	}
 }
+
+// --- doGitWithAuth tests ---
+
+func newTestGitRepoWithRetries(secret string, resolver repository.CredentialResolver, retries int) *gitRepository {
+	repo := newTestGitRepo(secret, resolver)
+	repo.repoOperationRetryAttempts = retries
+	return repo
+}
+
+// TestDoGitWithAuth_Success verifies the op runs once and succeeds without any
+// retry when there is no error.
+func TestDoGitWithAuth_Success(t *testing.T) {
+	resolver := &mutableCredentialResolver{username: "user1", password: "pass1"}
+	repo := newTestGitRepoWithRetries("my-secret", resolver, 3)
+
+	opCalls := 0
+	err := repo.doGitWithAuth(context.Background(), func(transport.AuthMethod) error {
+		opCalls++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opCalls != 1 {
+		t.Fatalf("expected op to run once, ran %d times", opCalls)
+	}
+	if got := resolver.callCount(); got != 1 {
+		t.Fatalf("expected 1 credential resolve, got %d", got)
+	}
+}
+
+// TestDoGitWithAuth_NonAuthErrorNoRetry verifies a non-authentication error is
+// returned immediately without retrying.
+func TestDoGitWithAuth_NonAuthErrorNoRetry(t *testing.T) {
+	resolver := &mutableCredentialResolver{username: "user1", password: "pass1"}
+	repo := newTestGitRepoWithRetries("my-secret", resolver, 3)
+
+	sentinel := fmt.Errorf("some network error")
+	opCalls := 0
+	err := repo.doGitWithAuth(context.Background(), func(transport.AuthMethod) error {
+		opCalls++
+		return sentinel
+	})
+	if err != sentinel {
+		t.Fatalf("expected sentinel error, got %v", err)
+	}
+	if opCalls != 1 {
+		t.Fatalf("expected op to run once (no retry), ran %d times", opCalls)
+	}
+	if got := resolver.callCount(); got != 1 {
+		t.Fatalf("expected 1 credential resolve (no retry), got %d", got)
+	}
+}
+
+// TestDoGitWithAuth_RetryThenSuccess verifies that an authentication failure
+// triggers a retry with freshly resolved credentials and then succeeds.
+func TestDoGitWithAuth_RetryThenSuccess(t *testing.T) {
+	resolver := &mutableCredentialResolver{username: "user1", password: "pass1"}
+	// One retry attempt is enough; keep the test fast (single ~500ms backoff).
+	repo := newTestGitRepoWithRetries("my-secret", resolver, 1)
+
+	opCalls := 0
+	err := repo.doGitWithAuth(context.Background(), func(transport.AuthMethod) error {
+		opCalls++
+		if opCalls == 1 {
+			return transport.ErrAuthenticationRequired
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opCalls != 2 {
+		t.Fatalf("expected op to run twice (initial + 1 retry), ran %d times", opCalls)
+	}
+	// Credentials resolved once for the initial attempt and once per retry.
+	if got := resolver.callCount(); got != 2 {
+		t.Fatalf("expected 2 credential resolves, got %d", got)
+	}
+}
+
+// TestDoGitWithAuth_RetryExhausted verifies that persistent authentication
+// failures exhaust the retries and the auth error is returned.
+func TestDoGitWithAuth_RetryExhausted(t *testing.T) {
+	resolver := &mutableCredentialResolver{username: "user1", password: "pass1"}
+	retries := 2
+	repo := newTestGitRepoWithRetries("my-secret", resolver, retries)
+
+	opCalls := 0
+	err := repo.doGitWithAuth(context.Background(), func(transport.AuthMethod) error {
+		opCalls++
+		return transport.ErrAuthenticationRequired
+	})
+	if !pkgerrors.Is(err, transport.ErrAuthenticationRequired) {
+		t.Fatalf("expected ErrAuthenticationRequired, got %v", err)
+	}
+	// initial attempt + `retries` retries
+	wantOpCalls := 1 + retries
+	if opCalls != wantOpCalls {
+		t.Fatalf("expected op to run %d times, ran %d times", wantOpCalls, opCalls)
+	}
+}
+
+// TestDoGitWithAuth_ContextCancelledDuringBackoff verifies that a cancelled
+// context aborts the backoff wait and returns the context error.
+func TestDoGitWithAuth_ContextCancelledDuringBackoff(t *testing.T) {
+	resolver := &mutableCredentialResolver{username: "user1", password: "pass1"}
+	repo := newTestGitRepoWithRetries("my-secret", resolver, 3)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	opCalls := 0
+	err := repo.doGitWithAuth(ctx, func(transport.AuthMethod) error {
+		opCalls++
+		// Cancel during the first op so the subsequent backoff wait is aborted.
+		cancel()
+		return transport.ErrAuthenticationRequired
+	})
+	if err != context.Canceled {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	// Only the initial op runs; the retry never fires because backoff is aborted.
+	if opCalls != 1 {
+		t.Fatalf("expected op to run once before cancellation, ran %d times", opCalls)
+	}
+}
