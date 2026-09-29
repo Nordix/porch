@@ -280,7 +280,22 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 // Returns (result, nil) if source was applied and status was updated.
 // Returns (nil, err) on failure.
 func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey repository.RepositoryKey) (*ctrl.Result, error) {
-	subpackageResources, subpackageOperationType, err := r.applySubpackageOperation(ctx, pr)
+	op := telemetry.Operations.Update
+	key, _ := repository.PkgRevK8sName2Key(pr.Namespace, pr.Name)
+	start := time.Now()
+
+	var err error
+	subpackageOperationType, operation, err := r.selectSubpackageOperation(pr)
+	desiredLifecycle := porchv1alpha2.PackageRevisionLifecycleDraft
+	if !(subpackageOperationType == "no-op" || operation == nil) {
+		defer telemetry.TrackInFlightControllerOperation(ctx, prTelemetryName, op.AllCaps, telemetry.ParseOperation(subpackageOperationType).TitleCase+prTelemetryName, desiredLifecycle, &key)()
+		defer func() {
+			lifecycleAfter := pr.Spec.Lifecycle
+			telemetry.RecordControllerOperation(ctx, prTelemetryName, op.AllCaps, telemetry.ParseOperation(subpackageOperationType).TitleCase+prTelemetryName, time.Since(start), err, lifecycleAfter, &key)
+		}()
+	}
+
+	subpackageResources, err := r.applySubpackageOperation(ctx, pr)
 	if err != nil {
 		return nil, r.setFailedConditionsAndLog(ctx, pr, subpackageOperationType, err)
 	}
@@ -327,8 +342,7 @@ func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Con
 	}
 
 	// having separate lines for assign & return ensures err is available to the deferred telemetry call above
-	result, err := r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, resources, sourceOperationType)
-
+	result, err := r.finalizeDraftAndUpdateStatus(ctx, pr, repoKey, draft, parentResources, "", r.getSubpackageOperationHash(pr))
 	return result, err
 }
 
