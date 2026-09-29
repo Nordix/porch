@@ -177,7 +177,10 @@ func (r *PackageRevisionReconciler) executeRender(ctx context.Context, pr *porch
 	start := time.Now()
 	op := telemetry.Operations.Update
 
-	var err error
+	var (
+		err     error
+		saveErr = func(loseableErr error) error { err = loseableErr; return err }
+	)
 	key, _ := repository.PkgRevK8sName2Key(pr.Namespace, pr.Name)
 	defer telemetry.TrackInFlightControllerOperation(ctx, prrTelemetryName, op.AllCaps, op.TitleCase+prrTelemetryName, pr.Spec.Lifecycle, &key)()
 	defer func() {
@@ -203,12 +206,13 @@ func (r *PackageRevisionReconciler) executeRender(ctx context.Context, pr *porch
 
 	requested := pr.Annotations[porchv1alpha2.AnnotationRenderRequest]
 	if stale, err := r.checkRenderStale(ctx, pr, requested); err != nil {
-		return nil, err
+		return nil, saveErr(err)
 	} else if stale != nil {
 		return stale, nil
 	}
 
 	if result.err != nil {
+		saveErr(result.err)
 		log.Error(result.err, "render pipeline failed", "fnResults", result.results)
 		if isPushOnRenderFailure(pr) {
 			log.Info("persisting partial resources (push-on-render-failure)")
@@ -219,6 +223,7 @@ func (r *PackageRevisionReconciler) executeRender(ctx context.Context, pr *porch
 	}
 
 	if err := r.writeRenderedResources(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, result.resources); err != nil {
+		saveErr(err)
 		r.setRenderFailed(ctx, pr, err)
 		return nil, err
 	}

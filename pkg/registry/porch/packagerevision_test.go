@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
+	"github.com/kptdev/porch/api/porch/v1alpha1"
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	"github.com/kptdev/porch/pkg/externalrepo/fake"
@@ -220,6 +221,7 @@ func TestGet(t *testing.T) {
 		mockPkgRev,
 	}, nil).Once()
 	mockPkgRev.On("KubeObjectName").Return(pkgRevName)
+	mockPkgRev.On("Lifecycle", mock.Anything).Return(v1alpha1.PackageRevisionLifecycle(""), nil).Once()
 	mockPkgRev.On("GetPackageRevision", mock.Anything).Return(nil, errors.New("error getting package revision"))
 
 	result, err = packagerevisions.Get(ctx, pkgRevName, &metav1.GetOptions{})
@@ -879,6 +881,7 @@ func TestUpdate(t *testing.T) {
 	mockEngine.On("ListPackageRevisions", mock.Anything, mock.Anything).Return([]repository.PackageRevision{
 		draftPackageRevision,
 	}, nil).Once()
+
 	mockEngine.On("UpdatePackageRevision", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(draftPackageRevision, nil).Once()
 
 	objInfo := &mockUpdatedObjectInfo{
@@ -903,7 +906,7 @@ func TestUpdate(t *testing.T) {
 	// Error case 1- generic updatePackageRevision fails
 	mockEngine.On("ListPackageRevisions", mock.Anything, mock.Anything).Return([]repository.PackageRevision{
 		draftPackageRevision,
-	}, nil).Twice()
+	}, nil).Once()
 	mockEngine.On("UpdatePackageRevision", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("update failed")).Once()
 
 	result, created, err = packagerevisions.Update(ctx, pkgRevName, objInfo, nil, nil, false, &metav1.UpdateOptions{})
@@ -926,7 +929,7 @@ func TestUpdate(t *testing.T) {
 	}
 	mockEngine.On("ListPackageRevisions", mock.Anything, mock.Anything).Return([]repository.PackageRevision{
 		draftPackageRevision,
-	}, nil).Twice()
+	}, nil).Once()
 	mockEngine.On("UpdatePackageRevision", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, apierrors.NewConflict(porchapi.Resource("packagerevisions"), pkgRevName, fmt.Errorf("the object has been modified; please apply your changes to the latest version and try again"))).Once()
 
 	result, created, err = packagerevisions.Update(ctx, pkgRevName, objInfo, nil, nil, false, &metav1.UpdateOptions{})
