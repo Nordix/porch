@@ -498,6 +498,12 @@ func deletePackage(ctx context.Context, pr *porchv1alpha2.PackageRevision) {
 		patchLifecycle(ctx, pr, porchv1alpha2.PackageRevisionLifecycleDeletionProposed)
 	}
 	Expect(k8sClient.Delete(ctx, pr)).To(Succeed())
+	// Wait for the object to be fully gone so the webhook's upstream-reference check
+	// does not see it as a referencing package when a dependency is deleted next.
+	Eventually(func() bool {
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pr), pr)
+		return apierrors.IsNotFound(err)
+	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(BeTrue())
 }
 
 // --- Test environment helpers ---
@@ -530,6 +536,16 @@ func updatePRRResources(ctx context.Context, namespace, name string, resources m
 			prr.Spec.Resources = make(map[string]string)
 		}
 		maps.Copy(prr.Spec.Resources, resources)
+		g.Expect(k8sClient.Update(ctx, prr)).To(Succeed())
+	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
+}
+
+// replacePRRResources replaces the full resource map (deletions included).
+func replacePRRResources(ctx context.Context, namespace, name string, resources map[string]string) {
+	Eventually(func(g Gomega) {
+		prr := &porchv1alpha1.PackageRevisionResources{}
+		g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, prr)).To(Succeed())
+		prr.Spec.Resources = resources
 		g.Expect(k8sClient.Update(ctx, prr)).To(Succeed())
 	}).WithTimeout(defaultTimeout).WithPolling(defaultInterval).Should(Succeed())
 }
