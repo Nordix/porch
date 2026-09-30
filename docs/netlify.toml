@@ -4,7 +4,7 @@
   base = "docs"
   command = "../scripts/codegen/build-versioned-docs.sh"
   publish = "public"
-  ignore = "false"  # Always build
+  ignore = "git diff --quiet HEAD~1 HEAD -- docs/ scripts/codegen/build-versioned-docs.sh"
 
 [build.environment]
   GO_VERSION = "1.26.5"
