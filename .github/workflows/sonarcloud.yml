@@ -43,7 +43,6 @@ jobs:
           workflow: CI test report
           run_id: ${{ github.event.workflow_run.id }}
           name: PR_NUMBER
-        continue-on-error: true
 
       - name: Read PR_NUMBER.txt
         if: github.event.workflow_run.event == 'pull_request' && hashFiles('PR_NUMBER.txt') != ''
@@ -106,7 +105,6 @@ jobs:
           run_id: ${{ github.event.workflow_run.id }}
           name: coverage-report
           use_unzip: true
-        continue-on-error: true
 
       - name: Fix Go module paths in coverage
         run: |
@@ -124,6 +122,7 @@ jobs:
           echo "Files in workspace:"
           ls -la ./ | grep -E "coverage|PR_NUMBER|sonar" || echo "No matching files"
           echo "=== END DEBUG ==="
+        continue-on-error: true
 
       # Scan PR source, but never use PR-controlled scanner configuration. Fetch
       # settings from the same trusted revision as this workflow, after all
