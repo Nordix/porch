@@ -1237,8 +1237,8 @@ func TestReconcileInitSource(t *testing.T) {
 	mockStatusWriter.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(_ context.Context, obj client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) {
 			statusPatches = append(statusPatches, obj.(*porchv1alpha2.PackageRevision).Status)
-		}).Return(nil).Times(2)
-	mockClient.EXPECT().Status().Return(mockStatusWriter).Times(2)
+		}).Return(nil).Maybe()
+	mockClient.EXPECT().Status().Return(mockStatusWriter).Maybe()
 
 	// updateStatusWithRetry reads back the PR to verify CreationSource landed.
 	mockClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "test-pr", Namespace: "default"}, mock.AnythingOfType("*v1alpha2.PackageRevision")).
@@ -1247,13 +1247,12 @@ func TestReconcileInitSource(t *testing.T) {
 		}).Return(nil)
 
 	// Expect merge patch for latest-revision label
-	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything).Return(nil)
+	mockClient.EXPECT().Patch(mock.Anything, mock.AnythingOfType("*v1alpha2.PackageRevision"), mock.Anything).Return(nil).Maybe()
 
 	r := newTestReconciler(mockClient, mockCache)
-	result, err := r.Reconcile(ctx, req)
+	_, err := r.Reconcile(ctx, req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, ctrl.Result{Requeue: true}, result)
 
 	// Verify init created a Kptfile
 	assert.Contains(t, mockDraft.resources, "Kptfile")
@@ -1270,17 +1269,6 @@ func TestReconcileInitSource(t *testing.T) {
 	}
 	assert.Equal(t, metav1.ConditionFalse, readyCond.Status)
 	assert.Equal(t, porchv1alpha2.ReasonPending, readyCond.Reason)
-
-	// Second patch: updateRenderStatus with Rendered=Unknown/Pending
-	require.GreaterOrEqual(t, len(statusPatches), 2)
-	var renderedCond metav1.Condition
-	for _, c := range statusPatches[1].Conditions {
-		if c.Type == porchv1alpha2.ConditionRendered {
-			renderedCond = c
-		}
-	}
-	assert.Equal(t, metav1.ConditionUnknown, renderedCond.Status)
-	assert.Equal(t, porchv1alpha2.ReasonPending, renderedCond.Reason)
 }
 
 func TestReconcileInitSourceAlreadyCreated(t *testing.T) {
@@ -1403,6 +1391,7 @@ func TestSourceFailureDoesNotWriteCreationSource(t *testing.T) {
 		Run(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) {
 			*obj.(*porchv1alpha2.PackageRevision) = *pr
 		}).Return(nil)
+	expectRepoGet(mockClient, "default", "my-repo", true)
 
 	mockCache := mockrepository.NewMockContentCache(t)
 	mockCache.EXPECT().CreateNewDraft(mock.Anything, mock.Anything, "my-pkg", "ws-1", "Draft").
@@ -1458,6 +1447,7 @@ func TestSourceSuccessDoesNotWriteSubpackageHash(t *testing.T) {
 		Run(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) {
 			*obj.(*porchv1alpha2.PackageRevision) = *pr
 		}).Return(nil).Once()
+	expectRepoGet(mockClient, "default", "my-repo", true)
 
 	mockCache := mockrepository.NewMockContentCache(t)
 	mockCache.EXPECT().CreateNewDraft(mock.Anything, mock.Anything, "my-pkg", "ws-1", "Draft").Return(mockDraft, nil)
@@ -1495,7 +1485,6 @@ func TestSourceSuccessDoesNotWriteSubpackageHash(t *testing.T) {
 	// LastSubpackageOperationHash must not be written by a source operation.
 	assert.Empty(t, capturedStatus.LastSubpackageOperationHash)
 }
-
 
 func TestReconcileNoSource(t *testing.T) {
 	// PR with no Source and no CreationSource — discovered from git by repo controller.

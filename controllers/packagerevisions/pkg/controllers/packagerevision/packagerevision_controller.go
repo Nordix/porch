@@ -16,6 +16,7 @@ package packagerevision
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"time"
 
@@ -211,7 +212,7 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 	// Reject source execution on repos missing the v1alpha2-migration annotation,
 	// before applySource so no source work runs. Backstops the webhook if bypassed.
 	if err := r.verifyRepoMigrated(ctx, repoKey); err != nil {
-		return nil, r.setSourceFailed(ctx, pr, err)
+		return nil, r.setFailedConditionsAndLog(ctx, pr, "", err)
 	}
 
 	resources, sourceOperationType, err := r.applySource(ctx, pr)
