@@ -737,16 +737,7 @@ func pkgRevSetLastPushedInDB(ctx context.Context, prk repository.PackageRevision
 	_, span := tracer.Start(ctx, "dbpackagerevisionsql::pkgRevSetLastPushedInDB", trace.WithAttributes())
 	defer span.End()
 
-	// The `lifecycle NOT IN (...)` guard makes a late draft push a no-op once the
-	// revision has been published. PushDraftPackageRevision can run concurrently
-	// (including as a detached goroutine from the repository sync loop, see
-	// enqueuePush in dbreposync.go) and finish its slow git push AFTER publishPR
-	// has already written the published tag ref into ext_pr_id. Without this
-	// guard, the stale push would overwrite ext_pr_id back to the interim
-	// `drafts/<pkg>/<ws>` branch ref, corrupting the Published revision's
-	// selfLock (and any downstream upstreamLock cloned from it). The `updated=$4`
-	// optimistic check alone is insufficient because publishPR does not change
-	// the `updated` column.
+	// Guard against updates to published packages.
 	sqlStatement := `
         UPDATE package_revisions SET ext_pr_id=$3, last_pushed_db_updated=$4
         WHERE k8s_name_space=$1 AND k8s_name=$2 AND updated=$4
