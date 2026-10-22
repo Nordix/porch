@@ -156,17 +156,9 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 	log := log.FromContext(ctx)
 	desiredLifecycle := pr.Spec.Lifecycle
 
-	getStart := time.Now()
-	getOp := telemetry.Operations.Get
-	telemetryName := prTelemetryName
-	key := telemetry.ParsePkgRevK8sName2Key(pr.Namespace, pr.Name)
-
 	content, currentLifecycle, err := func() (repository.PackageContent, porchv1alpha2.PackageRevisionLifecycle, error) {
 		var err error
-		defer telemetry.TrackInFlightControllerOperation(ctx, telemetryName, getOp.AllCaps, getOp.TitleCase+telemetryName, pr.Spec.Lifecycle, &key)()
-		defer func() {
-			telemetry.RecordControllerOperation(ctx, telemetryName, getOp.AllCaps, getOp.TitleCase+telemetryName, time.Since(getStart), err, pr.Spec.Lifecycle, &key)
-		}()
+		defer measureLifecycleGet(ctx, pr)(&err)
 
 		content, err := r.ContentCache.GetPackageContent(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 		if err != nil {
@@ -245,25 +237,7 @@ func (r *PackageRevisionReconciler) reconcileLifecycle(ctx context.Context, pr *
 
 	log.Info("lifecycle transition", "name", pr.Name, "current", currentLifecycle, "desired", desiredLifecycle)
 
-	updateStart := time.Now()
-	updateOp := telemetry.Operations.Update
-	telemetryName = func() string {
-		if porchv1alpha2.LifecycleIsPublished(pr.Spec.Lifecycle) {
-			// we're updating PackageRevisionApproval, conceptually if not strictly API-wise
-			return praTelemetryName
-		}
-		return prTelemetryName
-	}()
-	defer telemetry.TrackInFlightControllerOperation(ctx, telemetryName, updateOp.AllCaps, updateOp.TitleCase+telemetryName, pr.Spec.Lifecycle, &key)()
-	defer func() {
-		lifecycle := func() porchv1alpha2.PackageRevisionLifecycle {
-			if err == nil {
-				return desiredLifecycle
-			}
-			return currentLifecycle
-		}()
-		telemetry.RecordControllerOperation(ctx, telemetryName, updateOp.AllCaps, updateOp.TitleCase+telemetryName, time.Since(updateStart), err, lifecycle, &key)
-	}()
+	defer measureLifecycleUpdate(ctx, pr, currentLifecycle, desiredLifecycle)(&err)
 
 	updated, err := r.ContentCache.UpdateLifecycle(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName, string(desiredLifecycle))
 
@@ -308,24 +282,16 @@ func resultOrDefault(result *ctrl.Result) ctrl.Result {
 
 // reconcileSource handles one-time package creation from spec.source.
 func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey key.RepositoryKey) (*ctrl.Result, error) {
-	op := telemetry.Operations.Create
-	key := telemetry.ParsePkgRevK8sName2Key(pr.Namespace, pr.Name)
-	start := time.Now()
-
 	var err error
 	sourceOperationType, action := r.selectPackageSourceAction(pr)
-	desiredLifecycle := porchv1alpha2.PackageRevisionLifecycleDraft
 	if sourceOperationType != "no-op" && action != nil {
-		defer telemetry.TrackInFlightControllerOperation(ctx, prTelemetryName, op.AllCaps, telemetry.ParseOperation(sourceOperationType).TitleCase+prTelemetryName, desiredLifecycle, &key)()
-		defer func() {
-			lifecycle := func() porchv1alpha2.PackageRevisionLifecycle {
+		defer measureSourceOperation(ctx, pr, sourceOperationType,
+			func(err error) porchv1alpha2.PackageRevisionLifecycle {
 				if err != nil {
 					return ""
 				}
 				return pr.Spec.Lifecycle
-			}()
-			telemetry.RecordControllerOperation(ctx, prTelemetryName, op.AllCaps, telemetry.ParseOperation(sourceOperationType).TitleCase+prTelemetryName, time.Since(start), err, lifecycle, &key)
-		}()
+			})(&err)
 	}
 
 	// Skip if already created or no source to apply (same conditions as applySource).
@@ -361,22 +327,16 @@ func (r *PackageRevisionReconciler) reconcileSource(ctx context.Context, pr *por
 
 // reconcileSubpackageOperation handles a one-time subpackage operation from spec.
 func (r *PackageRevisionReconciler) reconcileSubpackageOperation(ctx context.Context, pr *porchv1alpha2.PackageRevision, repoKey key.RepositoryKey) (*ctrl.Result, error) {
-	op := telemetry.Operations.Update
-	key := telemetry.ParsePkgRevK8sName2Key(pr.Namespace, pr.Name)
-	start := time.Now()
-
 	var (
 		err     error
 		saveErr = func(loseableErr error) error { err = loseableErr; return err }
 	)
 	subpackageOperationType, operation, err := r.selectSubpackageOperation(pr)
-	desiredLifecycle := porchv1alpha2.PackageRevisionLifecycleDraft
 	if subpackageOperationType != "no-op" && operation != nil {
-		defer telemetry.TrackInFlightControllerOperation(ctx, prTelemetryName, op.AllCaps, telemetry.ParseOperation(subpackageOperationType).TitleCase+prTelemetryName, desiredLifecycle, &key)()
-		defer func() {
-			lifecycleAfter := pr.Spec.Lifecycle
-			telemetry.RecordControllerOperation(ctx, prTelemetryName, op.AllCaps, telemetry.ParseOperation(subpackageOperationType).TitleCase+prTelemetryName, time.Since(start), err, lifecycleAfter, &key)
-		}()
+		// NOTE: unlike reconcileSource, this reports pr.Spec.Lifecycle even on
+		// failure (preserved from the original implementation).
+		defer measureSourceOperation(ctx, pr, subpackageOperationType,
+			func(error) porchv1alpha2.PackageRevisionLifecycle { return pr.Spec.Lifecycle })(&err)
 	}
 
 	subpackageResources, err := r.applySubpackageOperation(ctx, pr)

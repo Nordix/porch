@@ -17,7 +17,6 @@ package packagerevision
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/kptdev/porch/api/porch/key"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
@@ -69,16 +68,9 @@ func (r *PackageRevisionReconciler) handleDeletion(ctx context.Context, pr *porc
 // shared content cache. "Not found" errors are treated as success — there
 // is nothing to clean up if the package or repo doesn't exist in the cache.
 func (r *PackageRevisionReconciler) deleteFromGit(ctx context.Context, pr *porchv1alpha2.PackageRevision) error {
-	op := telemetry.Operations.Delete
-	start := time.Now()
 	var err error
 	lifecycle := pr.Spec.Lifecycle
-	prKey := telemetry.ParsePkgRevK8sName2Key(pr.Namespace, pr.Name)
-	defer telemetry.TrackInFlightControllerOperation(ctx, prTelemetryName, op.AllCaps, op.TitleCase+prTelemetryName, lifecycle, &prKey)()
-
-	defer func() {
-		telemetry.RecordControllerOperation(ctx, prTelemetryName, op.AllCaps, op.TitleCase+prTelemetryName, time.Since(start), err, lifecycle, &prKey)
-	}()
+	defer telemetry.MeasureControllerOperation(ctx, telemetry.Operations.Delete, prTelemetryName, lifecycle, pr)(&err, nil)
 
 	repoKey := key.RepositoryKey{
 		Namespace: pr.Namespace,

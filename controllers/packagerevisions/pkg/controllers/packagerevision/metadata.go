@@ -17,10 +17,10 @@ package packagerevision
 import (
 	"context"
 	"maps"
-	"time"
 
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	"github.com/kptdev/porch/api/porch/key"
+	"github.com/kptdev/porch/pkg/repository"
 
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	"github.com/kptdev/porch/internal/telemetry"
@@ -118,33 +118,27 @@ func (r *PackageRevisionReconciler) applyAndWriteMetadata(ctx context.Context, r
 		return false, err
 	}
 
-	saveErr := func(loseableErr error) error { err = loseableErr; return err }
-	op := telemetry.Operations.Update
-	start := time.Now()
-	key := telemetry.ParsePkgRevK8sName2Key(pr.Namespace, pr.Name)
-	defer telemetry.TrackInFlightControllerOperation(ctx, prrTelemetryName, op.AllCaps, op.TitleCase+prrTelemetryName, pr.Spec.Lifecycle, &key)()
-	defer func() {
-		telemetry.RecordControllerOperation(ctx, prrTelemetryName, op.AllCaps, op.TitleCase+prrTelemetryName, time.Since(start), err, pr.Spec.Lifecycle, &key)
-	}()
+	defer telemetry.MeasureControllerOperation(ctx, telemetry.Operations.Update, prrTelemetryName, pr.Spec.Lifecycle, pr)(&err, nil)
 
 	// Create draft and write updated resources.
-	draft, err := r.ContentCache.CreateDraftFromExisting(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
+	var draft repository.PackageRevisionDraftSlim
+	draft, err = r.ContentCache.CreateDraftFromExisting(ctx, repoKey, pr.Spec.PackageName, pr.Spec.WorkspaceName)
 	if err != nil {
 		log.Error(err, "failed to create draft")
-		return false, saveErr(err)
+		return false, err
 	}
 
 	// UpdateResources is a full replace — include all files to avoid data loss.
 	resources["Kptfile"] = string(updatedKfBytes)
 	log.Info("metadata sync writing resources", "resourceCount", len(resources))
-	if err := draft.UpdateResources(ctx, resources, "metadata-sync"); err != nil {
+	if err = draft.UpdateResources(ctx, resources, "metadata-sync"); err != nil {
 		log.Error(err, "failed to write resources")
-		return false, saveErr(err)
+		return false, err
 	}
 
-	if err := r.ContentCache.CloseDraft(ctx, repoKey, draft, 0); err != nil {
+	if err = r.ContentCache.CloseDraft(ctx, repoKey, draft, 0); err != nil {
 		log.Error(err, "failed to close draft")
-		return false, saveErr(err)
+		return false, err
 	}
 
 	log.V(3).Info("metadata synced to draft")

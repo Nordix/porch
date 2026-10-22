@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	"github.com/kptdev/porch/internal/telemetry"
@@ -62,7 +61,6 @@ func (a *packageRevisionApproval) Get(ctx context.Context, pkgRevK8sName string,
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisionApproval::"+op.TitleCase, trace.WithAttributes())
 	defer span.End()
 
-	start := time.Now()
 	var (
 		err        error
 		apiPkgRev  *porchapi.PackageRevision
@@ -71,11 +69,12 @@ func (a *packageRevisionApproval) Get(ctx context.Context, pkgRevK8sName string,
 	)
 	ns, _ := genericapirequest.NamespaceFrom(ctx)
 	key := telemetry.ParsePkgRevK8sName2Key(ns, pkgRevK8sName)
-	defer telemetry.TrackInFlightOperation(ctx, praTelemetryName, op.AllCaps, op.TitleCase+praTelemetryName, telemetry.APIVersionV1Alpha1, lifecycle, &key)()
-	defer func() {
-		lifecycle := resolveLifecycleAfterOperation(ctx, apiPkgRev, repoPkgRev, err, lifecycle)
-		telemetry.RecordAPIOperationDuration(ctx, praTelemetryName, op.AllCaps, op.TitleCase+praTelemetryName, telemetry.APIVersionV1Alpha1, time.Since(start), err, lifecycle, &key)
-	}()
+	defer telemetry.MeasureAPIOperation(ctx, op, praTelemetryName, telemetry.APIVersionV1Alpha1, lifecycle, &key)(
+		&err,
+		func() porchapi.PackageRevisionLifecycle {
+			return resolveLifecycleAfterOperation(ctx, apiPkgRev, repoPkgRev, err, lifecycle)
+		},
+	)
 
 	telemetry.RecordRequestCount(ctx, praTelemetryName, op.AllCaps, telemetry.APIVersionV1Alpha1)
 
@@ -100,7 +99,6 @@ func (a *packageRevisionApproval) Update(ctx context.Context, pkgRevK8sName stri
 	ctx, span := tracer.Start(ctx, "[START]::packageRevisionApproval::"+op.TitleCase, trace.WithAttributes())
 	defer span.End()
 
-	start := time.Now()
 	var (
 		err              error
 		updatedPkgRev    *porchapi.PackageRevision
@@ -109,11 +107,13 @@ func (a *packageRevisionApproval) Update(ctx context.Context, pkgRevK8sName stri
 	)
 	namespace, _ := genericapirequest.NamespaceFrom(ctx)
 	key := telemetry.ParsePkgRevK8sName2Key(namespace, pkgRevK8sName)
-	defer telemetry.TrackInFlightOperation(ctx, praTelemetryName, op.AllCaps, op.TitleCase+praTelemetryName, telemetry.APIVersionV1Alpha1, desiredLifecycle, &key)()
-	defer func() {
-		lifecycleAfter = resolveLifecycleAfterOperation(ctx, updatedPkgRev, nil, err, lifecycleAfter)
-		telemetry.RecordAPIOperationDuration(ctx, praTelemetryName, op.AllCaps, op.TitleCase+praTelemetryName, telemetry.APIVersionV1Alpha1, time.Since(start), err, lifecycleAfter, &key)
-	}()
+	defer telemetry.MeasureAPIOperation(ctx, op, praTelemetryName, telemetry.APIVersionV1Alpha1, desiredLifecycle, &key)(
+		&err,
+		func() porchapi.PackageRevisionLifecycle {
+			lifecycleAfter = resolveLifecycleAfterOperation(ctx, updatedPkgRev, nil, err, lifecycleAfter)
+			return lifecycleAfter
+		},
+	)
 
 	telemetry.RecordRequestCount(ctx, praTelemetryName, op.AllCaps, telemetry.APIVersionV1Alpha1)
 

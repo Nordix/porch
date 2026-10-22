@@ -189,6 +189,72 @@ func TrackInFlightControllerOperation(ctx context.Context, resource, verb, porch
 	return TrackInFlightOperation(ctx, resource, verb, porchOperation, APIVersionV1Alpha2, v1alpha1.PackageRevisionLifecycle(desiredLifecycle), prKey)
 }
 
+// OperationFinishFunc completes a measured operation. Defer it immediately after
+// starting the operation. It reads the final error through errPtr (so callers can
+// record the error assigned later in the function) and resolves the post-operation
+// lifecycle through lifecycleAfter. Pass a nil lifecycleAfter to reuse the desired
+// lifecycle supplied when the operation started.
+type OperationFinishFunc func(errPtr *error, lifecycleAfter func() v1alpha1.PackageRevisionLifecycle)
+
+// MeasureAPIOperation starts timing and in-flight tracking for a single Porch API
+// operation and returns a finish function to defer. It collapses the previous
+// pattern of a manual start timestamp plus separate TrackInFlightOperation and
+// RecordAPIOperationDuration defers into one call:
+//
+//	defer telemetry.MeasureAPIOperation(ctx, op, resource, apiVersion, desiredLifecycle, &key)(&err, nil)
+//
+// The op supplies both the verb (op.AllCaps) and, combined with resource, the
+// porch operation name (op.TitleCase + resource). Pass a non-nil lifecycleAfter
+// closure when the recorded lifecycle differs from the desired one or must be
+// computed from the final error.
+func MeasureAPIOperation(ctx context.Context, op operationVerbs, resource, apiVersion string, desiredLifecycle v1alpha1.PackageRevisionLifecycle, prKey *key.PackageRevisionKey) OperationFinishFunc {
+	verb := op.AllCaps
+	porchOperation := op.TitleCase + resource
+
+	start := time.Now()
+	stopInFlight := TrackInFlightOperation(ctx, resource, verb, porchOperation, apiVersion, desiredLifecycle, prKey)
+
+	return func(errPtr *error, lifecycleAfter func() v1alpha1.PackageRevisionLifecycle) {
+		stopInFlight()
+
+		var err error
+		if errPtr != nil {
+			err = *errPtr
+		}
+		lifecycle := desiredLifecycle
+		if lifecycleAfter != nil {
+			lifecycle = lifecycleAfter()
+		}
+		RecordAPIOperationDuration(ctx, resource, verb, porchOperation, apiVersion, time.Since(start), err, lifecycle, prKey)
+	}
+}
+
+// ControllerOperationFinishFunc is the v1alpha2 controller analogue of
+// OperationFinishFunc.
+type ControllerOperationFinishFunc func(errPtr *error, lifecycleAfter func() v1alpha2.PackageRevisionLifecycle)
+
+// MeasureControllerOperation is the v1alpha2 controller equivalent of
+// MeasureAPIOperation. It starts timing and in-flight tracking and returns a
+// finish function to defer:
+//
+//	defer telemetry.MeasureControllerOperation(ctx, op, resource, desiredLifecycle, pr)(&err, nil)
+func MeasureControllerOperation(ctx context.Context, op operationVerbs, resource string, desiredLifecycle v1alpha2.PackageRevisionLifecycle, pr *v1alpha2.PackageRevision) ControllerOperationFinishFunc {
+	prKey := ParsePkgRevK8sName2Key(pr.Namespace, pr.Name)
+	finish := MeasureAPIOperation(ctx, op, resource, APIVersionV1Alpha2, v1alpha1.PackageRevisionLifecycle(desiredLifecycle), &prKey)
+
+	return func(errPtr *error, lifecycleAfter func() v1alpha2.PackageRevisionLifecycle) {
+		var v1alpha1Provider func() v1alpha1.PackageRevisionLifecycle
+		if lifecycleAfter != nil {
+			v1alpha1Provider = func() v1alpha1.PackageRevisionLifecycle {
+				return v1alpha1.PackageRevisionLifecycle(lifecycleAfter())
+			}
+		}
+		finish(errPtr, v1alpha1Provider)
+		// Request count is specific to controller operations (recorded under ControllerUser).
+		RecordControllerRequestCount(ctx, resource, op.AllCaps, APIVersionV1Alpha2)
+	}
+}
+
 func RecordRequestCount(ctx context.Context, resource, op, apiVersion string) {
 	if requestsTotal == nil {
 		klog.Warning("requestsTotal is nil - was InitMetrics() called?")
