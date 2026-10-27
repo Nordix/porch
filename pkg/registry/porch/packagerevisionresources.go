@@ -593,36 +593,13 @@ func (r *packageRevisionResources) updateV1Alpha1(ctx context.Context, repositor
 
 	klog.InfoS("[API] Update operation started for PackageRevisionResources (v1alpha1)", pctx.LogMetadataFrom(ctx)...)
 
-	prKey, err := key.PkgRevK8sName2Key(namespace, parsedName)
-	if err != nil {
-		return nil, false, err
-	}
-
-	var repositoryObj v1alpha1.Repository
-	repositoryID := types.NamespacedName{Namespace: prKey.RKey().Namespace, Name: prKey.RKey().Name}
-	if err := r.coreClient.Get(ctx, repositoryID, &repositoryObj); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, false, apierrors.NewNotFound(porchapi.PackageRevisionResourcesGVR.GroupResource(), repositoryID.Name)
-		}
-		return nil, false, apierrors.NewInternalError(fmt.Errorf("error getting repository %v: %w", repositoryID, err))
-	}
-
-	var rev repository.PackageRevision
-	var renderStatus *porchapi.RenderStatus
+	// Track the files submitted by the client before UpdatePackageResources merges them
 	submittedFiles := filePathsOf(newObj.Spec.Resources)
 
-	if isV1Alpha2Repo(&repositoryObj) {
-		// v1alpha2: write resources without render. PR controller renders async.
-		rev, err = r.cad.UpdatePackageResourcesWithoutRender(ctx, &repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj)
-		if err != nil {
-			return nil, false, apierrors.NewInternalError(err)
-		}
-		r.patchRenderRequestAnnotation(ctx, namespace, parsedName, rev.ResourceVersion())
-	} else {
-		rev, renderStatus, err = r.cad.UpdatePackageResources(ctx, &repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj, resourceSelector)
-		if err != nil {
-			return nil, false, apierrors.NewInternalError(err)
-		}
+	// Update via CAD engine
+	rev, renderStatus, err := r.cad.UpdatePackageResources(ctx, repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj, resourceSelector)
+	if err != nil {
+		return nil, false, apierrors.NewInternalError(err)
 	}
 
 	// Build result using the original submitted files for filtering
