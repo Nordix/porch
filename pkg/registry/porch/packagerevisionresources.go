@@ -437,7 +437,7 @@ func (r *packageRevisionResources) Update(ctx context.Context, pkgRevK8sName str
 		return r.updateV1Alpha2(ctx, namespace, parsedName, prKey, resourceSelector, objInfo, updateValidation)
 	}
 
-	return r.updateV1Alpha1(ctx, &repositoryObj, parsedName, resourceSelector, objInfo, updateValidation)
+	return r.updateV1Alpha1(ctx, namespace, parsedName, &repositoryObj, resourceSelector, objInfo, updateValidation)
 }
 
 // updateV1Alpha2 handles updates for v1alpha2 repositories (PRRStore-based, database-only).
@@ -547,7 +547,7 @@ func (r *packageRevisionResources) updateV1Alpha2(ctx context.Context, namespace
 
 // updateV1Alpha1 handles updates for v1alpha1 repositories (CAD engine-based, git-backed).
 // Uses the traditional workflow: read from CAD engine, update via engine, render resources.
-func (r *packageRevisionResources) updateV1Alpha1(ctx context.Context, repositoryObj *v1alpha1.Repository, name string,
+func (r *packageRevisionResources) updateV1Alpha1(ctx context.Context, namespace, name string, repositoryObj *v1alpha1.Repository,
 	resourceSelector selector.PRRUpdate, objInfo rest.UpdatedObjectInfo, updateValidation rest.ValidateObjectUpdateFunc) (runtime.Object, bool, error) {
 
 	// Get package from CAD engine
@@ -596,10 +596,22 @@ func (r *packageRevisionResources) updateV1Alpha1(ctx context.Context, repositor
 	// Track the files submitted by the client before UpdatePackageResources merges them
 	submittedFiles := filePathsOf(newObj.Spec.Resources)
 
-	// Update via CAD engine
-	rev, renderStatus, err := r.cad.UpdatePackageResources(ctx, repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj, resourceSelector)
-	if err != nil {
-		return nil, false, apierrors.NewInternalError(err)
+	var rev repository.PackageRevision
+	var renderStatus *porchapi.RenderStatus
+
+	// Dispatch based on repository version
+	if isV1Alpha2Repo(repositoryObj) {
+		// v1alpha2: write resources without render. PR controller renders async.
+		rev, err = r.cad.UpdatePackageResourcesWithoutRender(ctx, repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj)
+		if err != nil {
+			return nil, false, apierrors.NewInternalError(err)
+		}
+		r.patchRenderRequestAnnotation(ctx, namespace, name, rev.ResourceVersion())
+	} else {
+		rev, renderStatus, err = r.cad.UpdatePackageResources(ctx, repositoryObj, oldRepoPkgRev, oldApiPkgRevResources, newObj, resourceSelector)
+		if err != nil {
+			return nil, false, apierrors.NewInternalError(err)
+		}
 	}
 
 	// Build result using the original submitted files for filtering
