@@ -21,20 +21,30 @@ import (
 	"github.com/kptdev/porch/api/porch/key"
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
+	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	cachetypes "github.com/kptdev/porch/pkg/cache/types"
 	"github.com/kptdev/porch/pkg/externalrepo"
 	"github.com/kptdev/porch/pkg/repository"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ repository.ContentCache = &contentCache{}
 
 type contentCache struct {
-	cache cachetypes.Cache
+	cache     cachetypes.Cache
+	apiClient client.Reader // optional: for API server fallback on cache miss
 }
 
 // NewContentCache creates a ContentCache backed by the given Cache.
 func NewContentCache(cache cachetypes.Cache) repository.ContentCache {
 	return &contentCache{cache: cache}
+}
+
+// NewContentCacheWithAPIClient creates a ContentCache with optional API server fallback.
+// When the Repository is not found in the cache, it queries the API server as a fallback.
+// This helps during initial cache population when the repositories reconciler is still syncing.
+func NewContentCacheWithAPIClient(cache cachetypes.Cache, apiClient client.Reader) repository.ContentCache {
+	return &contentCache{cache: cache, apiClient: apiClient}
 }
 
 func (c *contentCache) GetPackageContent(ctx context.Context, repoKey key.RepositoryKey, pkg, workspace string) (repository.PackageContent, error) {
@@ -60,7 +70,7 @@ func (c *contentCache) GetMainPackageContent(ctx context.Context, repoKey key.Re
 }
 
 func (c *contentCache) CreateNewDraft(ctx context.Context, repoKey key.RepositoryKey, pkgName, workspace, lifecycle string) (repository.PackageRevisionDraftSlim, error) {
-	repo, err := c.getRepository(repoKey)
+	repo, err := c.getRepository(ctx, repoKey)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +92,7 @@ func (c *contentCache) CreateNewDraft(ctx context.Context, repoKey key.Repositor
 }
 
 func (c *contentCache) CreateDraftFromExisting(ctx context.Context, repoKey key.RepositoryKey, pkgName, workspace string) (repository.PackageRevisionDraftSlim, error) {
-	repo, err := c.getRepository(repoKey)
+	repo, err := c.getRepository(ctx, repoKey)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +110,7 @@ func (c *contentCache) CreateDraftFromExisting(ctx context.Context, repoKey key.
 }
 
 func (c *contentCache) CloseDraft(ctx context.Context, repoKey key.RepositoryKey, draft repository.PackageRevisionDraftSlim, version int) error {
-	repo, err := c.getRepository(repoKey)
+	repo, err := c.getRepository(ctx, repoKey)
 	if err != nil {
 		return err
 	}
@@ -147,7 +157,7 @@ func (c *contentCache) UpdateLifecycle(ctx context.Context, repoKey key.Reposito
 	}
 
 	// Draft ↔ Proposed: draft/close cycle.
-	repo, err := c.getRepository(repoKey)
+	repo, err := c.getRepository(ctx, repoKey)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +180,7 @@ func (c *contentCache) UpdateLifecycle(ctx context.Context, repoKey key.Reposito
 }
 
 func (c *contentCache) DeletePackage(ctx context.Context, repoKey key.RepositoryKey, pkg, workspace string) error {
-	repo, err := c.getRepository(repoKey)
+	repo, err := c.getRepository(ctx, repoKey)
 	if err != nil {
 		return err
 	}
@@ -197,7 +207,10 @@ func isKnownLifecycle(lc porchv1alpha2.PackageRevisionLifecycle) bool {
 
 // getRepository resolves a partial RepositoryKey (namespace+name only) to the
 // full cache key by scanning GetRepositories(), then looks up the repo.
-func (c *contentCache) getRepository(repoKey key.RepositoryKey) (repository.Repository, error) {
+// If the repository is not found in the cache and an API client is available,
+// it queries the API server as a fallback (helps during initial cache population).
+func (c *contentCache) getRepository(ctx context.Context, repoKey key.RepositoryKey) (repository.Repository, error) {
+	// Try cache first
 	for _, spec := range c.cache.GetRepositories() {
 		if spec.Namespace == repoKey.Namespace && spec.Name == repoKey.Name {
 			fullKey, err := externalrepo.RepositoryKey(spec)
@@ -209,11 +222,27 @@ func (c *contentCache) getRepository(repoKey key.RepositoryKey) (repository.Repo
 			}
 		}
 	}
+
+	// Cache miss: if we have an API client, try querying the API server
+	// This helps when PackageRevisions are reconciled before the Repository watch
+	// has fully populated the cache (common during heavy load or after controller restart).
+	if c.apiClient != nil {
+		var repo configapi.Repository
+		objKey := client.ObjectKey{Namespace: repoKey.Namespace, Name: repoKey.Name}
+		if err := c.apiClient.Get(ctx, objKey, &repo); err == nil {
+			// Found in API server. Open it and add to cache so future lookups are fast.
+			// If OpenRepository fails, fall through to the "not found" error below.
+			if openedRepo, err := c.cache.OpenRepository(ctx, &repo); err == nil {
+				return openedRepo, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("repository %s not found", repoKey)
 }
 
 func (c *contentCache) findPackageRevision(ctx context.Context, repoKey key.RepositoryKey, pkg, workspace string) (repository.PackageRevision, error) {
-	repo, err := c.getRepository(repoKey)
+	repo, err := c.getRepository(ctx, repoKey)
 	if err != nil {
 		return nil, err
 	}

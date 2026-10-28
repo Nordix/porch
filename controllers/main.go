@@ -79,6 +79,10 @@ var (
 	)
 
 	certDir string
+
+	// Bound the controller's request rate to the kube-apiserver. 0 = client-go default.
+	kubeAPIQPS   float64
+	kubeAPIBurst int
 )
 
 // Reconciler is the interface implemented by (our) reconcilers, which includes some configuration and initialization.
@@ -173,6 +177,8 @@ func parseFlags(fs *flag.FlagSet, args []string) string {
 
 	fs.StringVar(&enabledReconcilersString, "reconcilers", "", "reconcilers that should be enabled; use * to mean 'enable all'")
 	fs.StringVar(&certDir, "cert-dir", "/etc/webhook/certs", "directory containing TLS certs for the webhook server")
+	fs.Float64Var(&kubeAPIQPS, "kube-api-qps", 0, "Max sustained QPS to the kube-apiserver (rest.Config.QPS). 0 = client-go default.")
+	fs.IntVar(&kubeAPIBurst, "kube-api-burst", 0, "Max request burst to the kube-apiserver (rest.Config.Burst). 0 = client-go default.")
 
 	for name, reconciler := range reconcilers {
 		reconciler.BindFlags(name+".", fs)
@@ -214,6 +220,14 @@ func newManager(scheme *runtime.Scheme) (ctrl.Manager, error) {
 		klog.Infof("Wrapping client-go transport with OpenTelemetry")
 		return otelhttp.NewTransport(rt)
 	}
+
+	if kubeAPIQPS > 0 {
+		cfg.QPS = float32(kubeAPIQPS)
+	}
+	if kubeAPIBurst > 0 {
+		cfg.Burst = kubeAPIBurst
+	}
+	klog.Infof("kube-apiserver client rate limits: QPS=%v Burst=%v", cfg.QPS, cfg.Burst)
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
@@ -261,7 +275,10 @@ func enableReconcilers(mgr ctrl.Manager, enabledReconcilersString string) error 
 		if repoReconciler.Cache == nil {
 			return fmt.Errorf("%s reconciler requires %s reconciler (shared cache)", prReconciler.Name(), repoReconciler.Name())
 		}
-		prReconciler.ContentCache = contentcache.NewContentCache(repoReconciler.Cache)
+		// Pass the API reader for cache-miss fallback to the API server.
+		// This helps during initial cache population when Repository objects
+		// exist but haven't been cached yet (e.g., heavy load, controller restart).
+		prReconciler.ContentCache = contentcache.NewContentCacheWithAPIClient(repoReconciler.Cache, mgr.GetAPIReader())
 
 		functionConfigStore, err := setupFunctionConfigReconciler(mgr)
 		if err != nil {

@@ -89,14 +89,8 @@ func (r *PackageRevisionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return resultOrDefault(result), err
 	}
 
-	// Ensure the repository label is always correct — self-healing invariant.
-	if err := r.ensureRepositoryLabel(ctx, &pr); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Backfill the latest-revision label if missing — self-healing (adds default
-	// "false" only; never overwrites the "true" winner).
-	if err := r.ensureLatestRevisionLabel(ctx, &pr); err != nil {
+	// Self-healing repository + latest-revision labels, in a single patch.
+	if err := r.ensureLabels(ctx, &pr); err != nil {
 		return ctrl.Result{}, err
 	}
 
