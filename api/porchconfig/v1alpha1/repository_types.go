@@ -33,6 +33,7 @@ import (
 // +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="metadata.name must be no more than 63 characters"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.spec.type) || self.spec.type == oldSelf.spec.type",message="spec.type is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.spec.git) || !has(oldSelf.spec.git.branch) || self.spec.git.branch == oldSelf.spec.git.branch",message="spec.git.branch is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.spec.git) || !has(oldSelf.spec.git.createBranch) || self.spec.git.createBranch == oldSelf.spec.git.createBranch",message="spec.git.createBranch is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.spec.git) || !has(oldSelf.spec.git.directory) || self.spec.git.directory == oldSelf.spec.git.directory",message="spec.git.directory is immutable"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.spec.oci) || !has(oldSelf.spec.oci.registry) || self.spec.oci.registry == oldSelf.spec.oci.registry",message="spec.oci.registry is immutable"
 

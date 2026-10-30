@@ -287,6 +287,9 @@ spec:
         - message: spec.git.branch is immutable
           rule: '!has(oldSelf.spec.git) || !has(oldSelf.spec.git.branch) || self.spec.git.branch
             == oldSelf.spec.git.branch'
+        - message: spec.git.createBranch is immutable
+          rule: '!has(oldSelf.spec.git) || !has(oldSelf.spec.git.createBranch) ||
+            self.spec.git.createBranch == oldSelf.spec.git.createBranch'
         - message: spec.git.directory is immutable
           rule: '!has(oldSelf.spec.git) || !has(oldSelf.spec.git.directory) || self.spec.git.directory
             == oldSelf.spec.git.directory'
