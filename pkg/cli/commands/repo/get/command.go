@@ -25,8 +25,10 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/printers"
+	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/rest"
 	"k8s.io/kubectl/pkg/cmd/get"
+	kubectlcmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
 const (
@@ -59,6 +61,10 @@ func newRunner(ctx context.Context, rcg *genericclioptions.ConfigFlags) *runner 
 	// Create flags
 	r.getFlags.AddFlags(c)
 	r.printFlags.AddFlags(c)
+	// Mirror `kubectl get --chunk-size`: page large Repository lists instead of
+	// buffering the whole collection in one response.
+	r.chunkSize = kubectlcmdutil.DefaultChunkSize
+	kubectlcmdutil.AddChunkSizeFlag(c, &r.chunkSize)
 	return r
 }
 
@@ -69,6 +75,9 @@ type runner struct {
 	// Flags
 	getFlags   cmdutil.Options
 	printFlags *get.PrintFlags
+
+	// chunkSize is the page size used when listing repositories; 0 disables chunking.
+	chunkSize int64
 
 	requestTable bool
 }
@@ -117,6 +126,10 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 
 	b = b.ContinueOnError().Latest().Flatten()
 
+	if r.chunkSize > 0 {
+		b = b.RequestChunksOf(r.chunkSize)
+	}
+
 	if r.requestTable {
 		b = b.TransformRequests(func(req *rest.Request) {
 			req.SetHeader("Accept", strings.Join([]string{
@@ -127,11 +140,6 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 	}
 	res := b.Do()
 	if err := res.Err(); err != nil {
-		return errors.E(op, err)
-	}
-
-	infos, err := res.Infos()
-	if err != nil {
 		return errors.E(op, err)
 	}
 
@@ -148,10 +156,15 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 
 	w := printers.GetNewTabWriter(cmd.OutOrStdout())
 
-	for _, i := range infos {
-		if err := printer.PrintObj(i.Object, w); err != nil {
-			return errors.E(op, err)
+	// Stream chunk-by-chunk: print and discard each Info so peak memory is one
+	// page, not the whole Repository collection.
+	if err := res.Visit(func(i *resource.Info, err error) error {
+		if err != nil {
+			return err
 		}
+		return printer.PrintObj(i.Object, w)
+	}); err != nil {
+		return errors.E(op, err)
 	}
 
 	if err := w.Flush(); err != nil {
