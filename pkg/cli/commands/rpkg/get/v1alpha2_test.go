@@ -174,7 +174,7 @@ func TestFilterTableRowsV1Alpha2(t *testing.T) {
 		},
 	}
 
-	err := r.filterTableRowsV1Alpha2(table)
+	err := r.filterTableRows(table)
 	assert.NoError(t, err)
 	assert.Len(t, table.Rows, 2)
 }
@@ -450,7 +450,7 @@ func TestV1Alpha2FilterTableRowsV1Alpha2WithFilters(t *testing.T) {
 				},
 			}
 
-			err := r.filterTableRowsV1Alpha2(table)
+			err := r.filterTableRows(table)
 			assert.NoError(t, err)
 			assert.Len(t, table.Rows, tt.expectedRows)
 		})

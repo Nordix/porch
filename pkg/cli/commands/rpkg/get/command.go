@@ -17,6 +17,7 @@ package get
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -35,9 +36,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/printers"
+	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/cmd/get"
+	kubectlcmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -71,6 +74,7 @@ func newRunner(ctx context.Context, rcg *genericclioptions.ConfigFlags) *runner 
 	cmd.Flags().StringVarP(&r.workspace, "workspace", "w", "", "WorkspaceName of the packages to get. Any package whose workspaceName matches this value will be included in the results.")
 	cmd.Flags().StringVarP(&r.repository, "repository", "r", "", "Repository of the packages to get. Any package residing in the specified repository will be included in the results.")
 	cmd.Flags().BoolVar(&r.showKptfile, "show-kptfile", false, "Display the root Kptfile of the specified package revision. Requires a single package revision name as an argument.")
+	
 
 	cmd.Flags().SetNormalizeFunc(rpkgutil.NormalizeFlagAliases(map[string]string{
 		"repo": "repository",
@@ -80,6 +84,8 @@ func newRunner(ctx context.Context, rcg *genericclioptions.ConfigFlags) *runner 
 
 	r.getFlags.AddFlags(cmd)
 	r.printFlags.AddFlags(cmd)
+	r.chunkSize = kubectlcmdutil.DefaultChunkSize
+	kubectlcmdutil.AddChunkSizeFlag(cmd, &r.chunkSize)
 	return r
 }
 
@@ -101,6 +107,9 @@ type runner struct {
 	repository  string
 	showKptfile bool
 	printFlags  *get.PrintFlags
+
+	// chunkSize is the page size used when listing collections; 0 disables chunking.
+	chunkSize int64
 
 	requestTable bool
 
@@ -189,7 +198,6 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		return r.showKptfileContent(cmd, args[0])
 	}
 
-	var objs []runtime.Object
 	b, err := r.getFlags.ResourceBuilder()
 	if err != nil {
 		return err
@@ -229,6 +237,8 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		Latest().
 		Flatten()
 
+	b = b.RequestChunksOf(r.chunkSize)
+
 	if r.requestTable {
 		b = b.TransformRequests(func(req *rest.Request) {
 			req.SetHeader("Accept", strings.Join([]string{
@@ -243,65 +253,72 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		return errors.E(op, err)
 	}
 
-	infos, err := res.Infos()
-	if err != nil {
-		return errors.E(op, err)
-	}
-
-	// Decode json objects in tables (likely PartialObjectMetadata)
-	for _, i := range infos {
-		if table, ok := i.Object.(*metav1.Table); ok {
-			for i := range table.Rows {
-				row := &table.Rows[i]
-				if row.Object.Object == nil && row.Object.Raw != nil {
-					u := &unstructured.Unstructured{}
-					if err := u.UnmarshalJSON(row.Object.Raw); err != nil {
-						klog.Warningf("error parsing raw object: %v", err)
-					}
-					row.Object.Object = u
-				}
-			}
-		}
-	}
-
-	// Apply any filters we couldn't pass down as field selectors
-	for _, i := range infos {
-		switch obj := i.Object.(type) {
-		case *unstructured.Unstructured:
-			match, err := r.packageRevisionMatches(obj)
-			if err != nil {
-				return errors.E(op, err)
-			}
-			if match {
-				objs = append(objs, obj)
-			}
-		case *metav1.Table:
-			// Technically we should have applied this as a field-selector, so this might not be necessary
-			if err := r.filterTableRows(obj); err != nil {
-				return err
-			}
-			objs = append(objs, obj)
-		default:
-			return errors.E(op, fmt.Sprintf("Unrecognized response %T", obj))
-		}
-	}
-
 	printer, err := r.printFlags.ToPrinter()
 	if err != nil {
 		return errors.E(op, err)
 	}
 
 	w := printers.GetNewTabWriter(cmd.OutOrStdout())
-	for _, obj := range objs {
-		if err := printer.PrintObj(obj, w); err != nil {
-			return errors.E(op, err)
+	// Stream results chunk-by-chunk: each Info is printed and discarded, so peak
+	// memory is bounded by a single page rather than the whole collection.
+	if err := res.Visit(func(i *resource.Info, err error) error {
+		if err != nil {
+			return err
 		}
+		return r.printInfo(i.Object, printer, w, r.packageRevisionMatches)
+	}); err != nil {
+		return errors.E(op, err)
 	}
 	if err := w.Flush(); err != nil {
 		return errors.E(op, err)
 	}
 
 	return nil
+}
+
+// printInfo handles a single streamed object from the resource builder: it
+// decodes table rows, applies any filter that could not be pushed down as a
+// field selector, and prints the (possibly filtered) object. It is called once
+// per item by Result.Visit so only one item is held in memory at a time.
+//
+// matchFn applies the version-specific unstructured filter (v1alpha1 reads
+// spec.revision, v1alpha2 reads status.revision); table rows are filtered by
+// the shared filterTableRows.
+func (r *runner) printInfo(obj runtime.Object, printer printers.ResourcePrinter, w io.Writer,
+	matchFn func(*unstructured.Unstructured) (bool, error)) error {
+	// Decode json objects in tables (likely PartialObjectMetadata).
+	if table, ok := obj.(*metav1.Table); ok {
+		for i := range table.Rows {
+			row := &table.Rows[i]
+			if row.Object.Object == nil && row.Object.Raw != nil {
+				u := &unstructured.Unstructured{}
+				if err := u.UnmarshalJSON(row.Object.Raw); err != nil {
+					klog.Warningf("error parsing raw object: %v", err)
+				}
+				row.Object.Object = u
+			}
+		}
+	}
+
+	switch o := obj.(type) {
+	case *unstructured.Unstructured:
+		match, err := matchFn(o)
+		if err != nil {
+			return err
+		}
+		if !match {
+			return nil
+		}
+		return printer.PrintObj(o, w)
+	case *metav1.Table:
+		// Technically we should have applied this as a field-selector, so this might not be necessary.
+		if err := r.filterTableRows(o); err != nil {
+			return err
+		}
+		return printer.PrintObj(o, w)
+	default:
+		return fmt.Errorf("unrecognized response %T", obj)
+	}
 }
 
 func (r *runner) selectorString(revisionField string) string {
