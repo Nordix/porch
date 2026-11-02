@@ -22,14 +22,19 @@ import (
 )
 
 func PackageAlreadyExistsV1Alpha2(ctx context.Context, c client.Client, repository, packageName, namespace string) (bool, error) {
+	// Push the repository+packageName predicate to the server (both are
+	// selectable fields) and cap at one row: existence only needs to know
+	// whether any matching PackageRevision exists, not fetch the namespace.
 	var list porchv1alpha2.PackageRevisionList
-	if err := c.List(ctx, &list, &client.ListOptions{Namespace: namespace}); err != nil {
+	if err := c.List(ctx, &list,
+		client.InNamespace(namespace),
+		client.MatchingFields{
+			string(porchv1alpha2.PkgRevSelectorRepository):  repository,
+			string(porchv1alpha2.PkgRevSelectorPackageName): packageName,
+		},
+		client.Limit(1),
+	); err != nil {
 		return false, err
 	}
-	for _, pr := range list.Items {
-		if pr.Spec.RepositoryName == repository && pr.Spec.PackageName == packageName {
-			return true, nil
-		}
-	}
-	return false, nil
+	return len(list.Items) > 0, nil
 }

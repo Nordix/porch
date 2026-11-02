@@ -30,7 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func createV1Alpha2Scheme() (*runtime.Scheme, error) {
@@ -52,7 +51,7 @@ func TestV1Alpha2CloneFromUpstreamRef(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:        context.Background(),
@@ -87,7 +86,7 @@ func TestV1Alpha2CloneFromGit(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:        context.Background(),
@@ -170,9 +169,8 @@ func TestV1Alpha2ClonePackageAlreadyExists(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(&porchv1alpha2.PackageRevision{
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme,
+		&porchv1alpha2.PackageRevision{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "PackageRevision",
 				APIVersion: porchv1alpha2.SchemeGroupVersion.Identifier(),
@@ -185,7 +183,7 @@ func TestV1Alpha2ClonePackageAlreadyExists(t *testing.T) {
 				RepositoryName: "repo",
 				PackageName:    "existing-pkg",
 			},
-		}).Build()
+		})
 
 	// Manually set the client (preRunE would normally create it from kubeconfig)
 	// and call the validation logic that preRunE performs after client creation.
@@ -466,7 +464,7 @@ func TestV1Alpha2ClonePreRunEMissingArgs(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -495,7 +493,7 @@ func TestV1Alpha2ClonePreRunEMissingRepository(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -524,7 +522,7 @@ func TestV1Alpha2ClonePreRunEMissingWorkspace(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -553,7 +551,7 @@ func TestV1Alpha2ClonePreRunEOCINotSupported(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -582,7 +580,7 @@ func TestV1Alpha2ClonePreRunEGitURL(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -613,7 +611,7 @@ func TestV1Alpha2ClonePreRunEUpstreamRef(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -661,7 +659,7 @@ func TestV1Alpha2SubpackageCloneSuccess(t *testing.T) {
 			WorkspaceName:  "v1",
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(parentPR).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme, parentPR)
 
 	r := &v1alpha2Runner{
 		ctx:           context.Background(),
@@ -697,7 +695,7 @@ func TestV1Alpha2SubpackageCloneParentNotDraft(t *testing.T) {
 			Lifecycle: porchv1alpha2.PackageRevisionLifecyclePublished,
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(parentPR).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme, parentPR)
 
 	r := &v1alpha2Runner{
 		ctx:           context.Background(),
@@ -717,7 +715,7 @@ func TestV1Alpha2SubpackageClonePreRunERejectsRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    context.Background(),
@@ -739,7 +737,7 @@ func TestV1Alpha2SubpackageClonePreRunERejectsWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    context.Background(),
@@ -761,7 +759,7 @@ func TestV1Alpha2SubpackageClonePreRunEInvalidDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating scheme: %v", err)
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    context.Background(),

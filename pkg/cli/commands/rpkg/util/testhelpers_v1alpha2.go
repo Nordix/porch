@@ -20,6 +20,8 @@ import (
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 // V1Alpha2Scheme returns a runtime.Scheme with the v1alpha2 API registered.
@@ -47,4 +49,26 @@ func NewV1Alpha2PackageRevision(ns, name string) *porchv1alpha2.PackageRevision 
 			Name:      name,
 		},
 	}
+}
+
+// NewV1Alpha2FakeClientWithPkgRevIndexes builds a fake client that honors the
+// spec.repository and spec.packageName PackageRevision field selectors,
+// mirroring the field indexes the real porch apiserver pushes down to the
+// database. The controller-runtime fake client ignores (in fact rejects)
+// MatchingFields on an unregistered index, so any test exercising a
+// field-selector-scoped List (e.g. PackageAlreadyExistsV1Alpha2) must build its
+// client through this helper.
+func NewV1Alpha2FakeClientWithPkgRevIndexes(scheme *runtime.Scheme, objs ...client.Object) client.Client {
+	return fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithIndex(&porchv1alpha2.PackageRevision{}, string(porchv1alpha2.PkgRevSelectorRepository),
+			func(o client.Object) []string {
+				return []string{o.(*porchv1alpha2.PackageRevision).Spec.RepositoryName}
+			}).
+		WithIndex(&porchv1alpha2.PackageRevision{}, string(porchv1alpha2.PkgRevSelectorPackageName),
+			func(o client.Object) []string {
+				return []string{o.(*porchv1alpha2.PackageRevision).Spec.PackageName}
+			}).
+		WithObjects(objs...).
+		Build()
 }
