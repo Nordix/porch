@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestPackageAlreadyExistsV1Alpha2(t *testing.T) {
@@ -31,9 +30,8 @@ func TestPackageAlreadyExistsV1Alpha2(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(&porchv1alpha2.PackageRevision{
+	c := NewV1Alpha2FakeClientWithPkgRevIndexes(scheme,
+		&porchv1alpha2.PackageRevision{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "PackageRevision",
 				APIVersion: porchv1alpha2.SchemeGroupVersion.Identifier(),
@@ -46,7 +44,7 @@ func TestPackageAlreadyExistsV1Alpha2(t *testing.T) {
 				RepositoryName: "repo",
 				PackageName:    "my-pkg",
 			},
-		}).Build()
+		})
 
 	exists, err := PackageAlreadyExistsV1Alpha2(context.Background(), c, "repo", "my-pkg", "ns")
 	assert.NoError(t, err)

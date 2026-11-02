@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func createV1Alpha2Scheme() (*runtime.Scheme, error) {
@@ -71,7 +70,7 @@ func TestV1Alpha2InitCmd(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:         context.Background(),
@@ -124,9 +123,8 @@ func TestV1Alpha2InitPackageAlreadyExists(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(&porchv1alpha2.PackageRevision{
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme,
+		&porchv1alpha2.PackageRevision{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "PackageRevision",
 				APIVersion: porchv1alpha2.SchemeGroupVersion.Identifier(),
@@ -139,7 +137,7 @@ func TestV1Alpha2InitPackageAlreadyExists(t *testing.T) {
 				RepositoryName: "repo",
 				PackageName:    "existing-pkg",
 			},
-		}).Build()
+		})
 
 	// Directly test the validation logic (preRunE tries to create a real k8s client)
 	pkgExists, err := util.PackageAlreadyExistsV1Alpha2(context.Background(), c, "repo", "existing-pkg", ns)
@@ -389,7 +387,7 @@ func TestV1Alpha2InitPreRunEMissingArgs(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -418,7 +416,7 @@ func TestV1Alpha2InitPreRunEMissingRepository(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -447,7 +445,7 @@ func TestV1Alpha2InitPreRunEMissingWorkspace(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
@@ -476,7 +474,7 @@ func TestV1Alpha2InitPreRunEValidFlags(t *testing.T) {
 		t.Fatalf("error creating scheme: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := util.NewV1Alpha2FakeClientWithPkgRevIndexes(scheme)
 
 	r := &v1alpha2Runner{
 		ctx:    ctx,
