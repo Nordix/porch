@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 // V1Alpha2Scheme returns a runtime.Scheme with the v1alpha2 API registered.
@@ -70,5 +71,26 @@ func NewV1Alpha2FakeClientWithPkgRevIndexes(scheme *runtime.Scheme, objs ...clie
 				return []string{o.(*porchv1alpha2.PackageRevision).Spec.PackageName}
 			}).
 		WithObjects(objs...).
+		Build()
+}
+
+// NewV1Alpha2FakeClientWithPkgRevIndexesAndInterceptor is like
+// NewV1Alpha2FakeClientWithPkgRevIndexes but also wires interceptor funcs, so a
+// test can observe/alter the client calls (e.g. count field-selector-scoped vs
+// unscoped LISTs).
+func NewV1Alpha2FakeClientWithPkgRevIndexesAndInterceptor(scheme *runtime.Scheme,
+	funcs interceptor.Funcs, objs ...client.Object) client.Client {
+	return fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithIndex(&porchv1alpha2.PackageRevision{}, string(porchv1alpha2.PkgRevSelectorRepository),
+			func(o client.Object) []string {
+				return []string{o.(*porchv1alpha2.PackageRevision).Spec.RepositoryName}
+			}).
+		WithIndex(&porchv1alpha2.PackageRevision{}, string(porchv1alpha2.PkgRevSelectorPackageName),
+			func(o client.Object) []string {
+				return []string{o.(*porchv1alpha2.PackageRevision).Spec.PackageName}
+			}).
+		WithObjects(objs...).
+		WithInterceptorFuncs(funcs).
 		Build()
 }

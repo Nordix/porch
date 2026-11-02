@@ -139,15 +139,28 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 			}
 		}
 	case upstream, downstream:
-		packageRevisionList := porchapiv1alpha1.PackageRevisionList{}
 		listOpts := []client.ListOption{}
 		if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
 			listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
 		}
-		if err := r.client.List(r.ctx, &packageRevisionList, listOpts...); err != nil {
-			return errors.E(op, err)
+		// Discover reports updates across the whole estate, so it needs every
+		// PR; page the list so no single response buffers the whole collection.
+		continueToken := ""
+		for {
+			page := porchapiv1alpha1.PackageRevisionList{}
+			pageOpts := append([]client.ListOption{client.Limit(defaultListPageSize)}, listOpts...)
+			if continueToken != "" {
+				pageOpts = append(pageOpts, client.Continue(continueToken))
+			}
+			if err := r.client.List(r.ctx, &page, pageOpts...); err != nil {
+				return errors.E(op, err)
+			}
+			r.prs = append(r.prs, page.Items...)
+			continueToken = page.GetContinue()
+			if continueToken == "" {
+				break
+			}
 		}
-		r.prs = packageRevisionList.Items
 	default:
 		return errors.E(op, fmt.Errorf("argument for 'discover' must be one of 'upstream' or 'downstream'"))
 	}

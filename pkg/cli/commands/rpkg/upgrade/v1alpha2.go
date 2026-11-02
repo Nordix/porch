@@ -80,22 +80,88 @@ func (r *v1alpha2Runner) preRunE(cmd *cobra.Command, args []string) error {
 		if err := r.validateUpgradeArgs(args); err != nil {
 			return errors.E(op, err)
 		}
+		// Non-discover: do NOT eagerly list every PackageRevision in the
+		// namespace. The source PR is resolved by a point Get and upstream
+		// candidates by (package,repo)-scoped lists, lazily, in runE.
+		return nil
 	case upstream, downstream:
-		// do nothing
+		// Discover reports updates across the whole estate, so it needs every
+		// PR. Page the list so no single response buffers the whole collection.
+		listOpts := []client.ListOption{}
+		if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
+			listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
+		}
+		prs, err := listAllPackageRevisionsPaged(r.ctx, r.client, listOpts...)
+		if err != nil {
+			return errors.E(op, err)
+		}
+		r.prs = prs
+		return nil
 	default:
 		return errors.E(op, fmt.Errorf("argument for 'discover' must be one of 'upstream' or 'downstream'"))
 	}
+}
 
-	var list porchv1alpha2.PackageRevisionList
-	listOpts := []client.ListOption{}
-	if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
-		listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
+// defaultListPageSize bounds each chunk of a paged PackageRevision list so no
+// single response materializes the whole estate. Matches kubectl's default.
+const defaultListPageSize = int64(500)
+
+// listAllPackageRevisionsPaged lists every PackageRevision matching opts in
+// bounded pages, following the continue token, so the client never buffers a
+// single whole-estate response.
+func listAllPackageRevisionsPaged(ctx context.Context, c client.Client,
+	opts ...client.ListOption) ([]porchv1alpha2.PackageRevision, error) {
+	var all []porchv1alpha2.PackageRevision
+	continueToken := ""
+	for {
+		var page porchv1alpha2.PackageRevisionList
+		pageOpts := append([]client.ListOption{client.Limit(defaultListPageSize)}, opts...)
+		if continueToken != "" {
+			pageOpts = append(pageOpts, client.Continue(continueToken))
+		}
+		if err := c.List(ctx, &page, pageOpts...); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Items...)
+		continueToken = page.GetContinue()
+		if continueToken == "" {
+			return all, nil
+		}
 	}
-	if err := r.client.List(r.ctx, &list, listOpts...); err != nil {
-		return errors.E(op, err)
+}
+
+// objectKey builds a namespaced ObjectKey, tolerating a nil cfg (used in tests
+// that construct the runner directly without ConfigFlags).
+func (r *v1alpha2Runner) objectKey(name string) client.ObjectKey {
+	key := client.ObjectKey{Name: name}
+	if r.cfg != nil && r.cfg.Namespace != nil {
+		key.Namespace = *r.cfg.Namespace
+	}
+	return key
+}
+
+// ensurePRsForRef lazily loads r.prs scoped to a single (package, repository)
+// for the non-discover upstream-resolution finders, so a single-package upgrade
+// never lists the whole namespace. It is a no-op when r.prs is already loaded
+// (e.g. discover mode pre-populated it).
+func (r *v1alpha2Runner) ensurePRsForRef(pkgName, repo string) error {
+	if r.prs != nil {
+		return nil
+	}
+	opts := []client.ListOption{
+		client.MatchingFields{
+			string(porchv1alpha2.PkgRevSelectorPackageName): pkgName,
+			string(porchv1alpha2.PkgRevSelectorRepository):  repo,
+		},
+	}
+	if r.cfg != nil && r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
+		opts = append(opts, client.InNamespace(*r.cfg.Namespace))
+	}
+	var list porchv1alpha2.PackageRevisionList
+	if err := r.client.List(r.ctx, &list, opts...); err != nil {
+		return err
 	}
 	r.prs = list.Items
-
 	return nil
 }
 
@@ -145,7 +211,14 @@ func (r *v1alpha2Runner) runE(cmd *cobra.Command, args []string) error {
 
 	pr := r.findPackageRevision(args[0])
 	if pr == nil {
-		return errors.E(op, pkgerrors.Errorf("could not find package revision %s", args[0]))
+		if r.prs != nil {
+			return errors.E(op, pkgerrors.Errorf("could not find package revision %s", args[0]))
+		}
+		// Non-discover does not pre-list; resolve the named source PR directly.
+		pr = &porchv1alpha2.PackageRevision{}
+		if err := r.client.Get(r.ctx, r.objectKey(args[0]), pr); err != nil {
+			return errors.E(op, pkgerrors.Wrapf(err, "could not find package revision %s", args[0]))
+		}
 	}
 
 	if r.subpackageDir != "" {
@@ -249,6 +322,9 @@ func (r *v1alpha2Runner) findPackageRevisionFromUpstreamV2(up *kptfilev1.Upstrea
 		return nil, pkgerrors.Errorf("could not find upstream references in upstream read from subpackage kptfile")
 	}
 	upstreamRepo := strings.TrimSuffix(up.Git.Repo, ".git")
+	if err := r.ensurePRsInNamespace(); err != nil {
+		return nil, err
+	}
 	for i := range r.prs {
 		pr := &r.prs[i]
 		if !pr.IsPublished() || pr.Status.SelfLock == nil || pr.Status.SelfLock.Git == nil {
@@ -297,7 +373,15 @@ func (r *v1alpha2Runner) resolveOldUpstream(pr *porchv1alpha2.PackageRevision) (
 
 	oldUpstreamPr := r.findPackageRevision(oldUpstreamName)
 	if oldUpstreamPr == nil {
-		return nil, pkgerrors.Errorf("upstream package revision %s no longer exists", oldUpstreamName)
+		if r.prs != nil {
+			// Pre-listed (discover) and the name is genuinely absent.
+			return nil, pkgerrors.Errorf("upstream package revision %s no longer exists", oldUpstreamName)
+		}
+		// Non-discover does not pre-list; the upstream name is known, so Get it.
+		oldUpstreamPr = &porchv1alpha2.PackageRevision{}
+		if err := r.client.Get(r.ctx, r.objectKey(oldUpstreamName), oldUpstreamPr); err != nil {
+			return nil, pkgerrors.Errorf("upstream package revision %s no longer exists", oldUpstreamName)
+		}
 	}
 	if !oldUpstreamPr.IsPublished() {
 		return nil, pkgerrors.Errorf("old upstream package revision %s is not published", oldUpstreamPr.Name)
@@ -306,6 +390,11 @@ func (r *v1alpha2Runner) resolveOldUpstream(pr *porchv1alpha2.PackageRevision) (
 }
 
 func (r *v1alpha2Runner) resolveNewUpstream(pkgName, repoName string) (*porchv1alpha2.PackageRevision, error) {
+	// Scope the revision lookup to just this (package, repo) rather than the
+	// whole namespace (no-op in discover mode, where r.prs is already loaded).
+	if err := r.ensurePRsForRef(pkgName, repoName); err != nil {
+		return nil, err
+	}
 	if r.revision == 0 {
 		pr := r.findLatestPackageRevisionForRef(pkgName, repoName)
 		if pr == nil {
@@ -395,10 +484,18 @@ func (r *v1alpha2Runner) findUpstreamName(pr *porchv1alpha2.PackageRevision) str
 		}
 		return ""
 	case pr.Spec.Source.CopyFrom != nil:
-		if source := r.findPackageRevision(pr.Spec.Source.CopyFrom.Name); source != nil {
-			return r.findUpstreamName(source)
+		source := r.findPackageRevision(pr.Spec.Source.CopyFrom.Name)
+		if source == nil {
+			if r.prs != nil {
+				return ""
+			}
+			// Non-discover does not pre-list; the copy source name is known, Get it.
+			source = &porchv1alpha2.PackageRevision{}
+			if err := r.client.Get(r.ctx, r.objectKey(pr.Spec.Source.CopyFrom.Name), source); err != nil {
+				return ""
+			}
 		}
-		return ""
+		return r.findUpstreamName(source)
 	case pr.Spec.Source.Upgrade != nil:
 		return pr.Spec.Source.Upgrade.NewUpstream.Name
 	default:
@@ -406,10 +503,33 @@ func (r *v1alpha2Runner) findUpstreamName(pr *porchv1alpha2.PackageRevision) str
 	}
 }
 
+// ensurePRsInNamespace lazily loads r.prs for lookups that match on a field
+// with no server-side selector (status.selfLock). This is the tightest scope
+// available for those paths (git-URL clones, subpackage upgrades); it is only
+// reached off the common upgrade path and is a no-op once r.prs is loaded.
+func (r *v1alpha2Runner) ensurePRsInNamespace() error {
+	if r.prs != nil {
+		return nil
+	}
+	opts := []client.ListOption{}
+	if r.cfg != nil && r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
+		opts = append(opts, client.InNamespace(*r.cfg.Namespace))
+	}
+	prs, err := listAllPackageRevisionsPaged(r.ctx, r.client, opts...)
+	if err != nil {
+		return err
+	}
+	r.prs = prs
+	return nil
+}
+
 // findUpstreamBySelfLock finds a published PR whose selfLock matches the given lock.
 // Used when the downstream was cloned via git URL (no upstreamRef name in spec).
 func (r *v1alpha2Runner) findUpstreamBySelfLock(lock *porchv1alpha2.Locator) *porchv1alpha2.PackageRevision {
 	if lock == nil || lock.Git == nil {
+		return nil
+	}
+	if err := r.ensurePRsInNamespace(); err != nil {
 		return nil
 	}
 	for i := range r.prs {
