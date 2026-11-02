@@ -31,6 +31,7 @@ import (
 	apiutil "github.com/kptdev/porch/api/util"
 	cliutils "github.com/kptdev/porch/internal/cliutils"
 	"github.com/kptdev/porch/pkg/cli/commands/rpkg/docs"
+	cliutil "github.com/kptdev/porch/pkg/cli/commands/rpkg/util"
 	"github.com/kptdev/porch/pkg/util"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -145,22 +146,11 @@ func (r *runner) preRunE(_ *cobra.Command, args []string) error {
 		}
 		// Discover reports updates across the whole estate, so it needs every
 		// PR; page the list so no single response buffers the whole collection.
-		continueToken := ""
-		for {
-			page := porchapiv1alpha1.PackageRevisionList{}
-			pageOpts := append([]client.ListOption{client.Limit(defaultListPageSize)}, listOpts...)
-			if continueToken != "" {
-				pageOpts = append(pageOpts, client.Continue(continueToken))
-			}
-			if err := r.client.List(r.ctx, &page, pageOpts...); err != nil {
-				return errors.E(op, err)
-			}
-			r.prs = append(r.prs, page.Items...)
-			continueToken = page.GetContinue()
-			if continueToken == "" {
-				break
-			}
+		list := porchapiv1alpha1.PackageRevisionList{}
+		if err := cliutil.ListAllPaged(r.ctx, r.client, &list, cliutil.DefaultListPageSize, listOpts...); err != nil {
+			return errors.E(op, err)
 		}
+		r.prs = list.Items
 	default:
 		return errors.E(op, fmt.Errorf("argument for 'discover' must be one of 'upstream' or 'downstream'"))
 	}

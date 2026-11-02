@@ -29,6 +29,7 @@ import (
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
 	apiutil "github.com/kptdev/porch/api/util"
 	cliutils "github.com/kptdev/porch/internal/cliutils"
+	cliutil "github.com/kptdev/porch/pkg/cli/commands/rpkg/util"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -91,42 +92,14 @@ func (r *v1alpha2Runner) preRunE(cmd *cobra.Command, args []string) error {
 		if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
 			listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
 		}
-		prs, err := listAllPackageRevisionsPaged(r.ctx, r.client, listOpts...)
-		if err != nil {
+		var list porchv1alpha2.PackageRevisionList
+		if err := cliutil.ListAllPaged(r.ctx, r.client, &list, cliutil.DefaultListPageSize, listOpts...); err != nil {
 			return errors.E(op, err)
 		}
-		r.prs = prs
+		r.prs = list.Items
 		return nil
 	default:
 		return errors.E(op, fmt.Errorf("argument for 'discover' must be one of 'upstream' or 'downstream'"))
-	}
-}
-
-// defaultListPageSize bounds each chunk of a paged PackageRevision list so no
-// single response materializes the whole estate. Matches kubectl's default.
-const defaultListPageSize = int64(500)
-
-// listAllPackageRevisionsPaged lists every PackageRevision matching opts in
-// bounded pages, following the continue token, so the client never buffers a
-// single whole-estate response.
-func listAllPackageRevisionsPaged(ctx context.Context, c client.Client,
-	opts ...client.ListOption) ([]porchv1alpha2.PackageRevision, error) {
-	var all []porchv1alpha2.PackageRevision
-	continueToken := ""
-	for {
-		var page porchv1alpha2.PackageRevisionList
-		pageOpts := append([]client.ListOption{client.Limit(defaultListPageSize)}, opts...)
-		if continueToken != "" {
-			pageOpts = append(pageOpts, client.Continue(continueToken))
-		}
-		if err := c.List(ctx, &page, pageOpts...); err != nil {
-			return nil, err
-		}
-		all = append(all, page.Items...)
-		continueToken = page.GetContinue()
-		if continueToken == "" {
-			return all, nil
-		}
 	}
 }
 
@@ -515,11 +488,11 @@ func (r *v1alpha2Runner) ensurePRsInNamespace() error {
 	if r.cfg != nil && r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
 		opts = append(opts, client.InNamespace(*r.cfg.Namespace))
 	}
-	prs, err := listAllPackageRevisionsPaged(r.ctx, r.client, opts...)
-	if err != nil {
+	var list porchv1alpha2.PackageRevisionList
+	if err := cliutil.ListAllPaged(r.ctx, r.client, &list, cliutil.DefaultListPageSize, opts...); err != nil {
 		return err
 	}
-	r.prs = prs
+	r.prs = list.Items
 	return nil
 }
 

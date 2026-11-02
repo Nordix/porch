@@ -22,6 +22,7 @@ import (
 	porchapi "github.com/kptdev/porch/api/porch/v1alpha1"
 	configapi "github.com/kptdev/porch/api/porchconfig/v1alpha1"
 	"github.com/kptdev/porch/api/util"
+	cliutil "github.com/kptdev/porch/pkg/cli/commands/rpkg/util"
 	"github.com/spf13/cobra"
 	"k8s.io/cli-runtime/pkg/printers"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -173,26 +174,13 @@ func (r *runner) availableUpdates(upstreamLock *porchapi.Locator, repositories *
 func (r *runner) getRepositories() (*configapi.RepositoryList, error) {
 	// Scope to the configured namespace (not cluster-wide) and page the list so
 	// no single response buffers the whole Repository set.
-	listOpts := []client.ListOption{client.Limit(defaultListPageSize)}
+	listOpts := []client.ListOption{}
 	if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
 		listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
 	}
 	repoList := configapi.RepositoryList{}
-	continueToken := ""
-	for {
-		page := configapi.RepositoryList{}
-		pageOpts := listOpts
-		if continueToken != "" {
-			pageOpts = append([]client.ListOption{client.Continue(continueToken)}, listOpts...)
-		}
-		if err := r.client.List(r.ctx, &page, pageOpts...); err != nil {
-			return nil, err
-		}
-		repoList.Items = append(repoList.Items, page.Items...)
-		continueToken = page.GetContinue()
-		if continueToken == "" {
-			break
-		}
+	if err := cliutil.ListAllPaged(r.ctx, r.client, &repoList, cliutil.DefaultListPageSize, listOpts...); err != nil {
+		return nil, err
 	}
 	return &repoList, nil
 }
