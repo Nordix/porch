@@ -26,6 +26,7 @@ import (
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
 	porchapiv1alpha1 "github.com/kptdev/porch/api/porch/v1alpha1"
 	porchv1alpha2 "github.com/kptdev/porch/api/porch/v1alpha2"
+	"github.com/kptdev/porch/pkg/cli/commands/rpkg/util"
 	mockclient "github.com/kptdev/porch/test/mockery/mocks/external/sigs.k8s.io/controller-runtime/pkg/client"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -152,6 +153,69 @@ func createV2Runner(ctx context.Context, c client.Client, prs []porchv1alpha2.Pa
 		workspace: workspace,
 		prs:       prs,
 	}
+}
+
+// TestV1Alpha2UpgradeNonDiscoverScoping proves the non-discover upgrade path
+// (r.prs nil, as left by preRunE) never issues an unscoped namespace-wide LIST:
+// the source and old-upstream PRs are resolved by point Get, and the new-upstream
+// revision lookup is a (package,repo) field-selector-scoped LIST. Every LIST the
+// run issues must carry MatchingFields.
+func TestV1Alpha2UpgradeNonDiscoverScoping(t *testing.T) {
+	ctx := context.Background()
+	ns := "ns"
+
+	origV1 := makeV2Pr(ns, "upstream-repo", "orig", 1, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+	origV2 := makeV2Pr(ns, "upstream-repo", "orig", 2, porchv1alpha2.PackageRevisionLifecyclePublished, nil)
+	localPr := makeV2Pr(ns, "local-repo", "clone", 1, porchv1alpha2.PackageRevisionLifecyclePublished, cloneSource(origV1.Name))
+
+	scheme, err := createV1Alpha2Scheme()
+	if err != nil {
+		t.Fatalf("error creating scheme: %v", err)
+	}
+
+	var unscopedLists int
+	var scopedLists int
+	interceptorFuncs := interceptor.Funcs{
+		List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			lo := &client.ListOptions{}
+			for _, o := range opts {
+				o.ApplyToList(lo)
+			}
+			if lo.FieldSelector != nil && !lo.FieldSelector.Empty() {
+				scopedLists++
+			} else {
+				unscopedLists++
+			}
+			return c.List(ctx, list, opts...)
+		},
+		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if obj.GetObjectKind().GroupVersionKind().Kind == "PackageRevision" {
+				obj.SetName("upgraded-pr")
+			}
+			return nil
+		},
+	}
+
+	fakeClient := util.NewV1Alpha2FakeClientWithPkgRevIndexesAndInterceptor(scheme, interceptorFuncs,
+		origV1, origV2, localPr)
+
+	// r.prs is nil: this is the non-discover path as preRunE leaves it.
+	r := &v1alpha2Runner{
+		ctx:       ctx,
+		cfg:       &genericclioptions.ConfigFlags{Namespace: &ns},
+		client:    fakeClient,
+		revision:  2,
+		workspace: "upgrade-ws",
+	}
+	cmd := &cobra.Command{}
+	cmd.SetOut(&bytes.Buffer{})
+
+	if err := r.runE(cmd, []string{localPr.Name}); err != nil {
+		t.Fatalf("unexpected error: %+v", err)
+	}
+
+	assert.Zero(t, unscopedLists, "non-discover upgrade must not issue an unscoped namespace-wide LIST")
+	assert.GreaterOrEqual(t, scopedLists, 1, "new-upstream resolution must issue a field-selector-scoped LIST")
 }
 
 func TestV1Alpha2UpgradeCommand(t *testing.T) {
