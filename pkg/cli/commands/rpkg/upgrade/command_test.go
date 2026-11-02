@@ -466,7 +466,7 @@ func TestDiscoverUpdates(t *testing.T) {
 
 	mockClient := mockclient.NewMockClient(t)
 	mockClient.EXPECT().
-		List(mock.Anything, mock.Anything, mock.Anything).
+		List(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).
 		Run(func(_ context.Context, list client.ObjectList, opts ...client.ListOption) {
 			list.(*configapi.RepositoryList).Items = make([]configapi.Repository, 1)

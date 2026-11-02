@@ -34,6 +34,10 @@ import (
 
 const (
 	command = "cmdreposync"
+
+	// defaultRepoListPageSize bounds each chunk of the --all Repository list so
+	// no single response buffers the whole set. Matches kubectl's default.
+	defaultRepoListPageSize = int64(500)
 )
 
 func NewCommand(ctx context.Context, rcg *genericclioptions.ConfigFlags) *cobra.Command {
@@ -135,15 +139,27 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 	var repos []configapi.Repository
 
 	if allFlag {
-		list := &configapi.RepositoryList{}
-		listOpts := client.ListOptions{}
+		listOpts := []client.ListOption{client.Limit(defaultRepoListPageSize)}
 		if !allNamespaces {
-			listOpts.Namespace = namespace
+			listOpts = append(listOpts, client.InNamespace(namespace))
 		}
-		if err := k8sClient.List(r.ctx, list, &listOpts); err != nil {
-			return errors.E(op, err)
+		// Page the list so no single response buffers the whole Repository set.
+		continueToken := ""
+		for {
+			list := &configapi.RepositoryList{}
+			pageOpts := listOpts
+			if continueToken != "" {
+				pageOpts = append([]client.ListOption{client.Continue(continueToken)}, listOpts...)
+			}
+			if err := k8sClient.List(r.ctx, list, pageOpts...); err != nil {
+				return errors.E(op, err)
+			}
+			repos = append(repos, list.Items...)
+			continueToken = list.GetContinue()
+			if continueToken == "" {
+				break
+			}
 		}
-		repos = list.Items
 	} else {
 		if len(args) == 0 {
 			return fmt.Errorf("repository name(s) required unless --all is set")

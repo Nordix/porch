@@ -171,9 +171,30 @@ func (r *runner) availableUpdates(upstreamLock *porchapi.Locator, repositories *
 
 // fetches all registered repositories
 func (r *runner) getRepositories() (*configapi.RepositoryList, error) {
+	// Scope to the configured namespace (not cluster-wide) and page the list so
+	// no single response buffers the whole Repository set.
+	listOpts := []client.ListOption{client.Limit(defaultListPageSize)}
+	if r.cfg.Namespace != nil && *r.cfg.Namespace != "" {
+		listOpts = append(listOpts, client.InNamespace(*r.cfg.Namespace))
+	}
 	repoList := configapi.RepositoryList{}
-	err := r.client.List(r.ctx, &repoList, &client.ListOptions{})
-	return &repoList, err
+	continueToken := ""
+	for {
+		page := configapi.RepositoryList{}
+		pageOpts := listOpts
+		if continueToken != "" {
+			pageOpts = append([]client.ListOption{client.Continue(continueToken)}, listOpts...)
+		}
+		if err := r.client.List(r.ctx, &page, pageOpts...); err != nil {
+			return nil, err
+		}
+		repoList.Items = append(repoList.Items, page.Items...)
+		continueToken = page.GetContinue()
+		if continueToken == "" {
+			break
+		}
+	}
+	return &repoList, nil
 }
 
 // fetches all package revision numbers for packages with the name upstreamPackageName from the repo
