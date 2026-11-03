@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -82,13 +83,27 @@ func (s *repoChunkingServer) handler() http.Handler {
 			s.listReqs = append(s.listReqs, repoListReq{limit: q.Get("limit"), continue_: q.Get("continue")})
 			s.mu.Unlock()
 
-			if q.Get("continue") == "" {
-				writeJSON(w, repositoryList(s.continueToken,
-					repo("repo-a"), repo("repo-b")))
+			// Serve a server-side Table when the client negotiates one (the
+			// default human `repo get` output); otherwise serve the plain list.
+			asTable := strings.Contains(r.Header.Get("Accept"), "as=Table")
+			first := q.Get("continue") == ""
+			if !first {
+				assert.Equal(s.t, s.continueToken, q.Get("continue"))
+			}
+
+			if asTable {
+				if first {
+					writeJSON(w, repositoryTable(s.continueToken, "repo-a", "repo-b"))
+				} else {
+					writeJSON(w, repositoryTable("", "repo-c"))
+				}
 				return
 			}
-			assert.Equal(s.t, s.continueToken, q.Get("continue"))
-			writeJSON(w, repositoryList("", repo("repo-c")))
+			if first {
+				writeJSON(w, repositoryList(s.continueToken, repo("repo-a"), repo("repo-b")))
+			} else {
+				writeJSON(w, repositoryList("", repo("repo-c")))
+			}
 		})
 
 	return mux
@@ -122,6 +137,35 @@ func repositoryList(continueToken string, items ...map[string]any) map[string]an
 		"kind":       "RepositoryList",
 		"metadata":   meta,
 		"items":      anyItems,
+	}
+}
+
+// repositoryTable builds a server-side meta.k8s.io/v1 Table carrying the
+// Repository custom columns, one row per name. This mirrors what a Table-aware
+// apiserver returns for `repo get` default output, so the test exercises the
+// TablePrinter streaming path (decode Table page -> delegate -> columns).
+func repositoryTable(continueToken string, names ...string) map[string]any {
+	meta := map[string]any{}
+	if continueToken != "" {
+		meta["continue"] = continueToken
+	}
+	rows := make([]any, len(names))
+	for i, n := range names {
+		rows[i] = map[string]any{
+			"cells": []any{n, "git", "Package", "main"},
+		}
+	}
+	return map[string]any{
+		"apiVersion": "meta.k8s.io/v1",
+		"kind":       "Table",
+		"metadata":   meta,
+		"columnDefinitions": []any{
+			map[string]any{"name": "NAME", "type": "string"},
+			map[string]any{"name": "TYPE", "type": "string"},
+			map[string]any{"name": "CONTENT", "type": "string"},
+			map[string]any{"name": "BRANCH", "type": "string"},
+		},
+		"rows": rows,
 	}
 }
 
@@ -186,4 +230,58 @@ func TestRepoGetChunkSizeStreaming(t *testing.T) {
 	for _, n := range []string{"repo-a", "repo-b", "repo-c"} {
 		assert.Contains(t, o, n)
 	}
+}
+
+// TestRepoGetChunkSizeStreamingTable verifies the DEFAULT human (table) output
+// streams correctly across pages: the server returns one Table per page, and the
+// streamed TablePrinter must render every row from both pages with the custom
+// Repository columns while printing the column header exactly ONCE (the header
+// dedup relies on reusing a single TablePrinter instance across pages).
+func TestRepoGetChunkSizeStreamingTable(t *testing.T) {
+	ctx := context.Background()
+
+	srv := &repoChunkingServer{t: t, continueToken: "page2"}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	kubeconfig := repoKubeconfig(t, ts.URL)
+	ns := "test-ns"
+
+	r := &runner{
+		ctx:          ctx,
+		getFlags:     cmdutil.Options{ConfigFlags: &genericclioptions.ConfigFlags{KubeConfig: &kubeconfig, Namespace: &ns}},
+		printFlags:   get.NewGetPrintFlags(),
+		chunkSize:    2,
+		requestTable: true, // default human output -> server-side Table per page
+	}
+	out := &bytes.Buffer{}
+	cmd := &cobra.Command{}
+	cmd.SetOut(out)
+
+	require.NoError(t, r.runE(cmd, []string{}))
+
+	srv.mu.Lock()
+	reqs := append([]repoListReq(nil), srv.listReqs...)
+	srv.mu.Unlock()
+
+	// Both pages fetched, following the continue token.
+	require.Len(t, reqs, 2, "expected two chunked Table LIST requests, got %+v", reqs)
+	assert.Equal(t, "2", reqs[0].limit)
+	assert.Empty(t, reqs[0].continue_)
+	assert.Equal(t, "page2", reqs[1].continue_)
+
+	o := out.String()
+
+	// All rows from BOTH pages render with the custom columns.
+	for _, n := range []string{"repo-a", "repo-b", "repo-c"} {
+		assert.Contains(t, o, n, "row %q from a paged Table must render", n)
+	}
+	assert.Contains(t, o, "CONTENT", "custom Repository columns must render, not generic fallback")
+
+	// The column header must appear exactly ONCE across both pages (cross-page
+	// dedup via the reused TablePrinter). Count the NAME header token on header
+	// lines only -- a data row also contains a repo name but not the TYPE/CONTENT
+	// header tokens, so match the header by a column unique to the header row.
+	headerCount := strings.Count(o, "CONTENT")
+	assert.Equal(t, 1, headerCount, "table header must print once across pages, got %d:\n%s", headerCount, o)
 }
