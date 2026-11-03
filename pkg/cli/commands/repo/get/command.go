@@ -147,32 +147,26 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return errors.E(op, err)
 	}
+	if r.requestTable {
+		// Decode each server-side Table page into the custom Repository columns
+		// before the human printer renders it. The TablePrinter passes
+		// non-Table objects through untouched, so it is safe to keep wrapped for
+		// every page. Reusing this ONE instance across pages is what makes the
+		// column header print on the first page and be suppressed on the rest
+		// (the delegate tracks lastType per instance).
+		printer = &get.TablePrinter{Delegate: printer}
+	}
 
 	w := printers.GetNewTabWriter(cmd.OutOrStdout())
 	defer func() { _ = w.Flush() }()
 
-	if r.requestTable {
-		// Server-side Table rendering (the default human output, with the
-		// Repository custom columns) is incompatible with the chunking
-		// paginator -- RequestChunksOf drops the Table Accept transform on
-		// continuation requests and the server falls back to generic columns.
-		// The human table is small, so render it in one shot via the
-		// TablePrinter delegate, exactly as before.
-		tablePrinter := &get.TablePrinter{Delegate: printer}
-		infos, err := res.Infos()
-		if err != nil {
-			return errors.E(op, err)
-		}
-		for _, i := range infos {
-			if err := tablePrinter.PrintObj(i.Object, w); err != nil {
-				return errors.E(op, err)
-			}
-		}
-		return nil
-	}
-
-	// Non-table output (yaml/json/name/custom-columns) is chunk-safe: stream
-	// each Info and discard it so peak memory is one page, not the whole set.
+	// Stream page-by-page: RequestChunksOf pages the server (res.Visit follows
+	// the continue token) and each page is printed and discarded here, so peak
+	// client memory is one chunk rather than the whole Repository set -- on the
+	// table path as well as yaml/json/name/custom-columns. res.Visit hands the
+	// table path the per-page *Table object, which the TablePrinter decodes;
+	// earlier breakage came from printing that Table through the bare printer,
+	// bypassing the TablePrinter and degrading to generic NAME/CREATED-AT columns.
 	if err := res.Visit(func(i *resource.Info, err error) error {
 		if err != nil {
 			return err
