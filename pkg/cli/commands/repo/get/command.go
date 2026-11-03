@@ -148,26 +148,37 @@ func (r *runner) runE(cmd *cobra.Command, args []string) error {
 		return errors.E(op, err)
 	}
 
+	w := printers.GetNewTabWriter(cmd.OutOrStdout())
+	defer func() { _ = w.Flush() }()
+
 	if r.requestTable {
-		printer = &get.TablePrinter{
-			Delegate: printer,
+		// Server-side Table rendering (the default human output, with the
+		// Repository custom columns) is incompatible with the chunking
+		// paginator -- RequestChunksOf drops the Table Accept transform on
+		// continuation requests and the server falls back to generic columns.
+		// The human table is small, so render it in one shot via the
+		// TablePrinter delegate, exactly as before.
+		tablePrinter := &get.TablePrinter{Delegate: printer}
+		infos, err := res.Infos()
+		if err != nil {
+			return errors.E(op, err)
 		}
+		for _, i := range infos {
+			if err := tablePrinter.PrintObj(i.Object, w); err != nil {
+				return errors.E(op, err)
+			}
+		}
+		return nil
 	}
 
-	w := printers.GetNewTabWriter(cmd.OutOrStdout())
-
-	// Stream chunk-by-chunk: print and discard each Info so peak memory is one
-	// page, not the whole Repository collection.
+	// Non-table output (yaml/json/name/custom-columns) is chunk-safe: stream
+	// each Info and discard it so peak memory is one page, not the whole set.
 	if err := res.Visit(func(i *resource.Info, err error) error {
 		if err != nil {
 			return err
 		}
 		return printer.PrintObj(i.Object, w)
 	}); err != nil {
-		return errors.E(op, err)
-	}
-
-	if err := w.Flush(); err != nil {
 		return errors.E(op, err)
 	}
 
