@@ -33,11 +33,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// handleDeletion gates deletion of Published packages: they must be
-// DeletionProposed first, unless the owner Repository is already gone
-// (GC cascade). For all other lifecycles, git refs are cleaned up before
-// the finalizer is removed.
+// handleDeletion gates deletion of packages. Checks:
+// 1. Upstream references: Block if other packages depend on this one (data integrity)
+// 2. Published packages: Must be DeletionProposed first, unless owner Repository is gone (cascade deletion)
+// For all other cases, git refs are cleaned up before the finalizer is removed.
 func (r *PackageRevisionReconciler) handleDeletion(ctx context.Context, pr *porchv1alpha2.PackageRevision) (*ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	// 1. Check upstream references - block deletion if other packages depend on this one
+	if err := r.validateUpstreamReferences(ctx, pr); err != nil {
+		log.Error(err, "blocking deletion: upstream packages reference this one", "name", pr.Name)
+		// Set status condition indicating why deletion is blocked
+		r.updateStatus(ctx, pr, nil, "", "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		// Keep finalizer and return without error so the delete stays pending
+		return &ctrl.Result{}, nil
+	}
+
+	// 2. Published packages must be DeletionProposed first (unless cascade deletion)
 	if pr.Spec.Lifecycle == porchv1alpha2.PackageRevisionLifecyclePublished {
 		repoGone, err := r.ownerRepoGone(ctx, pr)
 		if err != nil {
@@ -46,13 +58,13 @@ func (r *PackageRevisionReconciler) handleDeletion(ctx context.Context, pr *porc
 		if !repoGone {
 			// Validating webhook rejects DELETE on published packages (unless cascade deletion),
 			// so this is unreachable in normal operation. Safety net for edge cases.
-			log.FromContext(ctx).Info("blocking deletion: published package must be DeletionProposed first", "lifecycle", pr.Spec.Lifecycle)
+			log.Info("blocking deletion: published package must be DeletionProposed first", "lifecycle", pr.Spec.Lifecycle)
 			return &ctrl.Result{}, nil
 		}
 		// Repo is gone — best-effort git cleanup, don't block on failure
 		// since all sibling revisions are being garbage-collected too.
 		if err := r.deleteFromGit(ctx, pr); err != nil {
-			log.FromContext(ctx).Error(err, "best-effort git cleanup failed during GC cascade")
+			log.Error(err, "best-effort git cleanup failed during GC cascade")
 		}
 		return r.removeFinalizer(ctx, pr, false)
 	}

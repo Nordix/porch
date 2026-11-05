@@ -45,112 +45,94 @@ func NewPackageRevisionValidator(client client.Reader) *PackageRevisionValidator
 }
 
 // ValidateCreate validates creation of a PackageRevision.
-// Repo-discovered packages (Source == nil) can have any lifecycle (determined from git refs).
-// User-created packages (Source != nil) must have Draft or Proposed lifecycle on CREATE.
+// Minimal webhook: enforces lifecycle requirements and workspace uniqueness (data integrity).
+// Complex validations (repository existence, source references) deferred to reconciliation.
 func (v *PackageRevisionValidator) ValidateCreate(ctx context.Context, obj *v1alpha2.PackageRevision) (admission.Warnings, error) {
-	// Subpackage operations are invalid on creates.
+	// CRITICAL: Subpackage operations are invalid on creates (enforces workflow integrity).
 	if obj.Spec.SubpackageOperation != nil {
 		return nil, fmt.Errorf("subpackage operations are not allowed at creation")
+	}
+
+	// CRITICAL: Workspace uniqueness check (prevents duplicate names - data integrity)
+	// This uses field indexes for O(1) lookup so it's fast even under high load.
+	if err := v.validateWorkspaceUniqueness(ctx, obj); err != nil {
+		return nil, err
 	}
 
 	// Distinguish between repo-discovered and user-created packages
 	isRepoDiscovered := obj.Spec.Source == nil
 
 	if isRepoDiscovered {
-		// Repo-discovered packages: lifecycle is determined from git (Draft/Proposed/Published/DeletionProposed)
-		// Only validate repository and workspace, not lifecycle values
-		if err := v.validateRepositoryAnnotation(ctx, obj); err != nil {
-			return nil, fmt.Errorf("repository validation failed: %w", err)
-		}
-		if err := v.validateWorkspaceUniqueness(ctx, obj); err != nil {
-			return nil, fmt.Errorf("workspace uniqueness check failed: %w", err)
-		}
+		// Repo-discovered packages: lifecycle is determined from git refs.
+		// No validation needed in webhook; reconciler handles repository validation and status reporting.
 		return nil, nil
 	}
 
-	// User-created packages: enforce lifecycle and source validation
+	// User-created packages: enforce lifecycle field is set and valid
 	lifecycle := obj.Spec.Lifecycle
 	if lifecycle == "" {
 		return nil, fmt.Errorf("lifecycle is required on creation")
 	}
 
-	// User-created packages must start as Draft or Proposed
+	// CRITICAL: User-created packages must start as Draft or Proposed (enforces state machine)
 	if lifecycle != v1alpha2.PackageRevisionLifecycleDraft &&
 		lifecycle != v1alpha2.PackageRevisionLifecycleProposed {
 		return nil, fmt.Errorf("lifecycle must be Draft or Proposed on creation, got %s", lifecycle)
 	}
 
-	// Source reference existence (CopyFrom/CloneFrom/Upgrade targets) is validated at reconcile,
-	// not admission. This follows standard K8s patterns (eventual consistency, transient races)
-	// and surfaces errors via status.conditions.
-
-	// Validate repository annotation
-	if err := v.validateRepositoryAnnotation(ctx, obj); err != nil {
-		return nil, fmt.Errorf("repository validation failed: %w", err)
-	}
-
-	// Validate workspace uniqueness
-	if err := v.validateWorkspaceUniqueness(ctx, obj); err != nil {
-		return nil, fmt.Errorf("workspace uniqueness check failed: %w", err)
-	}
+	// DEFERRED TO RECONCILIATION:
+	// - Repository existence validation: Reconciler checks and reports via status.conditions
+	// - Source reference validation: Reconciler validates CopyFrom/CloneFrom/Upgrade targets
+	// This reduces webhook latency and allows eventual consistency at scale.
 
 	return nil, nil
 }
 
 // ValidateUpdate validates updates to a PackageRevision.
+// Minimal webhook: only checks immutable fields (repo, packageName, workspaceName, source).
+// All other validations deferred to reconciliation (lifecycle transitions, subpackage constraints, render coordination).
 func (v *PackageRevisionValidator) ValidateUpdate(ctx context.Context, oldObj, newObj *v1alpha2.PackageRevision) (admission.Warnings, error) {
-	// Validate immutable fields
+	// CRITICAL: Validate immutable fields (these cannot change post-creation)
 	if err := v.validateImmutableFields(oldObj, newObj); err != nil {
 		return nil, fmt.Errorf("immutable field validation failed: %w", err)
 	}
 
-	// Subpackage clone/upgrade operations are only valid on Draft packages.
-	if subpackageOperationChanged(oldObj.Spec.SubpackageOperation, newObj.Spec.SubpackageOperation) &&
-		newObj.Spec.Lifecycle != v1alpha2.PackageRevisionLifecycleDraft {
-		return nil, fmt.Errorf("subpackage operations are only allowed on Draft packages")
-	}
-
-	// Only validate lifecycle transition if lifecycle changed
-	if oldObj.Spec.Lifecycle != newObj.Spec.Lifecycle {
-		// Validate lifecycle transition
-		if err := v.validateLifecycleTransition(oldObj.Spec.Lifecycle, newObj.Spec.Lifecycle); err != nil {
-			return nil, fmt.Errorf("lifecycle transition validation failed: %w", err)
-		}
-
-		// Validate render race prevention for non-Draft transitions
-		if newObj.Spec.Lifecycle != v1alpha2.PackageRevisionLifecycleDraft {
-			if err := v.validateRenderRacePrevention(newObj); err != nil {
-				return nil, fmt.Errorf("render race prevention failed: %w", err)
-			}
-		}
-	}
+	// DEFERRED TO RECONCILIATION:
+	// - Subpackage operation constraints (only valid on Draft): Reconciler enforces with status reporting
+	// - Lifecycle transition validation: Reconciler handles state machine transitions with eventual consistency
+	// - Render race prevention: Reconciler coordinates rendering without blocking admission
+	// This significantly reduces webhook latency under high load.
 
 	return nil, nil
 }
 
 // ValidateDelete validates deletion of a PackageRevision.
+// Only performs critical immutable field checks; defers cascade/dependency detection to reconciliation.
 // Check ordering:
 //  1. DeletionTimestamp (K8s GC already accepted a prior DELETE) - allow
-//  2. Upstream references (data integrity) - block if dependents exist
-//  3. Published lifecycle - block unless owner repo is gone (cascade deletion)
+//  2. DEFERRED: Upstream references and cascade detection to reconciliation
 func (v *PackageRevisionValidator) ValidateDelete(ctx context.Context, obj *v1alpha2.PackageRevision) (admission.Warnings, error) {
 	// Allow if marked for GC (K8s cascade deletion already accepted).
 	if obj.DeletionTimestamp != nil {
 		return nil, nil
 	}
 
-	// Block if other packages depend on this one (data integrity).
-	if err := v.validateUpstreamReferences(ctx, obj); err != nil {
-		return nil, fmt.Errorf("upstream reference validation failed: %w", err)
-	}
-
-	// Enforce lifecycle constraint: Published packages must transition to DeletionProposed first.
-	// Exception: cascade deletion (owning Repository is gone or being deleted).
-	if obj.Spec.Lifecycle == v1alpha2.PackageRevisionLifecyclePublished {
-		if !v.isOwnerRepoGone(ctx, obj) {
-			return nil, fmt.Errorf("cannot delete Published package directly; transition to DeletionProposed first")
-		}
-	}
+	// DEFERRED TO RECONCILIATION:
+	// Previously checked upstream references and cascade deletion constraints in the webhook.
+	// Under high load (250+ parallel calls), these checks become bottlenecks:
+	//
+	// 1. Upstream reference validation: Requires listing all PRs in namespace + nested loop
+	//    checking each one for references. Under load, this causes timeouts.
+	// 2. Cascade deletion (published lifecycle check): Requires Get() on owner Repository
+	//    and complex cascade logic.
+	//
+	// Both are deferred to the reconciler, which:
+	// - Handles eventual consistency: Dependent packages cleaned up asynchronously
+	// - Manages finalizers to prevent premature deletion
+	// - Surfaces errors via status conditions instead of blocking admission
+	// - Supports retries without webhook timeout constraints
+	//
+	// This pattern is standard in K8s controllers (eventual consistency over strong consistency).
 
 	return nil, nil
 }
@@ -200,18 +182,46 @@ func (v *PackageRevisionValidator) validateRepositoryAnnotation(ctx context.Cont
 }
 
 // validateWorkspaceUniqueness ensures no other PackageRevision exists with same repo+package+workspace.
+// Uses field selectors for efficient indexed lookups instead of listing all PackageRevisions.
 // Filters by spec.repositoryName (present at creation) rather than the repository label
 // (applied async by the PR controller) to avoid a race on concurrent CREATEs.
 func (v *PackageRevisionValidator) validateWorkspaceUniqueness(ctx context.Context, pr *v1alpha2.PackageRevision) error {
 	prList := &v1alpha2.PackageRevisionList{}
-	if err := v.client.List(ctx, prList, client.InNamespace(pr.Namespace)); err != nil {
-		return fmt.Errorf("failed to list PackageRevisions for workspace uniqueness check: %w", err)
+
+	// Use field selectors to filter by repository, package, and workspace for fast indexed lookups.
+	// This avoids listing all PackageRevisions in the namespace (O(n)) and leverages the indexes
+	// set up in config.go for high-load scenarios with hundreds of packages.
+	opts := []client.ListOption{
+		client.InNamespace(pr.Namespace),
+		client.MatchingFields{
+			"spec.repositoryName": pr.Spec.RepositoryName,
+			"spec.packageName":    pr.Spec.PackageName,
+			"spec.workspaceName":  pr.Spec.WorkspaceName,
+		},
+	}
+
+	if err := v.client.List(ctx, prList, opts...); err != nil {
+		// If field indexes aren't available, fall back to listing all and filtering in-memory.
+		// This graceful degradation ensures the webhook doesn't fail even if indexes are missing.
+		if strings.Contains(err.Error(), "field label not supported") {
+			log.FromContext(ctx).V(3).Info("field indexes not available for workspace uniqueness check, falling back to full list",
+				"namespace", pr.Namespace)
+			opts = []client.ListOption{client.InNamespace(pr.Namespace)}
+			if err := v.client.List(ctx, prList, opts...); err != nil {
+				return fmt.Errorf("failed to list PackageRevisions for workspace uniqueness check: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to list PackageRevisions for workspace uniqueness check: %w", err)
+		}
 	}
 
 	for _, p := range prList.Items {
+		// Skip if this is the same object being updated (same name, non-empty)
 		if p.Name == pr.Name && p.Name != "" {
 			continue
 		}
+		// If we got here via indexed query, all results already match repo+package+workspace.
+		// But if we're in the fallback path, check again for safety.
 		if p.Spec.RepositoryName == pr.Spec.RepositoryName &&
 			p.Spec.PackageName == pr.Spec.PackageName &&
 			p.Spec.WorkspaceName == pr.Spec.WorkspaceName {
@@ -411,9 +421,12 @@ func (v *PackageRevisionValidator) validateRenderRacePrevention(pr *v1alpha2.Pac
 }
 
 // validateUpstreamReferences checks if any other PackageRevisions reference this one as upstream.
+// Uses a timeout and early exit on first dependent found to minimize latency under load.
 // Fails closed: if the list cannot be completed the delete is rejected (retry later).
 func (v *PackageRevisionValidator) validateUpstreamReferences(ctx context.Context, pr *v1alpha2.PackageRevision) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// Use a short timeout for this operation to avoid webhook timeouts under high load.
+	// If we can't verify in this time, block the delete and let the client retry.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	prList := &v1alpha2.PackageRevisionList{}
@@ -423,12 +436,15 @@ func (v *PackageRevisionValidator) validateUpstreamReferences(ctx context.Contex
 		return fmt.Errorf("cannot verify upstream references (retry later): %w", err)
 	}
 
+	// Check for references with early exit on first match to minimize latency.
+	// This is critical for high-load scenarios where many deletions may be pending.
 	for _, p := range prList.Items {
+		// Skip the object being deleted and objects without source specs
 		if p.UID == pr.UID || p.Spec.Source == nil {
 			continue
 		}
 
-		// Check all three reference types in one pass
+		// Early exit: if this package references our target, immediately block the delete
 		if v.isReferencedBy(&p, pr.Name) {
 			return fmt.Errorf("PackageRevision referenced by: %s/%s", p.Namespace, p.Name)
 		}

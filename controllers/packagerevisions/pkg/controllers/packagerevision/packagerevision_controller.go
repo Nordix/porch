@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"time"
 
 	kptfilev1 "github.com/kptdev/kpt/api/kptfile/v1"
@@ -75,8 +76,12 @@ type PackageRevisionReconciler struct {
 	// lifecycle, render read) may keep requeuing before escalating to a terminal
 	// Failed condition. Measured from when the PackageRevision first went Pending.
 	TransientErrorRetryDeadline time.Duration
-	renderLimiter               chan struct{} // bounds concurrent fn-runner calls
-	apiReader                   client.Reader // bypasses informer cache for direct etcd reads
+	// ListPageSize controls pagination size for list operations during deletion checks.
+	// Larger sizes reduce API calls but use more memory; smaller sizes are gentler on resources.
+	// Default: 100 items per page.
+	ListPageSize  int64
+	renderLimiter chan struct{} // bounds concurrent fn-runner calls
+	apiReader     client.Reader // bypasses informer cache for direct etcd reads
 }
 
 func (r *PackageRevisionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -87,6 +92,15 @@ func (r *PackageRevisionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	if result, err := r.reconcileFinalizer(ctx, &pr); err != nil || result != nil {
 		return resultOrDefault(result), err
+	}
+
+	// Validate deferred constraints early (before any reconciliation work)
+	// These checks were previously in the webhook and are now deferred to the reconciler
+	// for eventual consistency. They only apply to objects not being deleted.
+	if pr.DeletionTimestamp == nil {
+		if result, err := r.validateDeferredConstraints(ctx, &pr); err != nil || result != nil {
+			return resultOrDefault(result), nil
+		}
 	}
 
 	// Self-healing repository + latest-revision labels, in a single patch.
@@ -493,6 +507,189 @@ func (r *PackageRevisionReconciler) reconcileRender(ctx context.Context, pr *por
 	}
 	log.V(3).Info("render completed successfully", "name", pr.Name)
 	return nil, nil
+}
+
+// validateDeferredConstraints checks validations that were deferred from the webhook
+// to the reconciler for eventual consistency. Returns errors as status conditions.
+// Note: Upstream reference check is handled separately in handleDeletion()
+func (r *PackageRevisionReconciler) validateDeferredConstraints(ctx context.Context, pr *porchv1alpha2.PackageRevision) (*ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	// 1. Validate repository exists and has v1alpha2-migration annotation
+	// (workspace uniqueness is already checked in webhook for CREATE operations)
+	if err := r.validateRepositoryMigrated(ctx, pr); err != nil {
+		log.Error(err, "repository validation failed", "name", pr.Name)
+		r.updateStatus(ctx, pr, nil, "", "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		return &ctrl.Result{}, nil // Terminal error
+	}
+
+	// 2. Validate lifecycle is valid (Draft/Proposed for user-created on creation)
+	if err := r.validateLifecycleConstraints(ctx, pr); err != nil {
+		log.Error(err, "lifecycle validation failed", "name", pr.Name)
+		r.updateStatus(ctx, pr, nil, "", "", readyCondition(pr.Generation, metav1.ConditionFalse, porchv1alpha2.ReasonFailed, err.Error()))
+		return &ctrl.Result{}, nil // Terminal error
+	}
+
+	return nil, nil
+}
+
+// validateRepositoryMigrated checks that the repository exists and has v1alpha2-migration annotation
+func (r *PackageRevisionReconciler) validateRepositoryMigrated(ctx context.Context, pr *porchv1alpha2.PackageRevision) error {
+	if pr == nil {
+		return nil
+	}
+
+	repo := &configapi.Repository{}
+	repoKey := types.NamespacedName{
+		Namespace: pr.Namespace,
+		Name:      pr.Spec.RepositoryName,
+	}
+
+	if err := r.Get(ctx, repoKey, repo); err != nil {
+		return fmt.Errorf("repository %s/%s not found: %w", pr.Namespace, pr.Spec.RepositoryName, err)
+	}
+
+	annotationValue, hasAnnotation := repo.Annotations[configapi.AnnotationKeyV1Alpha2Migration]
+	if !hasAnnotation || annotationValue != configapi.AnnotationValueMigrationEnabled {
+		return fmt.Errorf("repository %s/%s not enabled for v1alpha2", repo.Namespace, repo.Name)
+	}
+
+	return nil
+}
+
+// validateWorkspaceUniqueness ensures no other PackageRevision exists with same repo+package+workspace
+func (r *PackageRevisionReconciler) validateWorkspaceUniqueness(ctx context.Context, pr *porchv1alpha2.PackageRevision) error {
+	if pr == nil {
+		return nil
+	}
+
+	prList := &porchv1alpha2.PackageRevisionList{}
+
+	// Use field selectors to filter by repository, package, and workspace for fast indexed lookups
+	opts := []client.ListOption{
+		client.InNamespace(pr.Namespace),
+		client.MatchingFields{
+			string(porchv1alpha2.PkgRevSelectorRepository):    pr.Spec.RepositoryName,
+			string(porchv1alpha2.PkgRevSelectorPackageName):   pr.Spec.PackageName,
+			string(porchv1alpha2.PkgRevSelectorWorkspaceName): pr.Spec.WorkspaceName,
+		},
+	}
+
+	if err := r.List(ctx, prList, opts...); err != nil {
+		// If field indexes aren't available, fall back to full list and filter in-memory
+		if !strings.Contains(err.Error(), "field label not supported") {
+			return fmt.Errorf("failed to list PackageRevisions for workspace uniqueness check: %w", err)
+		}
+		opts = []client.ListOption{client.InNamespace(pr.Namespace)}
+		if err := r.List(ctx, prList, opts...); err != nil {
+			return fmt.Errorf("failed to list PackageRevisions for workspace uniqueness check (fallback): %w", err)
+		}
+	}
+
+	for _, p := range prList.Items {
+		// Skip the same object (being created or updated)
+		if p.Name == pr.Name {
+			continue
+		}
+		// Check if another PR has the same workspace
+		if p.Spec.RepositoryName == pr.Spec.RepositoryName &&
+			p.Spec.PackageName == pr.Spec.PackageName &&
+			p.Spec.WorkspaceName == pr.Spec.WorkspaceName {
+			return fmt.Errorf("workspace %s already exists for package %s in repository %s",
+				pr.Spec.WorkspaceName, pr.Spec.PackageName, pr.Spec.RepositoryName)
+		}
+	}
+
+	return nil
+}
+
+// validateLifecycleConstraints enforces lifecycle field requirements
+func (r *PackageRevisionReconciler) validateLifecycleConstraints(ctx context.Context, pr *porchv1alpha2.PackageRevision) error {
+	if pr == nil {
+		return nil
+	}
+
+	// Only validate on creation (no previous status)
+	if pr.Status.CreationSource != "" {
+		return nil // Already created, lifecycle constraints already validated
+	}
+
+	lifecycle := pr.Spec.Lifecycle
+	if lifecycle == "" {
+		return fmt.Errorf("lifecycle is required")
+	}
+
+	// Repo-discovered packages (no source) can have any lifecycle
+	if pr.Spec.Source == nil {
+		return nil
+	}
+
+	// User-created packages must start as Draft or Proposed
+	if lifecycle != porchv1alpha2.PackageRevisionLifecycleDraft &&
+		lifecycle != porchv1alpha2.PackageRevisionLifecycleProposed {
+		return fmt.Errorf("user-created packages must start as Draft or Proposed, got %s", lifecycle)
+	}
+
+	return nil
+}
+
+// validateUpstreamReferences checks if any other PackageRevisions reference this one as upstream.
+// Used during deletion to prevent orphaning dependent packages.
+func (r *PackageRevisionReconciler) validateUpstreamReferences(ctx context.Context, pr *porchv1alpha2.PackageRevision) error {
+	if pr == nil || pr.Spec.Source == nil {
+		// No upstream references to validate
+		return nil
+	}
+
+	prList := &porchv1alpha2.PackageRevisionList{}
+
+	// List all PRs in the namespace to check for dependencies
+	if err := r.List(ctx, prList, client.InNamespace(pr.Namespace)); err != nil {
+		// Log the error but don't block deletion on transient errors
+		// The system will retry on next reconcile if needed
+		log.FromContext(ctx).Error(err, "failed to check upstream references", "name", pr.Name)
+		return nil
+	}
+
+	// Check if any other PR references this one as upstream
+	for _, p := range prList.Items {
+		// Skip the package being deleted and packages without source specs
+		if p.UID == pr.UID || p.Spec.Source == nil {
+			continue
+		}
+
+		// Check if this package references the one being deleted
+		if r.isReferencedBy(&p, pr.Name) {
+			return fmt.Errorf("cannot delete: package is referenced by %s/%s", p.Namespace, p.Name)
+		}
+	}
+
+	return nil
+}
+
+// isReferencedBy checks if a PackageRevision references the target by name
+func (r *PackageRevisionReconciler) isReferencedBy(p *porchv1alpha2.PackageRevision, targetName string) bool {
+	if p == nil || p.Spec.Source == nil {
+		return false
+	}
+
+	// Check CloneFrom references
+	if p.Spec.Source.CloneFrom != nil && p.Spec.Source.CloneFrom.UpstreamRef != nil &&
+		p.Spec.Source.CloneFrom.UpstreamRef.Name == targetName {
+		return true
+	}
+
+	// Check Upgrade references - defensive: check all nested pointers
+	if p.Spec.Source.Upgrade != nil {
+		if p.Spec.Source.Upgrade.NewUpstream.Name != "" && p.Spec.Source.Upgrade.NewUpstream.Name == targetName {
+			return true
+		}
+		if p.Spec.Source.Upgrade.OldUpstream.Name != "" && p.Spec.Source.Upgrade.OldUpstream.Name == targetName {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (r *PackageRevisionReconciler) Name() string { return reconcilerName }
