@@ -57,6 +57,8 @@ func TestRenderPackageVariantSpec(t *testing.T) {
 
 	adoptExisting := configapi.AdoptionPolicyAdoptExisting
 	deletionPolicyDelete := configapi.DeletionPolicyDelete
+	upgradeForceDeleteReplace := configapi.UpgradePolicyForceDeleteReplace
+	autoPublishApprove := configapi.AutoPublishApprove
 	pvs := api.PackageVariantSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-pvs",
@@ -154,6 +156,26 @@ func TestRenderPackageVariantSpec(t *testing.T) {
 				},
 				AdoptionPolicy: "adoptExisting",
 				DeletionPolicy: "delete",
+			},
+			expectedErrs: nil,
+		},
+		"template upgrade and auto-publish policies": {
+			downstream: pvContext{
+				repoDefault:    "my-repo-1",
+				packageDefault: "p",
+				template: &api.PackageVariantTemplate{
+					UpgradePolicy:     &upgradeForceDeleteReplace,
+					AutoPublishPolicy: &autoPublishApprove,
+				},
+			},
+			expectedSpec: configapi.PackageVariantSpec{
+				Upstream: pvs.Spec.Upstream,
+				Downstream: &configapi.Downstream{
+					Repo:    "my-repo-1",
+					Package: "p",
+				},
+				UpgradePolicy:     "forceDeleteReplace",
+				AutoPublishPolicy: "approve",
 			},
 			expectedErrs: nil,
 		},

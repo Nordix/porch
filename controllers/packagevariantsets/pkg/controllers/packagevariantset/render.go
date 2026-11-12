@@ -116,6 +116,14 @@ func renderPackageVariantSpec(ctx context.Context, pvs *api.PackageVariantSet, r
 	if pvt.DeletionPolicy != nil {
 		spec.DeletionPolicy = *pvt.DeletionPolicy
 	}
+
+	if pvt.UpgradePolicy != nil {
+		spec.UpgradePolicy = *pvt.UpgradePolicy
+	}
+
+	if pvt.AutoPublishPolicy != nil {
+		spec.AutoPublishPolicy = *pvt.AutoPublishPolicy
+	}
 	spec.Labels, err = copyAndOverlayMapExpr("template.labelExprs", pvt.Labels, pvt.LabelExprs, inputs)
 	if err != nil {
 		return nil, err

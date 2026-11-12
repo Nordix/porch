@@ -45,12 +45,34 @@ func (o *PackageVariant) GetSpec() *PackageVariantSpec {
 type AdoptionPolicy string
 type DeletionPolicy string
 
+// UpgradePolicy controls the merge strategy the controller uses when it
+// upgrades a downstream package to a new upstream revision.
+type UpgradePolicy string
+
+// AutoPublishPolicy controls whether the controller automatically advances the
+// drafts it creates through the package revision lifecycle (propose then
+// approve/publish) instead of leaving them as drafts for a human or another
+// controller to publish.
+type AutoPublishPolicy string
+
 const (
 	AdoptionPolicyAdoptExisting AdoptionPolicy = "adoptExisting"
 	AdoptionPolicyAdoptNone     AdoptionPolicy = "adoptNone"
 
 	DeletionPolicyDelete DeletionPolicy = "delete"
 	DeletionPolicyOrphan DeletionPolicy = "orphan"
+
+	// UpgradePolicyResourceMerge merges upstream changes into the downstream,
+	// preserving local edits (default).
+	UpgradePolicyResourceMerge UpgradePolicy = "resourceMerge"
+	// UpgradePolicyForceDeleteReplace replaces the downstream with the upstream,
+	// discarding local edits.
+	UpgradePolicyForceDeleteReplace UpgradePolicy = "forceDeleteReplace"
+
+	// AutoPublishNone leaves created drafts as drafts (default).
+	AutoPublishNone AutoPublishPolicy = "none"
+	// AutoPublishApprove proposes and publishes created drafts.
+	AutoPublishApprove AutoPublishPolicy = "approve"
 
 	Finalizer = "config.porch.kpt.dev/packagevariants"
 )
@@ -62,6 +84,21 @@ type PackageVariantSpec struct {
 
 	AdoptionPolicy AdoptionPolicy `json:"adoptionPolicy,omitempty"`
 	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
+
+	// UpgradePolicy selects the merge strategy used when upgrading a downstream
+	// package to a new upstream revision. Defaults to "resourceMerge".
+	// Use "forceDeleteReplace" to treat the upstream as the source of truth and
+	// overwrite local downstream changes (golden-parameters use case).
+	// +optional
+	UpgradePolicy UpgradePolicy `json:"upgradePolicy,omitempty"`
+
+	// AutoPublishPolicy controls whether the controller automatically proposes
+	// and approves (publishes) the drafts it creates. Defaults to "none", which
+	// leaves drafts for manual publishing. Set to "approve" to have the
+	// controller drive the full lifecycle so upstream changes propagate to the
+	// node without manual intervention.
+	// +optional
+	AutoPublishPolicy AutoPublishPolicy `json:"autoPublishPolicy,omitempty"`
 
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`

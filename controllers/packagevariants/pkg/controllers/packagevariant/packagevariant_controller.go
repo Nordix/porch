@@ -70,6 +70,7 @@ func (r *PackageVariantReconciler) Name() string { return reconcilerName }
 //+kubebuilder:rbac:groups=config.porch.kpt.dev,resources=packagevariants/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=config.porch.kpt.dev,resources=packagevariants/finalizers,verbs=update
 //+kubebuilder:rbac:groups=porch.kpt.dev,resources=packagerevisions,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups=porch.kpt.dev,resources=packagerevisions/approval,verbs=update
 //+kubebuilder:rbac:groups=porch.kpt.dev,resources=packagerevisionresources,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups=config.porch.kpt.dev,resources=repositories,verbs=get;list;watch
 
@@ -151,9 +152,21 @@ func (r *PackageVariantReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	// Advance owned drafts toward Published when auto-publish is enabled.
+	requeue, err := r.ensureAutoPublish(ctx, pv, targets)
+	if err != nil {
+		meta.SetStatusCondition(&pv.Status.Conditions, metav1.Condition{
+			Type:    ConditionTypeReady,
+			Status:  "False",
+			Reason:  "Error",
+			Message: err.Error(),
+		})
+		return ctrl.Result{}, err
+	}
+
 	setTargetStatusConditions(pv, targets)
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{Requeue: requeue}, nil
 }
 
 func (r *PackageVariantReconciler) init(ctx context.Context,
@@ -201,6 +214,20 @@ func validatePackageVariant(pv *configapi.PackageVariant) []string {
 	if pv.Spec.DeletionPolicy != configapi.DeletionPolicyOrphan && pv.Spec.DeletionPolicy != configapi.DeletionPolicyDelete {
 		allErrs = append(allErrs, fmt.Sprintf("spec.deletionPolicy can only be %q or %q",
 			configapi.DeletionPolicyOrphan, configapi.DeletionPolicyDelete))
+	}
+	if pv.Spec.UpgradePolicy == "" {
+		pv.Spec.UpgradePolicy = configapi.UpgradePolicyResourceMerge
+	}
+	if pv.Spec.UpgradePolicy != configapi.UpgradePolicyResourceMerge && pv.Spec.UpgradePolicy != configapi.UpgradePolicyForceDeleteReplace {
+		allErrs = append(allErrs, fmt.Sprintf("spec.upgradePolicy can only be %q or %q",
+			configapi.UpgradePolicyResourceMerge, configapi.UpgradePolicyForceDeleteReplace))
+	}
+	if pv.Spec.AutoPublishPolicy == "" {
+		pv.Spec.AutoPublishPolicy = configapi.AutoPublishNone
+	}
+	if pv.Spec.AutoPublishPolicy != configapi.AutoPublishNone && pv.Spec.AutoPublishPolicy != configapi.AutoPublishApprove {
+		allErrs = append(allErrs, fmt.Sprintf("spec.autoPublishPolicy can only be %q or %q",
+			configapi.AutoPublishNone, configapi.AutoPublishApprove))
 	}
 	if pc := pv.Spec.PackageContext; pc != nil {
 		invalidKeys := []string{"name", "package-path"}
@@ -628,30 +655,103 @@ func (r *PackageVariantReconciler) deletePackageRevision(ctx context.Context, pr
 	}
 }
 
-// determine if the downstream PR needs to be updated
+// ensureAutoPublish advances owned target revisions one lifecycle step toward
+// Published (Draft->Proposed, then Proposed->Published) when
+// spec.autoPublishPolicy is "approve"; it is a no-op otherwise. Steps are taken
+// one per reconcile because the server transitions are asynchronous. It returns
+// whether a requeue is needed to continue.
+func (r *PackageVariantReconciler) ensureAutoPublish(ctx context.Context,
+	pv *configapi.PackageVariant,
+	targets []*porchapi.PackageRevision) (bool, error) {
+
+	if pv.Spec.AutoPublishPolicy != configapi.AutoPublishApprove {
+		return false, nil
+	}
+
+	requeue := false
+	for _, target := range targets {
+		// Only drive lifecycle for revisions we own.
+		if !r.hasOurOwnerReference(pv, target.OwnerReferences) {
+			continue
+		}
+
+		switch target.Spec.Lifecycle {
+		case porchapi.PackageRevisionLifecycleDraft:
+			target.Spec.Lifecycle = porchapi.PackageRevisionLifecycleProposed
+			if err := r.Update(ctx, target); err != nil {
+				return false, pkgerrors.Wrapf(err, "auto-publish: failed to propose %q", target.Name)
+			}
+			klog.Infof("package variant %q auto-publish: proposed %q", pv.Name, target.Name)
+			requeue = true
+		case porchapi.PackageRevisionLifecycleProposed:
+			// Approval must go through the approval subresource, not a plain update.
+			target.Spec.Lifecycle = porchapi.PackageRevisionLifecyclePublished
+			if err := r.Client.SubResource("approval").Update(ctx, target); err != nil {
+				return false, pkgerrors.Wrapf(err, "auto-publish: failed to approve %q", target.Name)
+			}
+			klog.Infof("package variant %q auto-publish: approved/published %q", pv.Name, target.Name)
+		default:
+			// Published or DeletionProposed: nothing to do.
+		}
+	}
+	return requeue, nil
+}
+
+// isUpToDate reports whether the downstream is already tracking the target
+// upstream revision. When the upstream revision can't be determined from
+// status.upstreamLock, a published downstream is treated as out-of-date (force
+// an upgrade), while an in-progress draft is left alone.
 func (r *PackageVariantReconciler) isUpToDate(pv *configapi.PackageVariant, downstream *porchapi.PackageRevision) bool {
-	if downstream.Status.UpstreamLock == nil {
-		klog.Warningf("status.upstreamLock field is empty/missing in downstream PackageRevision: %s", pv.Name)
+	currentUpstreamRevision, ok := currentUpstreamRevision(downstream)
+	if !ok {
+		if porchapi.LifecycleIsPublished(downstream.Spec.Lifecycle) {
+			klog.Warningf("package variant %q: cannot determine upstream revision of published downstream %q; triggering upgrade", pv.Name, downstream.Name)
+			return false
+		}
+		klog.V(5).Infof("package variant %q: upstream lock not yet populated on draft downstream %q", pv.Name, downstream.Name)
 		return true
 	}
-	upstreamLock := downstream.Status.UpstreamLock
-	if upstreamLock.Git == nil || upstreamLock.Git.Ref == "" {
-		klog.Warningf("status.upstreamLock.git or status.upstreamLock.git.ref field is empty/missing in downstream PackageRevision: %s", pv.Name)
-		return true
-	}
-	if strings.HasPrefix(upstreamLock.Git.Ref, "drafts") {
+
+	if currentUpstreamRevision == draftUpstreamRevision {
 		// The current upstream is a draft, and the target upstream
 		// will always be a published revision, so we will need to do an update.
 		return false
 	}
-	currentUpstreamRevision := revisionFromLocator(upstreamLock)
 	return currentUpstreamRevision == pv.Spec.Upstream.Revision
+}
+
+// draftUpstreamRevision is a sentinel for a downstream based on a draft
+// upstream; it never equals a published revision, so it always forces an upgrade.
+const draftUpstreamRevision = -2
+
+// currentUpstreamRevision returns the upstream revision the downstream is based
+// on, from status.upstreamLock. ok is false when the lock is missing/unparseable.
+func currentUpstreamRevision(downstream *porchapi.PackageRevision) (int, bool) {
+	lock := downstream.Status.UpstreamLock
+	if lock == nil || lock.Git == nil || lock.Git.Ref == "" {
+		return 0, false
+	}
+	if strings.HasPrefix(lock.Git.Ref, "drafts") {
+		return draftUpstreamRevision, true
+	}
+	return revisionFromLocator(lock), true
 }
 
 // revisionFromLocator extracts the revision number from a Locator's Git ref.
 func revisionFromLocator(lock *porchapi.Locator) int {
 	lastIndex := strings.LastIndex(lock.Git.Ref, "/")
 	return util.Revision2Int(lock.Git.Ref[lastIndex+1:])
+}
+
+// mergeStrategyForPolicy maps an UpgradePolicy to a merge strategy, defaulting
+// to resource-merge.
+func mergeStrategyForPolicy(policy configapi.UpgradePolicy) porchapi.PackageMergeStrategy {
+	switch policy {
+	case configapi.UpgradePolicyForceDeleteReplace:
+		return porchapi.ForceDeleteReplace
+	default:
+		return porchapi.ResourceMerge
+	}
 }
 
 func (r *PackageVariantReconciler) createUpgradeDraft(ctx context.Context,
@@ -688,7 +788,7 @@ func (r *PackageVariantReconciler) createUpgradeDraft(ctx context.Context,
 				LocalPackageRevisionRef: porchapi.PackageRevisionRef{
 					Name: source.Name,
 				},
-				Strategy: porchapi.ResourceMerge,
+				Strategy: mergeStrategyForPolicy(pv.Spec.UpgradePolicy),
 			},
 		},
 	}

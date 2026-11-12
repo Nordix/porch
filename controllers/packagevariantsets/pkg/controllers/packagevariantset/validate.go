@@ -110,6 +110,18 @@ func validateTemplate(template *api.PackageVariantTemplate, field string) []erro
 			pkgvarapi.DeletionPolicyOrphan, pkgvarapi.DeletionPolicyDelete))
 	}
 
+	if template.UpgradePolicy != nil && *template.UpgradePolicy != pkgvarapi.UpgradePolicyResourceMerge &&
+		*template.UpgradePolicy != pkgvarapi.UpgradePolicyForceDeleteReplace {
+		allErrs = append(allErrs, fmt.Errorf("%s.upgradePolicy can only be %q or %q", field,
+			pkgvarapi.UpgradePolicyResourceMerge, pkgvarapi.UpgradePolicyForceDeleteReplace))
+	}
+
+	if template.AutoPublishPolicy != nil && *template.AutoPublishPolicy != pkgvarapi.AutoPublishNone &&
+		*template.AutoPublishPolicy != pkgvarapi.AutoPublishApprove {
+		allErrs = append(allErrs, fmt.Errorf("%s.autoPublishPolicy can only be %q or %q", field,
+			pkgvarapi.AutoPublishNone, pkgvarapi.AutoPublishApprove))
+	}
+
 	if template.Downstream != nil {
 		if template.Downstream.Repo != nil && template.Downstream.RepoExpr != nil {
 			allErrs = append(allErrs, fmt.Errorf("%s may specify only one of `downstream.repo` and `downstream.repoExpr`", field))

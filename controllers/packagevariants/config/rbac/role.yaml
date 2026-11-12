@@ -64,3 +64,9 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - porch.kpt.dev
+  resources:
+  - packagerevisions/approval
+  verbs:
+  - update

@@ -26,15 +26,26 @@ import (
 //
 // PackageVariantSpec defines the desired state of PackageVariant
 type PackageVariantSpecApplyConfiguration struct {
-	Upstream       *UpstreamApplyConfiguration           `json:"upstream,omitempty"`
-	Downstream     *DownstreamApplyConfiguration         `json:"downstream,omitempty"`
-	AdoptionPolicy *porchconfigv1alpha1.AdoptionPolicy   `json:"adoptionPolicy,omitempty"`
-	DeletionPolicy *porchconfigv1alpha1.DeletionPolicy   `json:"deletionPolicy,omitempty"`
-	Labels         map[string]string                     `json:"labels,omitempty"`
-	Annotations    map[string]string                     `json:"annotations,omitempty"`
-	PackageContext *PackageContextApplyConfiguration     `json:"packageContext,omitempty"`
-	Pipeline       *v1.Pipeline                          `json:"pipeline,omitempty"`
-	Injectors      []InjectionSelectorApplyConfiguration `json:"injectors,omitempty"`
+	Upstream       *UpstreamApplyConfiguration         `json:"upstream,omitempty"`
+	Downstream     *DownstreamApplyConfiguration       `json:"downstream,omitempty"`
+	AdoptionPolicy *porchconfigv1alpha1.AdoptionPolicy `json:"adoptionPolicy,omitempty"`
+	DeletionPolicy *porchconfigv1alpha1.DeletionPolicy `json:"deletionPolicy,omitempty"`
+	// UpgradePolicy selects the merge strategy used when upgrading a downstream
+	// package to a new upstream revision. Defaults to "resourceMerge".
+	// Use "forceDeleteReplace" to treat the upstream as the source of truth and
+	// overwrite local downstream changes (golden-parameters use case).
+	UpgradePolicy *porchconfigv1alpha1.UpgradePolicy `json:"upgradePolicy,omitempty"`
+	// AutoPublishPolicy controls whether the controller automatically proposes
+	// and approves (publishes) the drafts it creates. Defaults to "none", which
+	// leaves drafts for manual publishing. Set to "approve" to have the
+	// controller drive the full lifecycle so upstream changes propagate to the
+	// node without manual intervention.
+	AutoPublishPolicy *porchconfigv1alpha1.AutoPublishPolicy `json:"autoPublishPolicy,omitempty"`
+	Labels            map[string]string                      `json:"labels,omitempty"`
+	Annotations       map[string]string                      `json:"annotations,omitempty"`
+	PackageContext    *PackageContextApplyConfiguration      `json:"packageContext,omitempty"`
+	Pipeline          *v1.Pipeline                           `json:"pipeline,omitempty"`
+	Injectors         []InjectionSelectorApplyConfiguration  `json:"injectors,omitempty"`
 }
 
 // PackageVariantSpecApplyConfiguration constructs a declarative configuration of the PackageVariantSpec type for use with
@@ -72,6 +83,22 @@ func (b *PackageVariantSpecApplyConfiguration) WithAdoptionPolicy(value porchcon
 // If called multiple times, the DeletionPolicy field is set to the value of the last call.
 func (b *PackageVariantSpecApplyConfiguration) WithDeletionPolicy(value porchconfigv1alpha1.DeletionPolicy) *PackageVariantSpecApplyConfiguration {
 	b.DeletionPolicy = &value
+	return b
+}
+
+// WithUpgradePolicy sets the UpgradePolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UpgradePolicy field is set to the value of the last call.
+func (b *PackageVariantSpecApplyConfiguration) WithUpgradePolicy(value porchconfigv1alpha1.UpgradePolicy) *PackageVariantSpecApplyConfiguration {
+	b.UpgradePolicy = &value
+	return b
+}
+
+// WithAutoPublishPolicy sets the AutoPublishPolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AutoPublishPolicy field is set to the value of the last call.
+func (b *PackageVariantSpecApplyConfiguration) WithAutoPublishPolicy(value porchconfigv1alpha1.AutoPublishPolicy) *PackageVariantSpecApplyConfiguration {
+	b.AutoPublishPolicy = &value
 	return b
 }
 

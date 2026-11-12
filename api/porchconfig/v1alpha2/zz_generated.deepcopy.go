@@ -343,6 +343,16 @@ func (in *PackageVariantTemplate) DeepCopyInto(out *PackageVariantTemplate) {
 		*out = new(v1alpha1.DeletionPolicy)
 		**out = **in
 	}
+	if in.UpgradePolicy != nil {
+		in, out := &in.UpgradePolicy, &out.UpgradePolicy
+		*out = new(v1alpha1.UpgradePolicy)
+		**out = **in
+	}
+	if in.AutoPublishPolicy != nil {
+		in, out := &in.AutoPublishPolicy, &out.AutoPublishPolicy
+		*out = new(v1alpha1.AutoPublishPolicy)
+		**out = **in
+	}
 	if in.Labels != nil {
 		in, out := &in.Labels, &out.Labels
 		*out = make(map[string]string, len(*in))

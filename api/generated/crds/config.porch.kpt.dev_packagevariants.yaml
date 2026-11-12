@@ -61,6 +61,14 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              autoPublishPolicy:
+                description: |-
+                  AutoPublishPolicy controls whether the controller automatically proposes
+                  and approves (publishes) the drafts it creates. Defaults to "none", which
+                  leaves drafts for manual publishing. Set to "approve" to have the
+                  controller drive the full lifecycle so upstream changes propagate to the
+                  node without manual intervention.
+                type: string
               deletionPolicy:
                 type: string
               downstream:
@@ -446,6 +454,13 @@ spec:
                       type: object
                     type: array
                 type: object
+              upgradePolicy:
+                description: |-
+                  UpgradePolicy selects the merge strategy used when upgrading a downstream
+                  package to a new upstream revision. Defaults to "resourceMerge".
+                  Use "forceDeleteReplace" to treat the upstream as the source of truth and
+                  overwrite local downstream changes (golden-parameters use case).
+                type: string
               upstream:
                 properties:
                   package:

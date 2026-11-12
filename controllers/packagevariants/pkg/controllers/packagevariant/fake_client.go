@@ -25,6 +25,11 @@ import (
 
 type fakeClient struct {
 	output []string
+	// updateErr, if set, is returned by Update (used to exercise error paths).
+	updateErr error
+	// subResourceUpdateErr, if set, is returned by the subresource client's
+	// Update (used to exercise approval error paths).
+	subResourceUpdateErr error
 	client.Client
 }
 
@@ -41,7 +46,30 @@ func (f *fakeClient) Delete(_ context.Context, obj client.Object, _ ...client.De
 }
 
 func (f *fakeClient) Update(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
 	f.output = append(f.output, fmt.Sprintf("updating object: %s", obj.GetName()))
+	return nil
+}
+
+// SubResource returns a fake subresource client that records updates, so tests
+// can observe approval-subresource writes (used by auto-publish).
+func (f *fakeClient) SubResource(subResource string) client.SubResourceClient {
+	return &fakeSubResourceClient{parent: f, subResource: subResource}
+}
+
+type fakeSubResourceClient struct {
+	parent      *fakeClient
+	subResource string
+	client.SubResourceClient
+}
+
+func (s *fakeSubResourceClient) Update(_ context.Context, obj client.Object, _ ...client.SubResourceUpdateOption) error {
+	if s.parent.subResourceUpdateErr != nil {
+		return s.parent.subResourceUpdateErr
+	}
+	s.parent.output = append(s.parent.output, fmt.Sprintf("updating %s of object: %s", s.subResource, obj.GetName()))
 	return nil
 }
 

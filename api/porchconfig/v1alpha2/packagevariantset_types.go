@@ -107,6 +107,14 @@ type PackageVariantTemplate struct {
 	// +optional
 	DeletionPolicy *pkgvarapi.DeletionPolicy `json:"deletionPolicy,omitempty"`
 
+	// UpgradePolicy allows overriding the PackageVariant upgrade (merge) policy
+	// +optional
+	UpgradePolicy *pkgvarapi.UpgradePolicy `json:"upgradePolicy,omitempty"`
+
+	// AutoPublishPolicy allows overriding the PackageVariant auto-publish policy
+	// +optional
+	AutoPublishPolicy *pkgvarapi.AutoPublishPolicy `json:"autoPublishPolicy,omitempty"`
+
 	// Labels allows specifying the spec.Labels field of the generated PackageVariant
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`

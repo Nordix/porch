@@ -507,6 +507,10 @@ spec:
                           description: Annotations allows specifying the spec.Annotations
                             field of the generated PackageVariant
                           type: object
+                        autoPublishPolicy:
+                          description: AutoPublishPolicy allows overriding the PackageVariant
+                            auto-publish policy
+                          type: string
                         deletionPolicy:
                           description: DeletionPolicy allows overriding the PackageVariant
                             deletion policy
@@ -1001,6 +1005,10 @@ spec:
                                 type: object
                               type: array
                           type: object
+                        upgradePolicy:
+                          description: UpgradePolicy allows overriding the PackageVariant
+                            upgrade (merge) policy
+                          type: string
                       type: object
                   type: object
                 type: array

@@ -29,6 +29,10 @@ type PackageVariantTemplateApplyConfiguration struct {
 	AdoptionPolicy *v1alpha1.AdoptionPolicy `json:"adoptionPolicy,omitempty"`
 	// DeletionPolicy allows overriding the PackageVariant deletion policy
 	DeletionPolicy *v1alpha1.DeletionPolicy `json:"deletionPolicy,omitempty"`
+	// UpgradePolicy allows overriding the PackageVariant upgrade (merge) policy
+	UpgradePolicy *v1alpha1.UpgradePolicy `json:"upgradePolicy,omitempty"`
+	// AutoPublishPolicy allows overriding the PackageVariant auto-publish policy
+	AutoPublishPolicy *v1alpha1.AutoPublishPolicy `json:"autoPublishPolicy,omitempty"`
 	// Labels allows specifying the spec.Labels field of the generated PackageVariant
 	Labels map[string]string `json:"labels,omitempty"`
 	// LabelsExprs allows specifying the spec.Labels field of the generated PackageVariant
@@ -76,6 +80,22 @@ func (b *PackageVariantTemplateApplyConfiguration) WithAdoptionPolicy(value v1al
 // If called multiple times, the DeletionPolicy field is set to the value of the last call.
 func (b *PackageVariantTemplateApplyConfiguration) WithDeletionPolicy(value v1alpha1.DeletionPolicy) *PackageVariantTemplateApplyConfiguration {
 	b.DeletionPolicy = &value
+	return b
+}
+
+// WithUpgradePolicy sets the UpgradePolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UpgradePolicy field is set to the value of the last call.
+func (b *PackageVariantTemplateApplyConfiguration) WithUpgradePolicy(value v1alpha1.UpgradePolicy) *PackageVariantTemplateApplyConfiguration {
+	b.UpgradePolicy = &value
+	return b
+}
+
+// WithAutoPublishPolicy sets the AutoPublishPolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AutoPublishPolicy field is set to the value of the last call.
+func (b *PackageVariantTemplateApplyConfiguration) WithAutoPublishPolicy(value v1alpha1.AutoPublishPolicy) *PackageVariantTemplateApplyConfiguration {
+	b.AutoPublishPolicy = &value
 	return b
 }
 

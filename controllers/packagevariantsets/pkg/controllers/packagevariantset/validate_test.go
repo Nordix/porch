@@ -104,6 +104,32 @@ spec:
 				"spec.targets[0].template.deletionPolicy can only be \"orphan\" or \"delete\"",
 			},
 		},
+		"invalid upgrade and auto-publish policies": {
+			packageVariant: packageVariantHeader + `
+spec:
+  targets:
+  - template:
+      upgradePolicy: invalid
+      autoPublishPolicy: invalid
+`,
+			expectedErrs: []string{"spec.upstream is a required field",
+				"spec.targets[0] must specify one of `repositories`, `repositorySelector`, or `objectSelector`",
+				"spec.targets[0].template.upgradePolicy can only be \"resourceMerge\" or \"forceDeleteReplace\"",
+				"spec.targets[0].template.autoPublishPolicy can only be \"none\" or \"approve\"",
+			},
+		},
+		"valid upgrade and auto-publish policies": {
+			packageVariant: packageVariantHeader + `
+spec:
+  targets:
+  - repositories:
+    - name: bar
+    template:
+      upgradePolicy: forceDeleteReplace
+      autoPublishPolicy: approve
+`,
+			expectedErrs: []string{"spec.upstream is a required field"},
+		},
 		"valid adoption and deletion policies": {
 			packageVariant: packageVariantHeader + `
 spec:
