@@ -212,3 +212,17 @@ cleanup-monitoring:## Remove monitoring stack and disable porch trace export
 .PHONY: restart-monitoring
 restart-monitoring:## Restart the base monitoring stack
 	./scripts/monitoring/deploy-monitoring.sh restart
+
+##@ Kine storage
+
+.PHONY: deploy-kine
+deploy-kine:## Store Porch CRD resources in Kine + Postgres instead of etcd (deletes existing Porch objects)
+	./scripts/kine/setup-kine.sh install --yes
+
+.PHONY: kine-status
+kine-status:## Show whether Porch CRD resources are served from Kine or etcd
+	./scripts/kine/setup-kine.sh status
+
+.PHONY: cleanup-kine
+cleanup-kine:## Move Porch CRD resources back to etcd and remove Kine (deletes objects stored in Kine)
+	./scripts/kine/setup-kine.sh uninstall --yes

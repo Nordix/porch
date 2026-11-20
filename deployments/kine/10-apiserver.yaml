@@ -1,0 +1,128 @@
+# Copyright 2026 The kpt Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Generic kube-apiserver that stores everything in Kine, with Kine running as a
+# sidecar in the same pod (kube-apiserver -> 127.0.0.1:2379 -> Kine -> Postgres).
+# The main cluster routes the Porch groups to it through APIService objects
+# (created by scripts/kine/setup-kine.sh), so their objects are stored in Kine
+# instead of etcd.
+#
+# setup-kine.sh creates these first:
+#   secret    kine-apiserver-sa          (sa.key, sa.pub)
+#   secret    kine-apiserver-auth        (tokens.csv, admin token for installing CRDs)
+#   configmap kine-apiserver-front-proxy (requestheader-client-ca-file from the main cluster)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kine-apiserver
+  namespace: kine-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: kine-apiserver}
+  template:
+    metadata:
+      labels: {app: kine-apiserver}
+    spec:
+      containers:
+        # Kine sidecar. Both containers start together; kube-apiserver retries
+        # its etcd connection until Kine has connected to Postgres.
+        - name: kine
+          image: rancher/kine:v0.14.14
+          args:
+            - --endpoint=postgres://kine:kine@kine-postgres.kine-system.svc:5432/kine?sslmode=disable
+            # kube-apiserver in this pod connects on 127.0.0.1. Listening on all
+            # pod addresses lets the kubelet probe the port; no Service exposes it.
+            - --listen-address=0.0.0.0:2379
+            - --metrics-bind-address=:8080
+            # Keep a large revision history; compaction only removes older revisions.
+            - --compact-min-retain=500000
+            - --compact-timeout=60s
+          ports:
+            - {name: etcd, containerPort: 2379}
+            - {name: kine-metrics, containerPort: 8080}
+          # The etcd port opens once Kine has connected to Postgres.
+          readinessProbe:
+            tcpSocket: {port: 2379}
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: 2379}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+        - name: kube-apiserver
+          # setup-kine.sh replaces this tag with the cluster's own version.
+          image: registry.k8s.io/kube-apiserver:v1.37.0
+          command: ["kube-apiserver"]
+          args:
+            - --etcd-servers=http://127.0.0.1:2379
+            # Every list/watch goes to Kine, so the database sees the full read load.
+            - --watch-cache=false
+            - --secure-port=6443
+            - --bind-address=0.0.0.0
+            - --cert-dir=/tmp/certs
+            - --service-cluster-ip-range=10.250.0.0/24
+            - --service-account-issuer=https://kubernetes.default.svc.cluster.local
+            - --service-account-key-file=/etc/kine-apiserver/sa/sa.pub
+            - --service-account-signing-key-file=/etc/kine-apiserver/sa/sa.key
+            # Admin token, only used to install CRDs/webhooks into this server.
+            - --token-auth-file=/etc/kine-apiserver/auth/tokens.csv
+            # The main kube-apiserver already authorizes the request with its
+            # own RBAC before proxying, so the backend allows everything.
+            - --authorization-mode=AlwaysAllow
+            # Trust the user identity forwarded by the main apiserver.
+            - --requestheader-client-ca-file=/etc/kine-apiserver/front-proxy/requestheader-client-ca-file
+            - --requestheader-allowed-names=front-proxy-client
+            - --requestheader-username-headers=X-Remote-User
+            - --requestheader-group-headers=X-Remote-Group
+            - --requestheader-extra-headers-prefix=X-Remote-Extra-
+            # Namespaces live in the main cluster, not here.
+            - --disable-admission-plugins=NamespaceLifecycle,MutatingAdmissionPolicy
+            - --enable-admission-plugins=MutatingAdmissionWebhook,ValidatingAdmissionWebhook
+            - --goaway-chance=0.001
+            - --v=2
+          ports:
+            - {name: https, containerPort: 6443}
+          # TCP probes: with --authorization-mode=AlwaysAllow kube-apiserver turns
+          # anonymous auth off, so HTTP probes on /readyz and /livez get 401.
+          readinessProbe:
+            tcpSocket: {port: 6443}
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: 6443}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          volumeMounts:
+            - {name: sa, mountPath: /etc/kine-apiserver/sa, readOnly: true}
+            - {name: auth, mountPath: /etc/kine-apiserver/auth, readOnly: true}
+            - {name: front-proxy, mountPath: /etc/kine-apiserver/front-proxy, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: sa
+          secret: {secretName: kine-apiserver-sa}
+        - name: auth
+          secret: {secretName: kine-apiserver-auth}
+        - name: front-proxy
+          configMap: {name: kine-apiserver-front-proxy}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kine-apiserver
+  namespace: kine-system
+spec:
+  selector: {app: kine-apiserver}
+  ports:
+    - {name: https, port: 443, targetPort: 6443}

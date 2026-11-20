@@ -1,0 +1,169 @@
+# Copyright 2026 The kpt Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Plain Postgres for the Kine backend on a kind cluster. For local development
+# and performance testing only: no TLS, fixed credentials, single replica.
+# Applied by scripts/kine/setup-kine.sh. Kine itself runs as a sidecar in the
+# kine-apiserver pod (10-apiserver.yaml). Layout:
+#   kine-apiserver pod [kube-apiserver --(etcd API)--> kine] --(SQL)--> Postgres
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kine-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kine-db
+  namespace: kine-system
+stringData:
+  POSTGRES_USER: kine
+  POSTGRES_PASSWORD: kine
+  POSTGRES_DB: kine
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kine-postgres-data
+  namespace: kine-system
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kine-postgres
+  namespace: kine-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: kine-postgres}
+  template:
+    metadata:
+      labels: {app: kine-postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          envFrom:
+            - secretRef: {name: kine-db}
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          # Postgres tuning for a Kine backend under load testing.
+          args:
+            # Locking
+            - -c
+            - lock_timeout=30s
+            - -c
+            - deadlock_timeout=3s
+            - -c
+            - log_lock_waits=on
+            - -c
+            - max_locks_per_transaction=256
+            # Connections / workers
+            - -c
+            - max_connections=200
+            - -c
+            - max_worker_processes=8
+            - -c
+            - max_prepared_transactions=0
+            # Memory
+            - -c
+            - shared_buffers=512MB
+            - -c
+            - effective_cache_size=1536MB
+            - -c
+            - work_mem=4MB
+            - -c
+            - maintenance_work_mem=64MB
+            - -c
+            - huge_pages=off
+            # Planner / IO
+            - -c
+            - random_page_cost=1.1
+            - -c
+            - effective_io_concurrency=200
+            # WAL / checkpoints
+            - -c
+            - synchronous_commit=local
+            - -c
+            - wal_level=replica
+            - -c
+            - wal_log_hints=on
+            - -c
+            - wal_buffers=16MB
+            - -c
+            - wal_compression=pglz
+            - -c
+            - max_wal_size=1GB
+            - -c
+            - min_wal_size=80MB
+            - -c
+            - wal_keep_size=128MB
+            - -c
+            - max_wal_senders=10
+            - -c
+            - max_replication_slots=10
+            - -c
+            - max_slot_wal_keep_size=1072MB
+            - -c
+            - checkpoint_completion_target=0.9
+            - -c
+            - track_commit_timestamp=off
+            # Autovacuum
+            - -c
+            - autovacuum_max_workers=3
+            - -c
+            - autovacuum_vacuum_scale_factor=0.02
+            - -c
+            - autovacuum_analyze_scale_factor=0.01
+            # Time zone
+            - -c
+            - timezone=UTC
+            - -c
+            - log_timezone=UTC
+          # Requests kept small so it schedules on a laptop-sized kind node.
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "4", memory: 3000Mi}
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "kine", "-d", "kine"]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kine-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kine-postgres
+  namespace: kine-system
+spec:
+  selector: {app: kine-postgres}
+  ports:
+    - port: 5432
+      targetPort: 5432

@@ -35,6 +35,10 @@ Scripts for deploying monitoring and tracing infrastructure.
 
 - `deploy-monitoring.sh` - Deploys Prometheus, Grafana, Jaeger, Pyroscope; manages observability stack
 
+### `kine/` - Alternative Storage
+Scripts for running Porch's CRD-backed resources on Kine + Postgres instead of etcd.
+- `setup-kine.sh` - Deploys Postgres and a kube-apiserver with a Kine sidecar, and redirects the Porch CRD groups to it (`install`, `status`, `uninstall`)
+
 ### `testing/` - E2E Testing
 Scripts for running end-to-end tests.
 
